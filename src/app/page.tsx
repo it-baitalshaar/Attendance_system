@@ -8,6 +8,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
 import { useEffect, useState } from "react";
 import DatePickerMinToday from "./component/DatePickerMinToday";
+import { useRouter } from "next/navigation";
 
 interface Employee {
   id: string;
@@ -35,6 +36,7 @@ async function fetchEmployees(department: string | null): Promise<Employee[]> {
 }
 
 export default function Home() {
+  const router = useRouter();
   const department = useSelector((state: RootState) => state.project.department); // Get department from Redux
   const [employees, setEmployees] = useState<Employee[]>([]); // State to store employees
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -63,8 +65,27 @@ export default function Home() {
     };
   }, []);
 
+  const handleLogout = async () => {
+    const supabase = createSupabbaseFrontendClient();
+
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      router.replace('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  };
+
   return (
-    <main className="mt-[2rem] flex flex-col items-center justify-center">
+    <main className="relative mt-[2rem] flex flex-col items-center justify-center">
+      <button
+        onClick={handleLogout}
+        className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+      >
+        Logout
+      </button>
       <div className="flex flex-col items-center justify-center">
         <div className="flex flex-col justify-center items-center">
           <Image src={log} alt="Next.js Logo" width={120} height={37} priority />
