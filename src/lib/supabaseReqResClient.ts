@@ -8,15 +8,15 @@ export function createSupabaseReqResClient(req: NextRequest, res:NextResponse) {
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
             cookies: {
-                get(name)
+                get(name: string)
                 {
                     return getCookie(name, {req, res});
                 },
-                set(name, value, options)
+                set(name: string, value: string, options: any)
                 {
                     return setCookie(name, value, {req, res , ...options})
                 },
-                remove(name, options)
+                remove(name: string, options: any)
                 {
                     return setCookie(name, "", {req, res , ...options})
                 }
