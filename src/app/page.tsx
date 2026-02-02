@@ -7,8 +7,8 @@ import { createSupabbaseFrontendClient } from "@/lib/supabase";
 import { useSelector } from 'react-redux';
 import { RootState } from '@/redux/store';
 import { useEffect, useState } from "react";
-import DatePickerMinToday from "./component/DatePickerMinToday";
 import { useRouter } from "next/navigation";
+import DatePickerMinToday from "./component/DatePickerMinToday";
 
 interface Employee {
   id: string;
@@ -36,10 +36,10 @@ async function fetchEmployees(department: string | null): Promise<Employee[]> {
 }
 
 export default function Home() {
-  const router = useRouter();
   const department = useSelector((state: RootState) => state.project.department); // Get department from Redux
   const [employees, setEmployees] = useState<Employee[]>([]); // State to store employees
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const router = useRouter();
 
   useEffect(() => {
     console.log("this is the department", department)
@@ -79,10 +79,10 @@ export default function Home() {
   };
 
   return (
-    <main className="relative mt-[2rem] flex flex-col items-center justify-center">
+    <main className="mt-[2rem] flex flex-col items-center justify-center relative">
       <button
         onClick={handleLogout}
-        className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+        className="absolute top-0 right-4 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
       >
         Logout
       </button>

@@ -177,14 +177,12 @@ export default function AdminPage() {
     fetchEmployees();
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (activeTab === 'attendance') {
       fetchAttendanceRecords();
     }
   }, [activeTab, dateRange.startDate, dateRange.endDate, selectedEmployeeId, selectedDepartment, selectedStatus]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (activeTab === 'reports') {
       fetchLeaveReport();
