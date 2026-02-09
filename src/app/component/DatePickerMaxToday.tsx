@@ -18,11 +18,11 @@ const DatePickerMaxToday = ({
   const today = new Date().toISOString().split('T')[0];
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
-      <label className="text-black">{label}</label>
+    <div className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto ${className}`}>
+      <label className="text-black text-sm sm:text-base">{label}</label>
       <input
         type="date"
-        className="text-black px-3 py-2 rounded-lg border"
+        className="text-black px-3 py-2.5 rounded-lg border w-full sm:w-auto min-h-[44px] touch-manipulation"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         max={today}

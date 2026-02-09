@@ -219,40 +219,59 @@
 // }
 
 
-// // /app/api/submitAttendance/route.ts
+// /app/api/submitAttendance/route.ts
 
 import { NextResponse } from 'next/server';
 import { createSupabaseServerComponentClient } from '@/lib/supabaseAppRouterClient';
-import { RootState } from '@/redux/store';
-import { useSelector } from 'react-redux';
-import { overtime_hours } from '@/redux/slice';
-import { Cinzel } from 'next/font/google';
-import { deprecate } from 'util';
 
+type SimpleStatus = 'present' | 'absent' | 'vacation';
 
-async function trackAttendance(attendance_id: string, department: string, selectedDate?: string)
-{
-  const supabase = createSupabaseServerComponentClient();
+interface SimpleEntry {
+  employee_id: string;
+  status: SimpleStatus;
+  notes: string | null;
+}
 
-  const { data: userData, error: userError } = await supabase.auth.getUser()
-  if (attendance_id)
-  {
-    console.log("this is from the function and the email ", userData.user?.email)
-    let { data: attendance, error: attendanceError } = await supabase
-    .from('Track_Attendance')
-    .insert([
-      {
-        id: attendance_id,
-        email: userData.user?.email,
-        department: department,
-        date: selectedDate ? new Date(selectedDate) : new Date(),
-      },
-    ]) 
+interface AttendancePayload {
+  date: string;
+  department: string;
+  submitted_by: string;
+  entries: SimpleEntry[];
+}
 
-    if (attendanceError)
-      console.log("this is the error ", attendanceError)  
-    // console.log("from the function ", attendance)
+async function trackAttendance(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
+  attendance_id: string,
+  department: string,
+  selectedDate?: string,
+  submitted_by?: string,
+  isEdit?: boolean,
+  last_edited_by?: string
+) {
+  const { data: userData } = await supabase.auth.getUser();
+  const email = userData?.user?.email ?? null;
+  const date = selectedDate ? new Date(selectedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+
+  if (isEdit && attendance_id) {
+    const { error: updateErr } = await supabase
+      .from('Track_Attendance')
+      .update({
+        last_edited_by: last_edited_by ?? submitted_by,
+        last_edited_at: new Date().toISOString(),
+      })
+      .eq('id', attendance_id);
+    if (updateErr) console.error('Track_Attendance update error', updateErr);
+    return;
   }
+
+  const { error: insertErr } = await supabase.from('Track_Attendance').insert({
+    id: attendance_id,
+    email,
+    department,
+    date,
+    submitted_by: submitted_by ?? userData?.user?.id,
+  });
+  if (insertErr) console.error('Track_Attendance insert error', insertErr);
 }
 
 interface AttendanceProject {
@@ -265,17 +284,97 @@ interface AttendanceProject {
   
 
 export async function POST(request: Request) {
+  const body = await request.json();
 
-  const { employees,  employees_statis, department, selectedDate } = await request.json(); // Get the employees data from the request body
-  // console.log("this is the employee statis FROM SUMBIT ", employees_statis)
-  console.log("thisn is thdepartment ", department)
+  // ----- Simplified attendance flow (one record per date + department) -----
+  const payload = body.attendancePayload as AttendancePayload | undefined;
+  if (payload?.date && payload?.department && Array.isArray(payload?.entries) && payload?.submitted_by) {
+    try {
+      const supabase = createSupabaseServerComponentClient();
+      const targetDate = payload.date;
+      const department = payload.department;
+
+      const { data: existingTrack } = await supabase
+        .from('Track_Attendance')
+        .select('id')
+        .eq('date', targetDate)
+        .eq('department', department)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const isEdit = !!existingTrack;
+      const trackId = existingTrack?.id ?? crypto.randomUUID();
+
+      if (isEdit) {
+        await trackAttendance(
+          supabase,
+          existingTrack!.id,
+          department,
+          targetDate,
+          payload.submitted_by,
+          true,
+          payload.submitted_by
+        );
+      }
+
+      for (const entry of payload.entries) {
+        const { data: existingRow } = await supabase
+          .from('Attendance')
+          .select('id')
+          .eq('employee_id', entry.employee_id)
+          .eq('date', targetDate)
+          .maybeSingle();
+
+        const row = {
+          employee_id: entry.employee_id,
+          date: targetDate,
+          status: entry.status,
+          status_attendance: entry.status,
+          notes: entry.notes,
+        };
+
+        if (existingRow) {
+          await supabase.from('Attendance').update(row).eq('id', existingRow.id);
+        } else {
+          await supabase.from('Attendance').insert(row);
+        }
+      }
+
+      if (!isEdit) {
+        await trackAttendance(supabase, trackId, department, targetDate, payload.submitted_by, false);
+      }
+
+      const present = payload.entries.filter((e) => e.status === 'present').length;
+      const absent = payload.entries.filter((e) => e.status === 'absent').length;
+      const vacation = payload.entries.filter((e) => e.status === 'vacation').length;
+
+      return NextResponse.json({
+        message: isEdit ? 'Attendance updated successfully.' : 'Attendance submitted successfully.',
+        summary: {
+          total: payload.entries.length,
+          present,
+          absent,
+          vacation,
+        },
+        isEdit,
+      });
+    } catch (err) {
+      console.error('Simplified attendance submit error', err);
+      return NextResponse.json(
+        { error: 'Error submitting attendance', details: String(err) },
+        { status: 500 }
+      );
+    }
+  }
+
+  // ----- Legacy flow -----
+  const { employees, employees_statis, department, selectedDate } = body;
   try {
     const supabase = createSupabaseServerComponentClient();
 
-    let attendance_id: string | null;
-
+    let attendance_id: string | null = null;
     let tracker_attend: number | null = null;
-
     const targetDate = selectedDate || new Date().toISOString().split('T')[0];
     const submittedEmployees: string[] = [];
     const skippedEmployees: string[] = [];
@@ -331,7 +430,7 @@ export async function POST(request: Request) {
                   console.log("this is the type of the attendance ", typeof attendance)
                   if (attendance && tracker_attend === null)
                   {
-                    await trackAttendance(attendance[0].id, department, targetDate)
+                    await trackAttendance(supabase, attendance[0].id, department, targetDate)
                     tracker_attend = 1
                     attendance_id = attendance[0].id
                   }
@@ -408,7 +507,7 @@ export async function POST(request: Request) {
             console.log("this is from the attwdn vacation ", attendanceError)
           if (attendance && tracker_attend === null)
           {
-            await trackAttendance(attendance[0].id, department, targetDate)
+            await trackAttendance(supabase, attendance[0].id, department, targetDate)
             tracker_attend = 1
           }
           submittedEmployees.push(employees[i].employee_id);

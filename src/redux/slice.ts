@@ -1,57 +1,59 @@
 'use client'
 
-import EmployeeCard from '@/app/component/EmployeeCard';
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+export type AttendanceStatus = 'present' | 'absent' | 'vacation';
 
+export interface AttendanceEntry {
+  status: AttendanceStatus;
+  notes: string | null;
+}
 
+// Legacy / optional for old flows
 interface ProjectAndHours{
   projectName:string[]
   hours: number | 0;
   overtime:number;
   note:string | null
-  // attendance_status: string | null 
 }
-
 interface ProjectData {
   projectId: ProjectAndHours[];
   tthour:number
-} 
-
+}
 interface Status {
- status_attendance: string | null
- status_employee: string | null
- note:string | null
+  status_attendance: string | null
+  status_employee: string | null
+  note:string | null
 }
 
 export interface Employee {
   employee_id: string | null;
   name: string;
-  project?:string;
+  position?: string;
+  department?: string;
+  project?: string;
   projects?: ProjectData;
   employee_status?: Status[]
 }
 
 interface EmployeesState {
   employees: Employee[];
-  totalProjects:number
-  remaining: number
-  total_hours: number
-  leftHours: number
-  department: string | null
-  // employee_status: string | null
-}
-
-interface TotoalProjects {
-  total: number
+  /** Keyed by employee_id. Simplified attendance: status + notes. */
+  attendanceEntries: Record<string, AttendanceEntry>;
+  totalProjects: number;
+  remaining: number;
+  total_hours: number;
+  leftHours: number;
+  department: string | null;
 }
 
 const initialState: EmployeesState = {
   employees: [],
-  totalProjects:0,
-  remaining:0,
-  total_hours:0,
-  leftHours:0,
+  attendanceEntries: {},
+  totalProjects: 0,
+  remaining: 0,
+  total_hours: 0,
+  leftHours: 0,
   department: null,
 };
 
@@ -61,13 +63,41 @@ const projectSlice = createSlice({
   initialState,
 
   reducers: {
-
   setDepartment: (state, action: PayloadAction<string>) => {
-    state.department = action.payload; // <-- This action will update the department
+    state.department = action.payload;
   },
 
   setEmployeeData: (state, action: PayloadAction<Employee[]>) => {
-      state.employees = action.payload;
+    state.employees = action.payload;
+  },
+
+  setAttendanceEntry: (state, action: PayloadAction<{ employee_id: string; status: AttendanceStatus; notes?: string | null }>) => {
+    const { employee_id, status, notes } = action.payload;
+    if (!state.attendanceEntries[employee_id]) state.attendanceEntries[employee_id] = { status: 'present', notes: null };
+    state.attendanceEntries[employee_id].status = status;
+    if (notes !== undefined) state.attendanceEntries[employee_id].notes = notes ?? null;
+  },
+
+  setAttendanceNotes: (state, action: PayloadAction<{ employee_id: string; notes: string | null }>) => {
+    const { employee_id, notes } = action.payload;
+    if (!state.attendanceEntries[employee_id]) state.attendanceEntries[employee_id] = { status: 'present', notes: null };
+    state.attendanceEntries[employee_id].notes = notes;
+  },
+
+  setAllPresent: (state, action: PayloadAction<string[]>) => {
+    action.payload.forEach((id) => {
+      state.attendanceEntries[id] = { status: 'present', notes: null };
+    });
+  },
+
+  setAttendanceFromServer: (state, action: PayloadAction<{ employee_id: string; status: AttendanceStatus; notes: string | null }[]>) => {
+    action.payload.forEach(({ employee_id, status, notes }) => {
+      state.attendanceEntries[employee_id] = { status, notes };
+    });
+  },
+
+  clearAttendanceEntries: (state) => {
+    state.attendanceEntries = {};
   },
 
   setEmployeesStatus: (state, action:PayloadAction<{status:string; employee_id: string}>) => {
@@ -237,5 +267,24 @@ const projectSlice = createSlice({
   },
 });
 
-export const { Add_notes_to_cases_without_projects ,add_notes ,setDepartment, setAttendanceStatus , setEmployeesStatus, setEmployeeData, addProjectToEmployee, addHours, setTotalProject, setRemainingHours, setLeftHours, sum_hours, overtime_hours } = projectSlice.actions;
+export const {
+  Add_notes_to_cases_without_projects,
+  add_notes,
+  setDepartment,
+  setAttendanceStatus,
+  setEmployeesStatus,
+  setEmployeeData,
+  setAttendanceEntry,
+  setAttendanceNotes,
+  setAllPresent,
+  setAttendanceFromServer,
+  clearAttendanceEntries,
+  addProjectToEmployee,
+  addHours,
+  setTotalProject,
+  setRemainingHours,
+  setLeftHours,
+  sum_hours,
+  overtime_hours,
+} = projectSlice.actions;
 export default projectSlice.reducer;
