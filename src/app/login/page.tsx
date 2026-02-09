@@ -84,10 +84,41 @@ export default function Login() {
       setLoading(true);
       setErrorMessage('');
       
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Hardcoded password for manager role user
+      const managerEmail = 'ajabkhan@baitalshaar.com';
+      const hardcodedPassword = 'Ajab@123';
+      const isManagerUser = formData.email.toLowerCase() === managerEmail.toLowerCase();
+      
+      // Use hardcoded password if email matches the manager email
+      const passwordToUse = isManagerUser ? hardcodedPassword : formData.password;
+      
+      let { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
-        password: formData.password,
+        password: passwordToUse,
       });
+
+      // If login fails for manager user, set password and retry
+      if (error && isManagerUser) {
+        try {
+          const response = await fetch('/api/admin-set-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: formData.email, password: hardcodedPassword }),
+          });
+          
+          if (response.ok) {
+            // Retry login after setting password
+            const retryResult = await supabase.auth.signInWithPassword({
+              email: formData.email,
+              password: hardcodedPassword,
+            });
+            data = retryResult.data;
+            error = retryResult.error;
+          }
+        } catch (err) {
+          console.error('Error setting password:', err);
+        }
+      }
 
       if (error) {
         setErrorMessage(error.message || 'Login failed. Please check your credentials.');

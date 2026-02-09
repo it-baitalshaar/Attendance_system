@@ -266,58 +266,82 @@ export default function Home() {
     }
 
     setConfirmModal('submitting');
-    const entries =
-      showEntryMode && entryMode === 'customize'
-        ? employeeList.map((e) => {
-            const reduxEmp = employees.find((r) => r.employee_id === e.employee_id) as
-              | { employee_status?: { status_attendance: string | null; status_employee?: string | null; note: string | null }[]; projects?: { projectId: { projectName: string[]; hours: number; overtime: number }[] } }
-              | undefined;
-            const status = (reduxEmp?.employee_status?.[0]?.status_attendance ?? 'present') as AttendanceStatus;
-            const attendanceType = reduxEmp?.employee_status?.[0]?.status_employee ?? null;
-            const notePart = reduxEmp?.employee_status?.[0]?.note ?? '';
-            const projectId = reduxEmp?.projects?.projectId;
-            const projPart =
-              projectId?.length &&
-              projectId.some((p: { projectName?: string[] }) => p.projectName?.length)
-                ? 'Projects: ' +
-                  projectId
-                    .map(
-                      (p: { projectName?: string[]; hours?: number; overtime?: number }) =>
-                        (p.projectName?.filter(Boolean).join(', ') || '') +
-                        ' ' +
-                        (p.hours ?? 0) +
-                        'h' +
-                        (p.overtime ? ' OT:' + p.overtime : '')
-                    )
-                    .filter(Boolean)
-                    .join('; ')
-                : '';
-            const body = [projPart, notePart].filter(Boolean).join('\n');
-            const notes =
-              attendanceType && attendanceType !== 'Present'
-                ? 'Attendance type: ' + attendanceType + (body ? '\n' + body : '')
-                : body || null;
-            return { employee_id: e.employee_id, status, notes };
-          })
-        : employeeList.map((e) => ({
-            employee_id: e.employee_id,
-            status: (attendanceEntries[e.employee_id]?.status ?? 'present') as AttendanceStatus,
-            notes: attendanceEntries[e.employee_id]?.notes ?? null,
-          }));
 
+    // Build entries for report (used later)
+    let entries: Array<{ employee_id: string; status: AttendanceStatus; notes: string | null }> = [];
+    
     try {
-      const res = await fetch('/api/submitAttendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          attendancePayload: {
-            date: selectedDate,
-            department: departmentForFetch,
-            submitted_by: user.id,
-            entries,
-          },
-        }),
+      let res: Response;
+      // Check if any employee has projects (Standard or Customize with projects)
+      const hasProjects = employees.some((emp) => {
+        const proj = emp.projects?.projectId;
+        return proj && proj.length > 0 && proj.some((p: { projectName?: string[]; hours?: number }) => p.projectName?.length && (p.hours ?? 0) > 0);
       });
+
+      if ((showEntryMode && entryMode === 'customize') || (showEntryMode && hasProjects)) {
+        // Use legacy flow when Customize OR when Standard has projects - saves to Attendance_projects
+        const employeesPayload = employeeList.map((e) => {
+          const reduxEmp = employees.find((r) => r.employee_id === e.employee_id) as
+            | { employee_status?: { status_attendance: string | null; status_employee?: string | null; note: string | null }[]; projects?: { projectId: { projectName: string[]; hours: number; overtime: number; note: string | null }[]; tthour: number } }
+            | undefined;
+          return {
+            employee_id: e.employee_id,
+            name: e.name,
+            position: e.position,
+            department: e.department,
+            projects: reduxEmp?.projects ?? { projectId: [], tthour: 0 },
+          };
+        });
+        const employees_statis = employeeList.map((e) => {
+          const reduxEmp = employees.find((r) => r.employee_id === e.employee_id) as
+            | { employee_status?: { status_attendance: string | null; status_employee?: string | null; note: string | null }[] }
+            | undefined;
+          return {
+            employee_id: e.employee_id,
+            employee_status: reduxEmp?.employee_status ?? [{ status_attendance: null, status_employee: null, note: null }],
+          };
+        });
+        
+        // Build entries for report
+        entries = employeeList.map((e) => {
+          const reduxEmp = employees.find((r) => r.employee_id === e.employee_id) as
+            | { employee_status?: { status_attendance: string | null; status_employee?: string | null; note: string | null }[] }
+            | undefined;
+          const status = (reduxEmp?.employee_status?.[0]?.status_attendance ?? 'present') as AttendanceStatus;
+          const notes = reduxEmp?.employee_status?.[0]?.note ?? null;
+          return { employee_id: e.employee_id, status, notes };
+        });
+        
+        res = await fetch('/api/submitAttendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employees: employeesPayload,
+            employees_statis,
+            department: departmentForFetch,
+            selectedDate,
+          }),
+        });
+      } else {
+        // Simplified flow for Standard mode without projects
+        entries = employeeList.map((e) => ({
+          employee_id: e.employee_id,
+          status: (attendanceEntries[e.employee_id]?.status ?? 'present') as AttendanceStatus,
+          notes: attendanceEntries[e.employee_id]?.notes ?? null,
+        }));
+        res = await fetch('/api/submitAttendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            attendancePayload: {
+              date: selectedDate,
+              department: departmentForFetch,
+              submitted_by: user.id,
+              entries,
+            },
+          }),
+        });
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(data?.error || 'Failed to submit attendance.');
