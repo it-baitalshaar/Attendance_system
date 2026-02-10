@@ -425,7 +425,11 @@ export async function POST(request: Request) {
         
         if ((status_attendance === 'present' || status_employee === 'Sick Leave') && hasProjects)
         {
-          // duplicate check for selected date
+          const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
+            ? status_employee 
+            : (status_employee || status_attendance || 'present');
+          const notesVal = employees[i].projects.projectId[0]?.note || empStat.note || null;
+
           const { data: existingAttendance } = await supabase
             .from('Attendance')
             .select('id')
@@ -433,172 +437,125 @@ export async function POST(request: Request) {
             .eq('date', targetDate)
             .maybeSingle();
 
-          if (existingAttendance) {
-            skippedEmployees.push(employees[i].employee_id);
-            continue;
-          }
+          let attendanceId: string;
+          let isUpdate = false;
 
-          console.log("this is first print otu ", employees[i].projects.projectId)
-          if (employees[i].projects && employees[i].projects.projectId) {
-            // Loop over each project the employee has
-            console.log("inside the if")
-            // Determine status_attendance: use status_employee if it's Weekend/Holiday-Work, otherwise use status_attendance
-            const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
-              ? status_employee 
-              : (status_employee || status_attendance || 'present');
-            
-            let { data: attendance, error: attendanceError } = await supabase
-            .from('Attendance')
-            .insert([
-              {
-                employee_id: employees[i].employee_id,
-                date: targetDate,
+          if (existingAttendance) {
+            attendanceId = existingAttendance.id;
+            isUpdate = true;
+            await supabase
+              .from('Attendance')
+              .update({
                 status: status_attendance || 'present',
                 status_attendance: final_status_attendance,
-                notes: employees[i].projects.projectId[0]?.note || empStat.note || null
-              },
-            ])
-            .select();
-
-            console.log("this is my employee ", employees[i].projects.projectId[0].note)
-            for (let projectIdx = 0; projectIdx < employees[i].projects.projectId.length; projectIdx++) {
-              console.log("this is project", employees[i].projects.projectId[projectIdx]);
-        
-                  console.log("this is the type of the attendance ", typeof attendance)
-                  if (attendance && tracker_attend === null)
-                  {
-                    await trackAttendance(supabase, attendance[0].id, department, targetDate)
-                    tracker_attend = 1
-                    attendance_id = attendance[0].id
-                  }
-                if (attendance && employees[i].projects.projectId[projectIdx]) {
-                  console.log("Attendance inserted:", attendance[0]);
-        
-                  // Get project name - projectName is an array, get the name at projectIdx
-                  const projectNameArray = employees[i].projects.projectId[projectIdx].projectName;
-                  const projectName = projectNameArray && projectNameArray[projectIdx] 
-                    ? projectNameArray[projectIdx] 
-                    : (projectNameArray && projectNameArray.length > 0 ? projectNameArray[0] : null);
-                  
-                  if (!projectName) {
-                    console.error(`No project name found for project index ${projectIdx} for employee ${employees[i].employee_id}`);
-                    continue;
-                  }
-                  
-                  const { data, error } = await supabase
-                    .from('projects')
-                    .select('project_id')
-                    .eq('project_name', projectName);
-                  
-                  console.log("this is the data ", data, "for project name", projectName)
-                  if (data && data.length > 0) {
-                    let { data: attendance_projects, error: attendanceError } = await supabase
-                      .from('Attendance_projects')
-                      .insert([
-                        {
-                          attendance_id: attendance[0].id,
-                          project_id: data[0].project_id,
-                          working_hours: employees[i].projects.projectId[projectIdx].hours || 0,
-                          overtime_hours: employees[i].projects.projectId[projectIdx].overtime || 0,
-                        },
-                      ]);
-        
-                    if (attendanceError) {
-                      console.error("Error inserting Attendance_projects:", attendanceError);
-                    } else if (attendance_projects) {
-                      console.log("Attendance project inserted:", attendance_projects);
-                    }
-                  } else {
-                    console.error(`Project not found in database: ${projectName} for employee ${employees[i].employee_id}`);
-                  }
-                }
-        
-                if (attendanceError) {
-                  console.error("this is the attend error", attendanceError);
-                  throw attendanceError;
-                }
-              // } else {
-              //   console.log("Error: attendance status is undefined");
-              // }
-            }
-            submittedEmployees.push(employees[i].employee_id);
+                notes: notesVal,
+              })
+              .eq('id', attendanceId);
+            await supabase.from('Attendance_projects').delete().eq('attendance_id', attendanceId);
           } else {
+            const { data: attendance, error: attendanceError } = await supabase
+              .from('Attendance')
+              .insert([
+                {
+                  employee_id: employees[i].employee_id,
+                  date: targetDate,
+                  status: status_attendance || 'present',
+                  status_attendance: final_status_attendance,
+                  notes: notesVal,
+                },
+              ])
+              .select()
+              .single();
+            if (attendanceError) {
+              console.error("Attendance insert error", attendanceError);
+              throw attendanceError;
+            }
+            attendanceId = attendance.id;
+            if (tracker_attend === null) {
+              await trackAttendance(supabase, attendanceId, department, targetDate);
+              tracker_attend = 1;
+            }
+          }
+
+          for (let projectIdx = 0; projectIdx < employees[i].projects.projectId.length; projectIdx++) {
+            const projectNameArray = employees[i].projects.projectId[projectIdx].projectName;
+            const projectName = projectNameArray?.[projectIdx] ?? (projectNameArray?.length > 0 ? projectNameArray[0] : null);
+            if (!projectName) continue;
+            const { data: projData } = await supabase.from('projects').select('project_id').eq('project_name', projectName).maybeSingle();
+            if (projData) {
+              await supabase.from('Attendance_projects').insert({
+                attendance_id: attendanceId,
+                project_id: projData.project_id,
+                working_hours: employees[i].projects.projectId[projectIdx].hours || 0,
+                overtime_hours: employees[i].projects.projectId[projectIdx].overtime || 0,
+              });
+            }
+          }
+          submittedEmployees.push(employees[i].employee_id);
+        } else if ((status_attendance === 'present' || status_employee === 'Sick Leave') && !hasProjects) {
             // No projects but still Present - save Attendance record without projects
             console.log("No projects found for employee", employees[i].employee_id);
-            const { data: existingAttendance } = await supabase
+            const { data: existingPresent } = await supabase
               .from('Attendance')
               .select('id')
               .eq('employee_id', employees[i].employee_id)
               .eq('date', targetDate)
               .maybeSingle();
 
-            if (!existingAttendance) {
-              const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
-                ? status_employee 
-                : (status_employee || status_attendance || 'present');
-              
-              let { data: attendance, error: attendanceError } = await supabase
-                .from('Attendance')
-                .insert([
-                  {
-                    employee_id: employees[i].employee_id,
-                    date: targetDate,
-                    status: status_attendance || 'present',
-                    status_attendance: final_status_attendance,
-                    notes: empStat.note || null,
-                  },
-                ])
-                .select();
+            const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
+              ? status_employee 
+              : (status_employee || status_attendance || 'present');
+            const row = { status: status_attendance || 'present', status_attendance: final_status_attendance, notes: empStat.note || null };
 
-              if (attendance && tracker_attend === null) {
-                await trackAttendance(supabase, attendance[0].id, department, targetDate);
+            if (existingPresent) {
+              await supabase.from('Attendance').update(row).eq('id', existingPresent.id);
+              if (tracker_attend === null) {
+                await trackAttendance(supabase, existingPresent.id, department, targetDate);
                 tracker_attend = 1;
               }
-              submittedEmployees.push(employees[i].employee_id);
             } else {
-              skippedEmployees.push(employees[i].employee_id);
+              const { data: attendance, error: attendanceError } = await supabase
+                .from('Attendance')
+                .insert([{ employee_id: employees[i].employee_id, date: targetDate, ...row }])
+                .select()
+                .single();
+              if (attendanceError) throw attendanceError;
+              if (tracker_attend === null) {
+                await trackAttendance(supabase, attendance.id, department, targetDate);
+                tracker_attend = 1;
+              }
             }
-          }
-        }
-        else {
-          // duplicate check for selected date
-          const { data: existingAttendance } = await supabase
+            submittedEmployees.push(employees[i].employee_id);
+        } else {
+          const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
+            ? status_employee 
+            : (status_employee || status_attendance || 'absent');
+          const row = { status: status_attendance || 'absent', status_attendance: final_status_attendance, notes: empStat.note || null };
+
+          const { data: existingAbsent } = await supabase
             .from('Attendance')
             .select('id')
             .eq('employee_id', employees[i].employee_id)
             .eq('date', targetDate)
             .maybeSingle();
 
-          if (existingAttendance) {
-            skippedEmployees.push(employees[i].employee_id);
-            continue;
-          }
-
-          // Absent/Vacation or other non-present statuses
-          console.log("this is from the second conditions ") 
-          const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
-            ? status_employee 
-            : (status_employee || status_attendance || 'absent');
-          
-          let { data: attendance, error: attendanceError } = await supabase
-          .from('Attendance')
-          .insert([
-            {
-              employee_id: employees[i].employee_id,
-              date: targetDate,
-              status: status_attendance || 'absent',
-              status_attendance: final_status_attendance,
-              notes: empStat.note || null
-            },
-          ])
-          .select(); 
-
-          if (attendanceError)
-            console.log("this is from the attwdn vacation ", attendanceError)
-          if (attendance && tracker_attend === null)
-          {
-            await trackAttendance(supabase, attendance[0].id, department, targetDate)
-            tracker_attend = 1
+          if (existingAbsent) {
+            await supabase.from('Attendance').update(row).eq('id', existingAbsent.id);
+            if (tracker_attend === null) {
+              await trackAttendance(supabase, existingAbsent.id, department, targetDate);
+              tracker_attend = 1;
+            }
+          } else {
+            const { data: attendance, error: attendanceError } = await supabase
+              .from('Attendance')
+              .insert([{ employee_id: employees[i].employee_id, date: targetDate, ...row }])
+              .select()
+              .single();
+            if (attendanceError) throw attendanceError;
+            if (tracker_attend === null) {
+              await trackAttendance(supabase, attendance.id, department, targetDate);
+              tracker_attend = 1;
+            }
           }
           submittedEmployees.push(employees[i].employee_id);
         }
