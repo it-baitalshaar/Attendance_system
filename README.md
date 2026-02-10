@@ -29,6 +29,24 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
 
+## Attendance reminders (Supabase)
+
+- **Admin page:** `/admin/attendance-reminders` — enable/disable reminders per department (Construction, Maintenance) and manage recipient emails.
+- **Main page:** When the selected date is today, a banner shows whether attendance is already submitted or not.
+- **Edge Function:** `send-attendance-reminder` — invoked by CRON; sends email only if reminders are enabled, attendance is missing for the day, and there are recipients.
+
+### Edge Function secrets (Supabase Dashboard → Project Settings → Edge Functions → Secrets)
+
+- `RESEND_API_KEY` — [Resend](https://resend.com) API key for sending emails. If not set, the function skips sending but still returns success (for testing).
+- `RESEND_FROM_EMAIL` (optional) — Sender address, e.g. `Attendance <noreply@yourdomain.com>`. Defaults to Resend’s onboarding address.
+
+### CRON (UTC)
+
+- Construction: daily at **15:00 UTC** (3:00 PM).
+- Maintenance: daily at **8:00 PM UTC** (20:00).
+
+To use local time, change the cron schedule in the Database (e.g. SQL Editor or Cron integration). Example for GMT+3: Construction `0 12 * * *`, Maintenance `0 17 * * *`.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

@@ -81,6 +81,7 @@ export default function Home() {
     trackId: string;
     submittedBy?: string;
     submittedAt?: string;
+    submittedByName?: string | null;
   } | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [cardsLocked, setCardsLocked] = useState(false);
@@ -118,18 +119,20 @@ export default function Home() {
 
       const { data: trackRows } = await supabase
         .from('Track_Attendance')
-        .select('id, submitted_by, created_at, last_edited_by, last_edited_at')
+        .select('id, submitted_by, created_at, last_edited_by, last_edited_at, email')
         .eq('date', loadDate)
         .eq('department', department)
         .order('created_at', { ascending: false })
         .limit(1);
 
-      const track = trackRows?.[0];
+      const track = trackRows?.[0] as { id: string; submitted_by?: string; created_at?: string; email?: string } | undefined;
       if (track) {
+        const submittedByName = track.email ?? (track.submitted_by ? String(track.submitted_by).slice(0, 8) : null);
         setExistingSubmission({
           trackId: track.id,
           submittedBy: track.submitted_by,
           submittedAt: track.created_at,
+          submittedByName: submittedByName ?? undefined,
         });
         setCardsLocked(!userHasUnlocked);
         setEditMode(true);
@@ -547,6 +550,35 @@ export default function Home() {
             className="flex items-center gap-2"
           />
         </div>
+
+        {/* Attendance status for today */}
+        {selectedDepartment && selectedDate && (() => {
+          const today = new Date().toISOString().split('T')[0];
+          const isToday = selectedDate === today;
+          const deptLabel = DEPARTMENTS.find((d) => d.value === selectedDepartment || d.value === selectedDepartment.toLowerCase())?.label ?? selectedDepartment;
+          if (!isToday) return null;
+          return (
+            <div className={`mt-4 w-full max-w-2xl mx-auto px-3 py-3 rounded-lg border ${existingSubmission ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+              {existingSubmission ? (
+                <>
+                  <p className="text-green-800 font-medium text-sm sm:text-base">
+                    ✅ Attendance already marked for today ({deptLabel})
+                  </p>
+                  {existingSubmission.submittedAt && (
+                    <p className="text-green-700 text-xs sm:text-sm mt-1">
+                      Submitted at {new Date(existingSubmission.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {existingSubmission.submittedByName ? ` by ${existingSubmission.submittedByName}` : ''}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-amber-800 font-medium text-sm sm:text-base">
+                  ⚠️ Attendance NOT marked yet for today ({deptLabel})
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {selectedDepartment && (
           <>
