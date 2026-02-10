@@ -291,7 +291,7 @@ export async function POST(request: Request) {
   if (payload?.date && payload?.department && Array.isArray(payload?.entries) && payload?.submitted_by) {
     try {
       const supabase = createSupabaseServerComponentClient();
-      const targetDate = payload.date;
+      const targetDate = payload.date.includes('T') ? payload.date.split('T')[0] : payload.date;
       const department = payload.department;
 
       const { data: existingTrack } = await supabase
@@ -418,7 +418,8 @@ export async function POST(request: Request) {
 
     let attendance_id: string | null = null;
     let tracker_attend: number | null = null;
-    const targetDate = selectedDate || new Date().toISOString().split('T')[0];
+    const rawDate = selectedDate || new Date().toISOString().split('T')[0];
+    const targetDate = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
     const submittedEmployees: string[] = [];
     const skippedEmployees: string[] = [];
 
@@ -453,7 +454,11 @@ export async function POST(request: Request) {
 
           if (existingAttendance) {
             attendanceId = existingAttendance.id;
-            isUpdate = true;
+            const { error: delErr } = await supabase
+              .from('Attendance_projects')
+              .delete()
+              .eq('attendance_id', attendanceId);
+            if (delErr) console.error('Attendance_projects delete error (edit/replace):', delErr);
             await supabase
               .from('Attendance')
               .update({
@@ -462,7 +467,6 @@ export async function POST(request: Request) {
                 notes: notesVal,
               })
               .eq('id', attendanceId);
-            await supabase.from('Attendance_projects').delete().eq('attendance_id', attendanceId);
           } else {
             const { data: attendance, error: attendanceError } = await supabase
               .from('Attendance')
@@ -547,6 +551,11 @@ export async function POST(request: Request) {
             .maybeSingle();
 
           if (existingAbsent) {
+            const { error: delErr } = await supabase
+              .from('Attendance_projects')
+              .delete()
+              .eq('attendance_id', existingAbsent.id);
+            if (delErr) console.error('Attendance_projects delete (absent/vacation):', delErr);
             await supabase.from('Attendance').update(row).eq('id', existingAbsent.id);
             if (tracker_attend === null) {
               await trackAttendance(supabase, existingAbsent.id, department, targetDate);
