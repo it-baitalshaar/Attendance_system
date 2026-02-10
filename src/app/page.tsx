@@ -272,14 +272,9 @@ export default function Home() {
     
     try {
       let res: Response;
-      // Check if any employee has projects (Standard or Customize with projects)
-      const hasProjects = employees.some((emp) => {
-        const proj = emp.projects?.projectId;
-        return proj && proj.length > 0 && proj.some((p: { projectName?: string[]; hours?: number }) => p.projectName?.length && (p.hours ?? 0) > 0);
-      });
-
-      if ((showEntryMode && entryMode === 'customize') || (showEntryMode && hasProjects)) {
-        // Use legacy flow when Customize OR when Standard has projects - saves to Attendance_projects
+      // For Maintenance/Construction always use legacy flow so Attendance + Attendance_projects (hours) save correctly
+      if (showEntryMode) {
+        // Legacy flow: full employees + employees_statis so API can write hours and projects
         const employeesPayload = employeeList.map((e) => {
           const reduxEmp = employees.find((r) => r.employee_id === e.employee_id) as
             | { employee_status?: { status_attendance: string | null; status_employee?: string | null; note: string | null }[]; projects?: { projectId: { projectName: string[]; hours: number; overtime: number; note: string | null }[]; tthour: number } }
@@ -323,7 +318,7 @@ export default function Home() {
           }),
         });
       } else {
-        // Simplified flow for Standard mode without projects
+        // Simplified flow for other departments (no project/hours)
         entries = employeeList.map((e) => ({
           employee_id: e.employee_id,
           status: (attendanceEntries[e.employee_id]?.status ?? 'present') as AttendanceStatus,

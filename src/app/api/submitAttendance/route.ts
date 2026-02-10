@@ -326,9 +326,9 @@ export async function POST(request: Request) {
           .eq('date', targetDate)
           .maybeSingle();
 
-        // Parse notes to extract status_attendance (Weekend, Holiday-Work, etc.) and status_employee (Sick Leave, etc.)
+        // Parse notes to extract status_attendance (Weekend, Holiday-Work, Sick Leave, etc.)
+        // Attendance table has: status, status_attendance, notes (no status_employee column)
         let status_attendance: string = entry.status;
-        let status_employee: string | null = null;
         const notes = entry.notes ?? '';
         
         if (notes.startsWith('Attendance type: ')) {
@@ -340,25 +340,21 @@ export async function POST(request: Request) {
               status_attendance = attendanceType;
             } else if (attendanceType === 'Half Day') {
               status_attendance = 'half-day';
+            } else if (attendanceType === 'Sick Leave' || attendanceType === 'Absence with excuse' || attendanceType === 'Absence without excuse') {
+              status_attendance = attendanceType;
             }
           }
         }
         
-        // Check for status_employee patterns in notes (Sick Leave, Absence with excuse, etc.)
-        if (notes.includes('Sick Leave')) {
-          status_employee = 'Sick Leave';
-        } else if (notes.includes('Absence with excuse')) {
-          status_employee = 'Absence with excuse';
-        } else if (notes.includes('Absence without excuse')) {
-          status_employee = 'Absence without excuse';
-        }
+        if (notes.includes('Sick Leave') && status_attendance === entry.status) status_attendance = 'Sick Leave';
+        else if (notes.includes('Absence with excuse') && status_attendance === entry.status) status_attendance = 'Absence with excuse';
+        else if (notes.includes('Absence without excuse') && status_attendance === entry.status) status_attendance = 'Absence without excuse';
 
         const row = {
           employee_id: entry.employee_id,
           date: targetDate,
           status: entry.status,
           status_attendance,
-          status_employee,
           notes: entry.notes,
         };
 
@@ -396,8 +392,14 @@ export async function POST(request: Request) {
     }
   }
 
-  // ----- Legacy flow -----
+  // ----- Legacy flow (full project/hours → Attendance + Attendance_projects) -----
   const { employees, employees_statis, department, selectedDate } = body;
+  if (!Array.isArray(employees) || !Array.isArray(employees_statis) || employees.length !== employees_statis.length) {
+    return NextResponse.json(
+      { error: 'Invalid legacy payload: employees and employees_statis arrays required and must match length.' },
+      { status: 400 }
+    );
+  }
   try {
     const supabase = createSupabaseServerComponentClient();
 
@@ -407,18 +409,18 @@ export async function POST(request: Request) {
     const submittedEmployees: string[] = [];
     const skippedEmployees: string[] = [];
 
-    console.log("this is length ", employees.length)
-    console.log("this is the ", employees[1].projects)
-    if (employees)
+    console.log("legacy submit: length ", employees.length, " department ", department, " date ", targetDate)
+    if (employees.length > 0)
     {
       for (let i = 0; i < employees.length; i++) {
-         console.log("here position", i);
-        console.log("this is the employee ID", employees[i].employee_id);
+        const empStat = employees_statis[i]?.employee_status?.[0];
+        if (!empStat) {
+          console.error("Missing employee_status for index", i, "employee_id", employees[i].employee_id);
+          continue;
+        }
         
-        // Check if projects exist for this employee
-        console.log("this is the status ", employees_statis[i].employee_status[0].status_attendance, " adnn ", employees[i].projects)
-        const status_attendance = employees_statis[i].employee_status[0].status_attendance;
-        const status_employee = employees_statis[i].employee_status[0].status_employee;
+        const status_attendance = empStat.status_attendance;
+        const status_employee = empStat.status_employee;
         const hasProjects = employees[i].projects && employees[i].projects.projectId && employees[i].projects.projectId.length > 0;
         
         if ((status_attendance === 'present' || status_employee === 'Sick Leave') && hasProjects)
@@ -453,8 +455,7 @@ export async function POST(request: Request) {
                 date: targetDate,
                 status: status_attendance || 'present',
                 status_attendance: final_status_attendance,
-                status_employee: status_employee,
-                notes: employees[i].projects.projectId[0]?.note || employees_statis[i].employee_status[0].note || null
+                notes: employees[i].projects.projectId[0]?.note || empStat.note || null
               },
             ])
             .select();
@@ -544,8 +545,7 @@ export async function POST(request: Request) {
                     date: targetDate,
                     status: status_attendance || 'present',
                     status_attendance: final_status_attendance,
-                    status_employee: status_employee,
-                    notes: employees_statis[i].employee_status[0].note || null,
+                    notes: empStat.note || null,
                   },
                 ])
                 .select();
@@ -588,8 +588,7 @@ export async function POST(request: Request) {
               date: targetDate,
               status: status_attendance || 'absent',
               status_attendance: final_status_attendance,
-              status_employee: status_employee,
-              notes: employees_statis[i].employee_status[0].note || null
+              notes: empStat.note || null
             },
           ])
           .select(); 
