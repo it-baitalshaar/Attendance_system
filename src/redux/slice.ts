@@ -100,6 +100,22 @@ const projectSlice = createSlice({
     state.attendanceEntries = {};
   },
 
+  /**
+   * Hydrate/replace an employee's project list from server (edit mode / load existing submission).
+   * Pass `projects: null` to clear.
+   */
+  setEmployeeProjectsFromServer: (state, action: PayloadAction<{ employee_id: string; projects: ProjectData | null }>) => {
+    const { employee_id, projects } = action.payload;
+    const employee = state.employees.find(emp => emp.employee_id === employee_id);
+    if (employee) {
+      if (!projects) {
+        employee.projects = undefined;
+      } else {
+        employee.projects = projects;
+      }
+    }
+  },
+
   setEmployeesStatus: (state, action:PayloadAction<{status:string; employee_id: string}>) => {
 
     const { status, employee_id } = action.payload;
@@ -279,6 +295,7 @@ export const {
   setAllPresent,
   setAttendanceFromServer,
   clearAttendanceEntries,
+  setEmployeeProjectsFromServer,
   addProjectToEmployee,
   addHours,
   setTotalProject,

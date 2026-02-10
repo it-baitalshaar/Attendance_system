@@ -16,6 +16,7 @@ import {
   clearAttendanceEntries,
   setAttendanceStatus,
   setEmployeesStatus,
+  setEmployeeProjectsFromServer,
   type AttendanceStatus,
 } from '@/redux/slice';
 import { useEffect, useState, useCallback } from 'react';
@@ -83,6 +84,7 @@ export default function Home() {
   } | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [cardsLocked, setCardsLocked] = useState(false);
+  const [userHasUnlocked, setUserHasUnlocked] = useState(false);
   /** For Construction only: 'standard' = quick (Present/Absent/Vacation), 'customize' = with attendance type (Half Day, Weekend, etc.) */
   const [entryMode, setEntryMode] = useState<'standard' | 'customize'>('standard');
 
@@ -111,6 +113,9 @@ export default function Home() {
       if (empIds.length === 0) return;
       const loadDate = date.includes('T') ? date.split('T')[0] : date;
 
+      // If the user is actively editing (unlocked), do not overwrite in-progress changes.
+      if (userHasUnlocked) return;
+
       const { data: trackRows } = await supabase
         .from('Track_Attendance')
         .select('id, submitted_by, created_at, last_edited_by, last_edited_at')
@@ -126,17 +131,18 @@ export default function Home() {
           submittedBy: track.submitted_by,
           submittedAt: track.created_at,
         });
-        setCardsLocked(true);
+        setCardsLocked(!userHasUnlocked);
         setEditMode(true);
       } else {
         setExistingSubmission(null);
         setCardsLocked(false);
         setEditMode(false);
+        setUserHasUnlocked(false);
       }
 
       const { data: attRows } = await supabase
         .from('Attendance')
-        .select('employee_id, status, status_attendance, notes')
+        .select('id, employee_id, status, status_attendance, notes')
         .eq('date', loadDate)
         .in('employee_id', empIds);
 
@@ -148,6 +154,10 @@ export default function Home() {
           notes: r.notes ?? null,
         }));
         dispatch(setAttendanceFromServer(entries));
+
+        // Clear any stale projects for all employees in this list (will re-hydrate below if present)
+        empIds.forEach((id) => dispatch(setEmployeeProjectsFromServer({ employee_id: id, projects: { projectId: [], tthour: 0 } })));
+
         attRows.forEach((r) => {
           const status = r.status ?? 'present';
           dispatch(setAttendanceStatus({ status, employee_id: r.employee_id }));
@@ -164,6 +174,64 @@ export default function Home() {
             dispatch(setEmployeesStatus({ status: dbStatusAttendance, employee_id: r.employee_id }));
           }
         });
+
+        // Hydrate projects/hours for edit mode (Attendance_projects → employee.projects)
+        const attendanceIdByEmployee = new Map<string, string>();
+        const attendanceIds: string[] = [];
+        attRows.forEach((r) => {
+          if (r.id) {
+            attendanceIds.push(r.id);
+            attendanceIdByEmployee.set(r.employee_id, r.id);
+          }
+        });
+        if (attendanceIds.length > 0) {
+          const { data: attProjRows, error: attProjErr } = await supabase
+            .from('Attendance_projects')
+            .select('attendance_id, project_id, working_hours, overtime_hours')
+            .in('attendance_id', attendanceIds);
+
+          if (attProjErr) {
+            console.error('Error loading Attendance_projects:', attProjErr);
+          } else {
+            const projectIds = Array.from(new Set((attProjRows ?? []).map((r) => r.project_id).filter(Boolean)));
+            const projectNameById = new Map<string, string>();
+            if (projectIds.length > 0) {
+              const { data: projRows, error: projErr } = await supabase
+                .from('projects')
+                .select('project_id, project_name')
+                .in('project_id', projectIds);
+              if (projErr) console.error('Error loading projects names:', projErr);
+              (projRows ?? []).forEach((p) => projectNameById.set(p.project_id, p.project_name));
+            }
+
+            const rowsByAttendanceId = new Map<string, typeof attProjRows>();
+            (attProjRows ?? []).forEach((r) => {
+              const key = r.attendance_id;
+              if (!rowsByAttendanceId.has(key)) rowsByAttendanceId.set(key, [] as any);
+              (rowsByAttendanceId.get(key) as any).push(r);
+            });
+
+            attendanceIdByEmployee.forEach((attendanceId, employee_id) => {
+              const rows = (rowsByAttendanceId.get(attendanceId) as any[] | undefined) ?? [];
+              if (rows.length === 0) {
+                dispatch(setEmployeeProjectsFromServer({ employee_id, projects: { projectId: [], tthour: 0 } }));
+                return;
+              }
+              const projectId = rows.map((row) => {
+                const name = projectNameById.get(row.project_id) ?? '';
+                return {
+                  projectName: name ? [name] : [],
+                  hours: Number(row.working_hours ?? 0),
+                  overtime: Number(row.overtime_hours ?? 0),
+                  note: null,
+                };
+              });
+              const tthour = projectId.reduce((sum: number, p: any) => sum + (Number(p.hours) || 0), 0);
+              dispatch(setEmployeeProjectsFromServer({ employee_id, projects: { projectId, tthour } }));
+            });
+          }
+        }
+
         const hadCustomizedData = attRows.some((r) => {
           const n = r.notes ?? '';
           return n.startsWith('Attendance type: ') || n.includes('Projects: ');
@@ -173,7 +241,7 @@ export default function Home() {
         dispatch(setAllPresent(empIds));
       }
     },
-    [employeeList, dispatch]
+    [employeeList, dispatch, userHasUnlocked]
   );
 
   useEffect(() => {
@@ -354,6 +422,7 @@ export default function Home() {
       setConfirmModal('idle');
       setCardsLocked(true);
       setEditMode(true);
+      setUserHasUnlocked(false);
       setExistingSubmission((prev) => ({ ...prev!, submittedBy: user.id }));
       const nonPresentList = employeeList
         .filter((e) => getStatus(e) !== 'present')
@@ -383,6 +452,7 @@ export default function Home() {
   };
 
   const handleEditAttendance = () => {
+    setUserHasUnlocked(true);
     setCardsLocked(false);
   };
 
@@ -470,7 +540,10 @@ export default function Home() {
           </div>
           <DatePickerMaxToday
             value={selectedDate}
-            onChange={setSelectedDate}
+            onChange={(next) => {
+              setUserHasUnlocked(false);
+              setSelectedDate(next);
+            }}
             className="flex items-center gap-2"
           />
         </div>
