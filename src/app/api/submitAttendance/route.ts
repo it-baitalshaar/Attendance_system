@@ -393,7 +393,7 @@ export async function POST(request: Request) {
     }
   }
 
-  // Report script expects status_attendance exactly 'Present' (capital P) to show "P" and overtime in the report
+  // Report expects: P, W, H, AWO, SL, A, V per status + status_attendance combinations
   function normalizeStatusAttendance(
     status_employee: string | null | undefined,
     status_attendance: string | null | undefined,
@@ -401,8 +401,9 @@ export async function POST(request: Request) {
   ): string {
     if (status_employee === 'Weekend' || status_employee === 'Holiday-Work') return status_employee;
     if (status_employee === 'Sick Leave' || status_employee === 'Absence with excuse' || status_employee === 'Absence without excuse') return status_employee;
-    if (isPresent) return 'Present'; // report expects 'Present' for "P" and for overtime column
-    return status_employee || status_attendance || 'absent';
+    if (isPresent) return 'Present';
+    if (status_attendance === 'vacation') return 'vacation';
+    return status_attendance || 'absent';
   }
 
   // ----- Legacy flow (full project/hours → Attendance + Attendance_projects) -----
@@ -423,7 +424,17 @@ export async function POST(request: Request) {
     const submittedEmployees: string[] = [];
     const skippedEmployees: string[] = [];
 
-    console.log("legacy submit: length ", employees.length, " department ", department, " date ", targetDate)
+    const { data: existingTrackRow } = await supabase
+      .from('Track_Attendance')
+      .select('id')
+      .eq('date', targetDate)
+      .eq('department', department)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const isEditTrack = !!existingTrackRow;
+
+    console.log("legacy submit: length ", employees.length, " department ", department, " date ", targetDate, " isEditTrack ", isEditTrack)
     if (employees.length > 0)
     {
       for (let i = 0; i < employees.length; i++) {
@@ -487,7 +498,7 @@ export async function POST(request: Request) {
             }
             attendanceId = attendance.id;
             if (tracker_attend === null) {
-              await trackAttendance(supabase, attendanceId, department, targetDate);
+              await trackAttendance(supabase, isEditTrack ? existingTrackRow!.id : attendanceId, department, targetDate, undefined, isEditTrack);
               tracker_attend = 1;
             }
           }
@@ -523,7 +534,7 @@ export async function POST(request: Request) {
             if (existingPresent) {
               await supabase.from('Attendance').update(row).eq('id', existingPresent.id);
               if (tracker_attend === null) {
-                await trackAttendance(supabase, existingPresent.id, department, targetDate);
+                await trackAttendance(supabase, isEditTrack ? existingTrackRow!.id : existingPresent.id, department, targetDate, undefined, isEditTrack);
                 tracker_attend = 1;
               }
             } else {
@@ -534,7 +545,7 @@ export async function POST(request: Request) {
                 .single();
               if (attendanceError) throw attendanceError;
               if (tracker_attend === null) {
-                await trackAttendance(supabase, attendance.id, department, targetDate);
+                await trackAttendance(supabase, isEditTrack ? existingTrackRow!.id : attendance.id, department, targetDate, undefined, isEditTrack);
                 tracker_attend = 1;
               }
             }
@@ -558,7 +569,7 @@ export async function POST(request: Request) {
             if (delErr) console.error('Attendance_projects delete (absent/vacation):', delErr);
             await supabase.from('Attendance').update(row).eq('id', existingAbsent.id);
             if (tracker_attend === null) {
-              await trackAttendance(supabase, existingAbsent.id, department, targetDate);
+              await trackAttendance(supabase, isEditTrack ? existingTrackRow!.id : existingAbsent.id, department, targetDate, undefined, isEditTrack);
               tracker_attend = 1;
             }
           } else {
@@ -569,7 +580,7 @@ export async function POST(request: Request) {
               .single();
             if (attendanceError) throw attendanceError;
             if (tracker_attend === null) {
-              await trackAttendance(supabase, attendance.id, department, targetDate);
+              await trackAttendance(supabase, isEditTrack ? existingTrackRow!.id : attendance.id, department, targetDate, undefined, isEditTrack);
               tracker_attend = 1;
             }
           }

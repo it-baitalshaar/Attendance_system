@@ -109,11 +109,12 @@ export default function Home() {
       const list = empList ?? employeeList;
       const empIds = list.map((e) => e.employee_id);
       if (empIds.length === 0) return;
+      const loadDate = date.includes('T') ? date.split('T')[0] : date;
 
       const { data: trackRows } = await supabase
         .from('Track_Attendance')
         .select('id, submitted_by, created_at, last_edited_by, last_edited_at')
-        .eq('date', date)
+        .eq('date', loadDate)
         .eq('department', department)
         .order('created_at', { ascending: false })
         .limit(1);
@@ -135,8 +136,8 @@ export default function Home() {
 
       const { data: attRows } = await supabase
         .from('Attendance')
-        .select('employee_id, status, notes')
-        .eq('date', date)
+        .select('employee_id, status, status_attendance, notes')
+        .eq('date', loadDate)
         .in('employee_id', empIds);
 
       dispatch(clearAttendanceEntries());
@@ -148,12 +149,19 @@ export default function Home() {
         }));
         dispatch(setAttendanceFromServer(entries));
         attRows.forEach((r) => {
-          dispatch(setAttendanceStatus({ status: r.status ?? 'present', employee_id: r.employee_id }));
+          const status = r.status ?? 'present';
+          dispatch(setAttendanceStatus({ status, employee_id: r.employee_id }));
+          const dbStatusAttendance = (r as { status_attendance?: string | null }).status_attendance;
           const note = r.notes ?? '';
+          let subtype = dbStatusAttendance ?? null;
           if (note.startsWith('Attendance type: ')) {
             const lineEnd = note.indexOf('\n');
-            const type = lineEnd === -1 ? note.slice(18).trim() : note.slice(18, lineEnd).trim();
-            if (type) dispatch(setEmployeesStatus({ status: type, employee_id: r.employee_id }));
+            subtype = lineEnd === -1 ? note.slice(18).trim() : note.slice(18, lineEnd).trim();
+          }
+          if (subtype && ['Present', 'Weekend', 'Holiday-Work', 'Sick Leave', 'Absence with excuse', 'Absence without excuse'].includes(subtype)) {
+            dispatch(setEmployeesStatus({ status: subtype, employee_id: r.employee_id }));
+          } else if (dbStatusAttendance && ['Present', 'Weekend', 'Holiday-Work', 'Sick Leave', 'Absence with excuse', 'Absence without excuse', 'vacation'].includes(dbStatusAttendance)) {
+            dispatch(setEmployeesStatus({ status: dbStatusAttendance, employee_id: r.employee_id }));
           }
         });
         const hadCustomizedData = attRows.some((r) => {
@@ -381,10 +389,11 @@ export default function Home() {
   const openReportModal = async () => {
     if (!departmentForFetch || !selectedDate) return;
     const supabase = createSupabbaseFrontendClient();
+    const reportDate = selectedDate.includes('T') ? selectedDate.split('T')[0] : selectedDate;
     const { data: trackRows } = await supabase
       .from('Track_Attendance')
       .select('id, submitted_by, created_at, last_edited_by, last_edited_at')
-      .eq('date', selectedDate)
+      .eq('date', reportDate)
       .eq('department', departmentForFetch)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -393,7 +402,7 @@ export default function Home() {
     const { data: attRows } = await supabase
       .from('Attendance')
       .select('employee_id, status, notes')
-      .eq('date', selectedDate)
+      .eq('date', reportDate)
       .in('employee_id', empIds);
 
     const present = (attRows ?? []).filter((r) => r.status === 'present').length;

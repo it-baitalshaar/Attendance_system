@@ -87,7 +87,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     }
   }, []);
 
-  // Sync from Standard mode: when initialStatus/initialNotes are provided, keep card state and Redux in sync
+  // Sync from server/parent: when initialStatus/initialNotes are provided, keep card state and Redux in sync.
+  // When absent, do NOT overwrite status_employee here so the "Reason for Absence" dropdown value is preserved.
   useEffect(() => {
     if (initialStatus === undefined) return;
     setIsAttend(initialStatus === 'present');
@@ -97,7 +98,9 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     setAttendance(initialStatus === 'present' ? 'Present' : undefined);
     setNotes(initialNotes ?? '');
     dispatch(setAttendanceStatus({ status: initialStatus, employee_id: employee.employee_id }));
-    dispatch(setEmployeesStatus({ status: initialStatus === 'present' ? 'Present' : initialStatus === 'vacation' ? 'vacation' : 'absent', employee_id: employee.employee_id }));
+    if (initialStatus === 'present') dispatch(setEmployeesStatus({ status: 'Present', employee_id: employee.employee_id }));
+    else if (initialStatus === 'vacation') dispatch(setEmployeesStatus({ status: 'vacation', employee_id: employee.employee_id }));
+    else if (initialStatus === 'absent') { /* leave status_employee unchanged so Reason for Absence dropdown is not overwritten */ }
     if (initialNotes != null && initialNotes !== '') {
       dispatch(Add_notes_to_cases_without_projects({ employee_id: employee.employee_id, notes: initialNotes }));
       dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: initialNotes }));
@@ -405,6 +408,13 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   const employee1 = useSelector((state: RootState) =>
     state.project.employees.find(emp => emp.employee_id === employee.employee_id)
   );
+  const reduxAbsenceReason = employee1?.employee_status?.[0]?.status_employee;
+  useEffect(() => {
+    if (initialStatus === 'absent' && reduxAbsenceReason && ['Sick Leave', 'Absence with excuse', 'Absence without excuse'].includes(reduxAbsenceReason)) {
+      setAbsenceReason(reduxAbsenceReason);
+    }
+  }, [initialStatus, reduxAbsenceReason]);
+
   const attendanceEntryNotes = useSelector((state: RootState) =>
     state.project.attendanceEntries[employee.employee_id]?.notes ?? null
   );
