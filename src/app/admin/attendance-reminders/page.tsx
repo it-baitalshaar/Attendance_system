@@ -61,6 +61,10 @@ export default function AttendanceRemindersPage() {
     construction: '',
     maintenance: '',
   });
+  const [timeByDept, setTimeByDept] = useState<Record<DepartmentKey, string>>({
+    construction: '15:00',
+    maintenance: '20:00',
+  });
 
   const loadSettings = useCallback(async () => {
     const supabase = createSupabbaseFrontendClient();
@@ -73,7 +77,18 @@ export default function AttendanceRemindersPage() {
       console.error('Error loading settings', error);
       return;
     }
-    setSettings((data ?? []) as ReminderSetting[]);
+    const rows = (data ?? []) as ReminderSetting[];
+    setSettings(rows);
+    // Keep a simple HH:MM value in state for the editable time inputs
+    const nextTimes: Record<DepartmentKey, string> = { construction: '15:00', maintenance: '20:00' };
+    rows.forEach((row) => {
+      const [h = '00', m = '00'] = row.reminder_time.split(':');
+      const key = row.department as DepartmentKey;
+      if (key === 'construction' || key === 'maintenance') {
+        nextTimes[key] = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+      }
+    });
+    setTimeByDept(nextTimes);
   }, []);
 
   const loadEmails = useCallback(async () => {
@@ -211,6 +226,24 @@ export default function AttendanceRemindersPage() {
     setTestStatusByDept((prev) => ({ ...prev, [department]: msg }));
   };
 
+  const handleTimeChange = async (department: DepartmentKey, value: string) => {
+    setTimeByDept((prev) => ({ ...prev, [department]: value }));
+    const row = settings.find((s) => s.department === department);
+    if (!row) return;
+    const [h = '00', m = '00'] = value.split(':');
+    const timeSql = `${h.padStart(2, '0')}:${m.padStart(2, '0')}:00`;
+    const supabase = createSupabbaseFrontendClient();
+    const { error } = await supabase
+      .from('attendance_reminder_settings')
+      .update({ reminder_time: timeSql, updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+    if (error) {
+      console.error('Update reminder_time error', error);
+      return;
+    }
+    await loadSettings();
+  };
+
   if (checkingAuth) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -257,12 +290,21 @@ export default function AttendanceRemindersPage() {
                     key={value}
                     className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
                   >
-                    <div>
+                    <div className="flex flex-col gap-1">
                       <span className="font-medium">{label}</span>
                       {row && (
-                        <span className="text-gray-500 text-sm ml-2">
-                          Reminder at {formatTime(row.reminder_time)}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                          <span>Reminder time:</span>
+                          <input
+                            type="time"
+                            value={timeByDept[value]}
+                            onChange={(e) => handleTimeChange(value, e.target.value)}
+                            className="border rounded px-2 py-1 text-sm"
+                          />
+                          <span className="text-gray-400">
+                            ({formatTime(row.reminder_time)})
+                          </span>
+                        </div>
                       )}
                     </div>
                     <button
