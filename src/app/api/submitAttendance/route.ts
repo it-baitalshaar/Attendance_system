@@ -349,6 +349,7 @@ export async function POST(request: Request) {
         if (notes.includes('Sick Leave') && status_attendance === entry.status) status_attendance = 'Sick Leave';
         else if (notes.includes('Absence with excuse') && status_attendance === entry.status) status_attendance = 'Absence with excuse';
         else if (notes.includes('Absence without excuse') && status_attendance === entry.status) status_attendance = 'Absence without excuse';
+        else if (entry.status === 'present' && (status_attendance === 'present' || status_attendance === entry.status)) status_attendance = 'Present'; // report expects 'Present' for "P" and overtime
 
         const row = {
           employee_id: entry.employee_id,
@@ -392,6 +393,18 @@ export async function POST(request: Request) {
     }
   }
 
+  // Report script expects status_attendance exactly 'Present' (capital P) to show "P" and overtime in the report
+  function normalizeStatusAttendance(
+    status_employee: string | null | undefined,
+    status_attendance: string | null | undefined,
+    isPresent: boolean
+  ): string {
+    if (status_employee === 'Weekend' || status_employee === 'Holiday-Work') return status_employee;
+    if (status_employee === 'Sick Leave' || status_employee === 'Absence with excuse' || status_employee === 'Absence without excuse') return status_employee;
+    if (isPresent) return 'Present'; // report expects 'Present' for "P" and for overtime column
+    return status_employee || status_attendance || 'absent';
+  }
+
   // ----- Legacy flow (full project/hours → Attendance + Attendance_projects) -----
   const { employees, employees_statis, department, selectedDate } = body;
   if (!Array.isArray(employees) || !Array.isArray(employees_statis) || employees.length !== employees_statis.length) {
@@ -425,9 +438,7 @@ export async function POST(request: Request) {
         
         if ((status_attendance === 'present' || status_employee === 'Sick Leave') && hasProjects)
         {
-          const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
-            ? status_employee 
-            : (status_employee || status_attendance || 'present');
+          const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, true);
           const notesVal = employees[i].projects.projectId[0]?.note || empStat.note || null;
 
           const { data: existingAttendance } = await supabase
@@ -502,9 +513,7 @@ export async function POST(request: Request) {
               .eq('date', targetDate)
               .maybeSingle();
 
-            const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
-              ? status_employee 
-              : (status_employee || status_attendance || 'present');
+            const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, true);
             const row = { status: status_attendance || 'present', status_attendance: final_status_attendance, notes: empStat.note || null };
 
             if (existingPresent) {
@@ -527,9 +536,7 @@ export async function POST(request: Request) {
             }
             submittedEmployees.push(employees[i].employee_id);
         } else {
-          const final_status_attendance = (status_employee === 'Weekend' || status_employee === 'Holiday-Work') 
-            ? status_employee 
-            : (status_employee || status_attendance || 'absent');
+          const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, false);
           const row = { status: status_attendance || 'absent', status_attendance: final_status_attendance, notes: empStat.note || null };
 
           const { data: existingAbsent } = await supabase
