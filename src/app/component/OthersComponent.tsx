@@ -15,7 +15,7 @@ async function fetchProjects(department: string) {
   const { data, error } = await supabase
     .from('projects')
     .select('project_name')
-    .in('department', [department, 'constructions Maintenance', 'constructions'])
+    .in('department', [department, 'Construction Maintenance', 'Construction'])
     .eq('project_status', 'none active');
 
   if (error) {

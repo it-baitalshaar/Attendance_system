@@ -138,7 +138,15 @@ export function EmployeesTab({
             filterDepartment={filters.filterDepartment}
             filterStatus={filters.filterStatus}
             filterPosition={filters.filterPosition}
-            departments={Array.from(new Set([...departments, ...filterOptions.departments])).sort()}
+            departments={(() => {
+              const all = [...departments, ...filterOptions.departments].filter(Boolean);
+              const byLower = new Map<string, string>();
+              for (const d of all) {
+                const lower = d.toLowerCase();
+                if (!byLower.has(lower)) byLower.set(lower, d);
+              }
+              return Array.from(byLower.values()).sort();
+            })()}
             statuses={filterOptions.statuses}
             positions={filterOptions.positions}
             onSearchChange={setSearchQuery}

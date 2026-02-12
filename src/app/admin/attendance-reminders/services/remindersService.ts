@@ -6,7 +6,7 @@ export async function loadSettings(): Promise<ReminderSetting[]> {
   const { data, error } = await supabase
     .from('attendance_reminder_settings')
     .select('id, department, enabled, reminder_time, updated_at')
-    .in('department', ['construction', 'maintenance'])
+    .in('department', ['Construction', 'maintenance'])
     .order('department');
   if (error) {
     console.error('Error loading settings', error);
@@ -20,16 +20,16 @@ export async function loadEmails(): Promise<Record<DepartmentKey, ReminderEmailR
   const { data, error } = await supabase
     .from('attendance_reminder_emails')
     .select('id, department, email, created_at')
-    .in('department', ['construction', 'maintenance'])
+    .in('department', ['Construction', 'maintenance'])
     .order('department')
     .order('created_at');
   if (error) {
     console.error('Error loading emails', error);
-    return { construction: [], maintenance: [] };
+    return { Construction: [], maintenance: [] };
   }
   const rows = (data ?? []) as ReminderEmailRow[];
   return {
-    construction: rows.filter((r) => r.department === 'construction'),
+    Construction: rows.filter((r) => r.department === 'Construction'),
     maintenance: rows.filter((r) => r.department === 'maintenance'),
   };
 }

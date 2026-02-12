@@ -42,7 +42,7 @@ async function fetchProjects(department: string) {
   const { data, error } = await supabase
     .from('projects')
     .select('project_name')
-    .in('department', [department, 'constructions Maintenance'])
+    .in('department', [department, 'Construction Maintenance'])
     .eq('project_status', 'active');
 
   if (error) {
@@ -266,7 +266,7 @@ console.log("this is the employee _id" , employee_id)
     // Dispatch the selected project and its index
     // let the_num = atten_status[0].attendance_status
     dispatch(addProjectToEmployee({ employee_id, selected_project, project_index: input_index }));
-    if (departments === 'construction' || employee1?.employee_status![0].status_employee === 'Sick Leave' ||
+    if (departments === 'Construction' || employee1?.employee_status![0].status_employee === 'Sick Leave' ||
            employee1?.employee_status![0].status_employee === 'Holiday-Work' || employee1?.employee_status![0].status_employee === 'Weekend'
     )
     {
@@ -361,7 +361,7 @@ const handleOvertTimeHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => 
           <option key={index} value={proj}>{proj}</option>
         ))}
       </select>
-      {(show_H === 'Present' && departments !== 'construction') &&
+      {(show_H === 'Present' && departments !== 'Construction') &&
       <div>
         <select 
           value={selectedHours || ''}

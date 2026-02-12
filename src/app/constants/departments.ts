@@ -1,5 +1,5 @@
 export const DEPARTMENTS = [
-  { value: 'construction', label: 'Construction' },
+  { value: 'Construction', label: 'Construction' },
   { value: 'Maintenance', label: 'Maintenance' },
 ] as const;
 

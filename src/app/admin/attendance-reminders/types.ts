@@ -13,4 +13,4 @@ export interface ReminderEmailRow {
   created_at: string;
 }
 
-export type DepartmentKey = 'construction' | 'maintenance';
+export type DepartmentKey = 'Construction' | 'maintenance';

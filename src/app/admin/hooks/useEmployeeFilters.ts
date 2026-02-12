@@ -61,13 +61,15 @@ export function useEmployeeFilters(employees: Employee[]): UseEmployeeFiltersRet
     let result = [...employees];
 
     if (filterDepartment) {
-      result = result.filter((emp) => emp.department === filterDepartment);
+      const deptLower = filterDepartment.toLowerCase();
+      result = result.filter((emp) => emp.department?.toLowerCase() === deptLower);
     }
     if (filterStatus) {
       result = result.filter((emp) => emp.status === filterStatus);
     }
     if (filterPosition) {
-      result = result.filter((emp) => emp.position === filterPosition);
+      const posLower = filterPosition.toLowerCase();
+      result = result.filter((emp) => emp.position?.toLowerCase() === posLower);
     }
 
     if (searchQuery.trim()) {

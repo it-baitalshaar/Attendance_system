@@ -80,7 +80,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
 
   
   useEffect(() => {
-    if (department === 'construction') {
+    if (department === 'Construction') {
       handleStandarChange('standard');
     } else {
       setIsStandar(false);
@@ -149,7 +149,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     setIsStandar(type === 'standard');
     setIsCustomize(type === 'customize');
 
-    if ((type === 'standard') && department === 'construction')
+    if ((type === 'standard') && department === 'Construction')
     {
       // setIsAttend(true)
 
@@ -234,7 +234,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   const handleProjects = (projectType: string) => {
     if (attendance === 'half-day')
       setHowManyProjects(1);
-    if (projectType == 'construction')
+    if (projectType == 'Construction')
     {
       if (isConstruction == true)
         setIsconstructions(false)
@@ -472,7 +472,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       <div className="pr-0 space-y-4 flex flex-col items-center">
 
       {/* Check here to make sure before display the stander or customize options */}
-      {!hideModeToggle && (department === 'construction' || department === 'Maintenance') && (
+      {!hideModeToggle && (department === 'Construction' || department === 'Maintenance') && (
         <>
         <div className='flex gap-5 mb-5'>
           <div>
@@ -647,10 +647,10 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
                 />
                 <Checkbox
                   label="مقاولات"
-                  checked={proj.type === 'construction'}
-                  onChange={() => handleProjectTypeChange(index, 'construction')}
+                  checked={proj.type === 'Construction'}
+                  onChange={() => handleProjectTypeChange(index, 'Construction')}
                 />
-                { (department !== 'construction') &&
+                { (department !== 'Construction') &&
                   <Checkbox
                     label="مشاريع اخرى"
                     checked={proj.type === 'customer'}
@@ -662,7 +662,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
 
               {/* Conditionally show dropdowns based on the selected project type */}
               <div className="mt-10">
-                {proj.type === 'construction' && (
+                {proj.type === 'Construction' && (
                   <div>
                     <ConstrDropdown
                       employee_id={employee.employee_id}

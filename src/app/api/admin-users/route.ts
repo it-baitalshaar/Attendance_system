@@ -5,6 +5,18 @@ import { NextResponse } from 'next/server';
 
 const SUPER_USER_EMAIL = 'itbaitalshaar@gmail.com';
 
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    const missing = !url ? 'NEXT_PUBLIC_SUPABASE_URL' : 'SUPABASE_SERVICE_ROLE_KEY';
+    throw new Error(`${missing} is required. Add it to .env.local (local dev) or your deployment env vars.`);
+  }
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
 function isSuperUserEmail(email: string | null | undefined): boolean {
   return email?.toLowerCase().trim() === SUPER_USER_EMAIL.toLowerCase();
 }
@@ -55,16 +67,7 @@ export async function GET() {
   }
 
   try {
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getAdminClient();
 
     const { data: usersData, error: usersError } =
       await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
@@ -135,16 +138,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getAdminClient();
 
     const { data: newUser, error: createError } =
       await supabaseAdmin.auth.admin.createUser({
@@ -206,16 +200,7 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getAdminClient();
 
     const payload: { id: string; role?: string; Department?: string | null } = {
       id: userId,
@@ -272,16 +257,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getAdminClient();
 
     await supabaseAdmin.from('profiles').delete().eq('id', userId);
 

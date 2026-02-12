@@ -45,9 +45,10 @@ export function useAttendanceDashboard(
 
   const checkDepartmentAttendance = (records: AttendanceRecordWithDetails[]) => {
     const deptAttendance = departments.map((dept) => {
+      const deptLower = dept?.toLowerCase();
       return {
         department: dept,
-        hasAttendance: records.some((record) => record.department === dept),
+        hasAttendance: records.some((record) => record.department?.toLowerCase() === deptLower),
       };
     });
 
@@ -77,7 +78,10 @@ export function useAttendanceDashboard(
       const filteredRecords =
         selectedDepartment === 'all'
           ? records
-          : records.filter((record) => record.department === selectedDepartment);
+          : records.filter(
+              (record) =>
+                record.department?.toLowerCase() === selectedDepartment?.toLowerCase()
+            );
 
       setAttendanceRecords(filteredRecords);
       setTotalRecords(totalRecords);

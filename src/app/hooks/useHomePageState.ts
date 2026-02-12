@@ -28,9 +28,9 @@ export function useHomePageState() {
   const selectedDepartment = reduxDepartment ?? '';
   const departmentForFetch =
     selectedDepartment === 'Construction' || selectedDepartment === 'construction'
-      ? 'construction'
+      ? 'Construction'
       : selectedDepartment;
-  const isConstruction = departmentForFetch === 'construction';
+  const isConstruction = departmentForFetch === 'Construction';
   const isMaintenance = departmentForFetch === 'Maintenance';
   const showEntryMode = isConstruction || isMaintenance;
 

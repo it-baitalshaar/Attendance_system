@@ -17,37 +17,37 @@ import type { ReminderSetting, ReminderEmailRow } from '../types';
 export function useRemindersData() {
   const [settings, setSettings] = useState<ReminderSetting[]>([]);
   const [emailsByDept, setEmailsByDept] = useState<Record<DepartmentKey, ReminderEmailRow[]>>({
-    construction: [],
+    Construction: [],
     maintenance: [],
   });
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState<Record<DepartmentKey, string>>({
-    construction: '',
+    Construction: '',
     maintenance: '',
   });
   const [errorByDept, setErrorByDept] = useState<Record<DepartmentKey, string>>({
-    construction: '',
+    Construction: '',
     maintenance: '',
   });
   const [toggling, setToggling] = useState<DepartmentKey | null>(null);
   const [testingDept, setTestingDept] = useState<DepartmentKey | null>(null);
   const [testStatusByDept, setTestStatusByDept] = useState<Record<DepartmentKey, string>>({
-    construction: '',
+    Construction: '',
     maintenance: '',
   });
   const [timeByDept, setTimeByDept] = useState<Record<DepartmentKey, string>>({
-    construction: '15:00',
+    Construction: '15:00',
     maintenance: '20:00',
   });
 
   const refreshSettings = useCallback(async () => {
     const rows = await loadSettings();
     setSettings(rows);
-    const nextTimes: Record<DepartmentKey, string> = { construction: '15:00', maintenance: '20:00' };
+    const nextTimes: Record<DepartmentKey, string> = { Construction: '15:00', maintenance: '20:00' };
     rows.forEach((row) => {
       const [h = '00', m = '00'] = row.reminder_time.split(':');
       const key = row.department as DepartmentKey;
-      if (key === 'construction' || key === 'maintenance') {
+      if (key === 'Construction' || key === 'maintenance') {
         nextTimes[key] = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
       }
     });

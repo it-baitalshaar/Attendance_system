@@ -16,7 +16,7 @@ async function fetchProjects(department: string) {
     .from('projects')
     .select('project_name')
     // .eq('department', department)
-    .in('department', ['constructions Maintenance', department])
+    .in('department', ['Construction Maintenance', department])
     .eq('project_status', 'active');
 
   if (error) {
@@ -78,7 +78,7 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
   
   useEffect(() => {
     async function getProjects() {
-      const data = await fetchProjects( 'constructions');
+      const data = await fetchProjects('Construction');
 
       // Filter out projects that were already selected in previous indexes
       const filteredProjects = data
