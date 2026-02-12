@@ -9,7 +9,7 @@ import {
   fetchAttendanceService,
 } from '../services/attendanceService';
 
-type AdminTab = 'employees' | 'attendance' | 'profile' | 'reports';
+type AdminTab = 'employees' | 'departments' | 'users' | 'attendance' | 'profile' | 'reports' | 'reminders';
 
 export function useAttendanceDashboard(
   departments: string[],

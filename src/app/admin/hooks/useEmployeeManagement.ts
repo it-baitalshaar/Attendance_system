@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   addEmployeeService,
   fetchEmployeesService,
 } from '../services/employeeService';
+import { fetchDepartmentsService } from '../services/departmentService';
 import { Employee } from '../types/admin';
 
 interface NewEmployeeState {
@@ -24,24 +25,26 @@ export function useEmployeeManagement() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  const loadEmployees = async () => {
+  const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      const { employees, departments } = await fetchEmployeesService();
-      setEmployees(employees);
-      setDepartments(departments);
+      const [employeesRes, deptList] = await Promise.all([
+        fetchEmployeesService(),
+        fetchDepartmentsService(),
+      ]);
+      setEmployees(employeesRes.employees);
+      setDepartments(deptList.map((d) => d.name));
     } catch (error) {
       console.error('Error fetching employees:', error);
       setMessage('Failed to load employees');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadEmployees();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadEmployees]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>

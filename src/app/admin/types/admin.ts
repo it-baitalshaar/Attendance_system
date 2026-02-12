@@ -42,3 +42,12 @@ export interface SummaryRecord {
   }[];
 }
 
+export type UserRole = 'admin' | 'manager' | 'supervisor' | 'regular_user';
+
+export interface SystemUser {
+  id: string;
+  email: string;
+  role: UserRole | string;
+  department: string | null;
+}
+

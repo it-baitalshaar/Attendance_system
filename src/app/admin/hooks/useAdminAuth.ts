@@ -8,13 +8,16 @@ import {
   logoutService,
   updatePasswordService,
 } from '../services/profileService';
+import { isSuperUserEmail } from '../constants';
 
-type AdminTab = 'employees' | 'attendance' | 'profile' | 'reports';
+type AdminTab = 'employees' | 'departments' | 'users' | 'attendance' | 'profile' | 'reports' | 'reminders';
 
-export function useAdminAuth() {
+export function useAdminAuth(initialTab: AdminTab = 'employees') {
   const router = useRouter();
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [activeTab, setActiveTab] = useState<AdminTab>('employees');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isSuperUser, setIsSuperUser] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [userProfile, setUserProfile] = useState<UserProfile>({
     email: '',
     id: '',
@@ -32,9 +35,9 @@ export function useAdminAuth() {
     const supabase = createSupabbaseFrontendClient();
 
     const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
+      const { data: sessionData } = await supabase.auth.getSession();
 
-      if (!data.session) {
+      if (!sessionData.session) {
         router.replace('/login');
         return;
       }
@@ -52,6 +55,12 @@ export function useAdminAuth() {
           router.replace('/app/not-authorized');
           return;
         }
+        setCurrentUserId(userData.user.id);
+        const email =
+          userData.user.email ??
+          sessionData.session.user?.email ??
+          (userData.user as { email?: string }).email;
+        setIsSuperUser(isSuperUserEmail(email));
       }
 
       setCheckingAuth(false);
@@ -151,6 +160,8 @@ export function useAdminAuth() {
     checkingAuth,
     activeTab,
     setActiveTab,
+    currentUserId,
+    isSuperUser,
     userProfile,
     passwordData,
     passwordMessage,

@@ -12,6 +12,7 @@ interface NewEmployeeState {
 interface EmployeesTabProps {
   employees: Employee[];
   newEmployee: NewEmployeeState;
+  departments: string[];
   loading: boolean;
   message: string;
   onInputChange: (
@@ -23,6 +24,7 @@ interface EmployeesTabProps {
 export function EmployeesTab({
   employees,
   newEmployee,
+  departments,
   loading,
   message,
   onInputChange,
@@ -97,9 +99,11 @@ export function EmployeesTab({
                 required
               >
                 <option value="">Select Department</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="constructions">Construction</option>
-                <option value="Others">Others</option>
+                {departments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -134,7 +138,7 @@ export function EmployeesTab({
             filterDepartment={filters.filterDepartment}
             filterStatus={filters.filterStatus}
             filterPosition={filters.filterPosition}
-            departments={filterOptions.departments}
+            departments={Array.from(new Set([...departments, ...filterOptions.departments])).sort()}
             statuses={filterOptions.statuses}
             positions={filterOptions.positions}
             onSearchChange={setSearchQuery}
