@@ -1,3 +1,5 @@
+import { useEmployeeFilters } from '../hooks/useEmployeeFilters';
+import { EmployeeFilters } from './employees';
 import { Employee } from '../types/admin';
 
 interface NewEmployeeState {
@@ -26,6 +28,18 @@ export function EmployeesTab({
   onInputChange,
   onSubmit,
 }: EmployeesTabProps) {
+  const {
+    filteredEmployees,
+    hasActiveFilters,
+    filterOptions,
+    filters,
+    setSearchQuery,
+    setFilterDepartment,
+    setFilterStatus,
+    setFilterPosition,
+    resetFilters,
+  } = useEmployeeFilters(employees);
+
   return (
     <>
       <div className="mb-8 p-4 bg-white rounded-lg shadow">
@@ -113,13 +127,27 @@ export function EmployeesTab({
       </div>
 
       <div className="bg-white rounded-lg shadow">
-        <h2 className="text-xl font-semibold p-4 border-b">Employee List</h2>
+        <div className="p-4 border-b flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
+          <h2 className="text-xl font-semibold">Employee List</h2>
+          <EmployeeFilters
+            searchQuery={filters.searchQuery}
+            filterDepartment={filters.filterDepartment}
+            filterStatus={filters.filterStatus}
+            filterPosition={filters.filterPosition}
+            departments={filterOptions.departments}
+            statuses={filterOptions.statuses}
+            positions={filterOptions.positions}
+            onSearchChange={setSearchQuery}
+            onDepartmentChange={setFilterDepartment}
+            onStatusChange={setFilterStatus}
+            onPositionChange={setFilterPosition}
+            onReset={resetFilters}
+          />
+        </div>
 
-        {loading && (
+        {loading ? (
           <p className="p-4 text-center">Loading employees...</p>
-        )}
-
-        {employees.length > 0 ? (
+        ) : employees.length > 0 && filteredEmployees.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -142,7 +170,7 @@ export function EmployeesTab({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {employees.map((employee) => (
+                {filteredEmployees.map((employee) => (
                   <tr key={employee.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {employee.name}
@@ -173,7 +201,11 @@ export function EmployeesTab({
             </table>
           </div>
         ) : (
-          <p className="p-4 text-center">No employees found</p>
+          <p className="p-4 text-center">
+            {hasActiveFilters
+              ? 'No employees match your filters'
+              : 'No employees found'}
+          </p>
         )}
       </div>
     </>
