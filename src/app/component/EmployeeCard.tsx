@@ -30,6 +30,7 @@ interface EmployeeCardProps {
   initialNotes?: string | null;
   /** When true, show "How many projects" when Present (for Standard mode – same as Customize). */
   showProjectsWhenPresent?: boolean;
+  themeId?: 'default' | 'saqiya';
 }
 
 interface EmployeeManagerProps {
@@ -50,7 +51,7 @@ interface Project {
   type: string | null;
 }
 
-const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = false, isCustomizeFromParent = false, disabled = false, initialStatus, initialNotes, showProjectsWhenPresent = false }) => {
+const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = false, isCustomizeFromParent = false, disabled = false, initialStatus, initialNotes, showProjectsWhenPresent = false, themeId }) => {
   const [isAttend, setIsAttend] = useState<boolean>(initialStatus === 'present');
   const [isStandar, setIsStandar] = useState<boolean>(true);
   const [isCustomize, setIsCustomize] = useState<boolean>(false);
@@ -62,6 +63,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   const [isCustomer, setIsCustomer] = useState<boolean>(false);
   const [project, setProject] = useState<boolean>(false);
   const [attendance, setAttendance] = useState<string | undefined>(initialStatus === 'present' ? 'Present' : undefined);
+  const [weekendSelected, setWeekendSelected] = useState(false);
+  const [holidaySelected, setHolidaySelected] = useState(false);
   const [absenceReason, setAbsenceReason] = useState('');
   const [overtimeHours, setOvertimeHours] = useState<number | null>(null);
   let   [inputHours, setInputHours] = useState<number | 0>(0);
@@ -104,25 +107,78 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     if (initialNotes != null && initialNotes !== '') {
       dispatch(Add_notes_to_cases_without_projects({ employee_id: employee.employee_id, notes: initialNotes }));
       dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: initialNotes }));
+      const n = initialNotes.toLowerCase();
+      setWeekendSelected(n.includes('weekend'));
+      setHolidaySelected(n.includes('holiday'));
     }
   }, [initialStatus, initialNotes, employee.employee_id, dispatch]);
 
 
-  const handleDropDownAttendance = (select_status: string) => {
-    if (select_status !== "undefined") {
-      dispatch(setEmployeesStatus({ status: select_status, employee_id: employee.employee_id }));
-      setAttendance(select_status);
+
+  const applyAttendanceTypeToRedux = (weekend: boolean, holiday: boolean) => {
+    const parts: string[] = [];
+    if (weekend) parts.push('Weekend');
+    if (holiday) parts.push('Holiday');
+    const notesVal = parts.length ? parts.join(', ') : null;
+    dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: notesVal }));
+    if (notesVal) dispatch(Add_notes_to_cases_without_projects({ employee_id: employee.employee_id, notes: notesVal }));
+    const statusForApi = weekend ? 'Weekend' : holiday ? 'Holiday-Work' : 'Present';
+    dispatch(setEmployeesStatus({ status: statusForApi, employee_id: employee.employee_id }));
+    if (weekend || holiday) {
+      setProject(weekend);
+      if (holiday && !weekend) setHowManyProjects('');
+    }
+  };
+
+  const handleDropDownAttendance = (select_status: string, fromDropdown = false) => {
+    if (fromDropdown) {
       if (select_status === 'Weekend') {
-        dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: 'Weekend' }));
-        dispatch(Add_notes_to_cases_without_projects({ employee_id: employee.employee_id, notes: 'Weekend' }));
+        setWeekendSelected(true);
+        setHolidaySelected(false);
+        setAttendance('Present');
+        applyAttendanceTypeToRedux(true, false);
+      } else if (select_status === 'Holiday-Work') {
+        setHolidaySelected(true);
+        setWeekendSelected(false);
+        setAttendance('Present');
         setProject(false);
         setHowManyProjects('');
-      } else if (select_status === 'Holiday-Work') {
-        dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: 'Holiday' }));
-        dispatch(Add_notes_to_cases_without_projects({ employee_id: employee.employee_id, notes: 'Holiday' }));
+        applyAttendanceTypeToRedux(false, true);
+      } else if (select_status === 'Present') {
+        setWeekendSelected(false);
+        setHolidaySelected(false);
+        setAttendance('Present');
+        applyAttendanceTypeToRedux(false, false);
+      } else {
+        setWeekendSelected(false);
+        setHolidaySelected(false);
+        setAttendance(undefined);
+      }
+      return;
+    }
+    if (select_status === 'Weekend') {
+      const next = !weekendSelected;
+      setWeekendSelected(next);
+      setHolidaySelected(false);
+      if (!next) setAttendance(undefined);
+      else setAttendance('Present');
+      applyAttendanceTypeToRedux(next, false);
+    } else if (select_status === 'Holiday-Work') {
+      const next = !holidaySelected;
+      setHolidaySelected(next);
+      setWeekendSelected(false);
+      if (!next) setAttendance(undefined);
+      else {
+        setAttendance('Present');
         setProject(false);
         setHowManyProjects('');
       }
+      applyAttendanceTypeToRedux(false, next);
+    } else if (select_status === 'undefined' || select_status === 'Present') {
+      setAttendance(select_status === 'Present' ? 'Present' : undefined);
+      setWeekendSelected(false);
+      setHolidaySelected(false);
+      if (select_status === 'Present') applyAttendanceTypeToRedux(false, false);
     } else {
       setAttendance(undefined);
     }
@@ -180,6 +236,10 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     const newAttendance = typeof e === 'boolean' ? e : e.target.checked;
 
     setIsAttend(newAttendance);
+    if (newAttendance) {
+      setIsAbsent(false);
+      setIsHold(false);
+    }
     if ((isAttend === false || isAttend === true) && isStandar)
     {
       if (newAttendance === false)
@@ -204,11 +264,9 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
           dispatch(setLeftHours(0))
         }
         if (newAttendance) {
-          setIsAbsent(false); // Uncheck "Absent" if "Attend" is checked
           setHowManyProjects('')
           setProject(false)
-          setAbsenceReason(''); // Reset absence reason if "Attend" is selected
-          setIshold(false)
+          setAbsenceReason('');
         }
         else
         {
@@ -224,10 +282,11 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     dispatch(setAttendanceStatus({status:"absent", employee_id: employee.employee_id}))
     syncStatusToAttendanceEntry('absent');
     if (e.target.checked) {
-      setIsAttend(false); // Uncheck "Attend" if "Absent" is checked
-      setAttendance(''); // Reset attendance if "Absent" is selected
-      setIshold(false)
-      setProject(false)
+      setIsAttend(false);
+      setIsHold(false);
+      setIshold(false);
+      setAttendance('');
+      setProject(false);
     }
   };
 
@@ -462,13 +521,20 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     debouncedDispatch(employee, isHold, absenceReason, newNotes);
   };
 
+  const isSaqiya = themeId === 'saqiya';
+  const cardClass = isSaqiya
+    ? 'p-4 w-full min-w-0 max-w-[23rem] mx-auto rounded-theme-card border-2 border-theme-accent bg-theme-card-bg flex flex-col items-center shadow-sm'
+    : 'p-4 w-full min-w-0 max-w-[23rem] mx-auto rounded-lg shadow-md bg-[#710D15] flex flex-col items-center';
+  const selectedRing = isSaqiya
+    ? 'ring-4 ring-theme-accent ring-offset-2 ring-offset-theme-card-bg'
+    : 'ring-4 ring-white ring-offset-2 ring-offset-[#710D15]';
+
   return (
-    <div className={`p-4 w-full min-w-0 max-w-[23rem] mx-auto rounded-lg shadow-md bg-[#710D15] flex flex-col items-center ${disabled ? 'pointer-events-none opacity-70' : ''}`}>
-      <h2 className="text-xl font-semibold text-[#D94853] mb-4">الحضور</h2>
-      <p className='pl-4 my-5 text-white text-2xl'>{employee.name}</p>
-      {/* <div className='w-[60%] h-[2px] bg-blue-500 my-3'></div> */}
-      <hr className='h-5 w-[15.26rem]'/>
-      <div className='p-4 pr-0 text-white text-center'>
+    <div className={`${cardClass} ${disabled ? 'pointer-events-none opacity-70' : ''}`}>
+      <h2 className={`text-xl font-semibold mb-4 ${isSaqiya ? 'text-theme-primary' : 'text-[#D94853]'}`}>الحضور</h2>
+      <p className={`pl-4 my-5 text-2xl ${isSaqiya ? 'text-theme-accent' : 'text-white'}`}>{employee.name}</p>
+      <hr className={`h-5 w-[15.26rem] ${isSaqiya ? 'bg-theme-accent/20' : ''}`}/>
+      <div className={`p-4 pr-0 text-center ${isSaqiya ? 'text-theme-accent' : 'text-white'}`}>
       <div className="pr-0 space-y-4 flex flex-col items-center">
 
       {/* Check here to make sure before display the stander or customize options */}
@@ -503,37 +569,49 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
         {/* Status: buttons in Standard (showProjectsWhenPresent), checkboxes otherwise */}
       {showProjectsWhenPresent ? (
         <div className="w-full space-y-2">
-          <label className="block text-white text-sm font-medium">Status</label>
+          <label className={`block text-sm font-medium ${isSaqiya ? 'text-theme-accent' : 'text-white'}`}>Status</label>
           <div className="flex flex-wrap gap-2 justify-center">
             <button
               type="button"
               disabled={disabled}
               onClick={() => handleAttendChange(true)}
-              className={`min-h-[44px] min-w-[72px] px-3 sm:px-4 py-2.5 rounded-lg text-white text-sm font-medium transition touch-manipulation bg-green-600 ${
-                isAttend ? 'ring-2 ring-white ring-offset-2 ring-offset-[#710D15]' : 'opacity-80 hover:opacity-100'
+              aria-pressed={isAttend}
+              className={`min-h-[44px] min-w-[72px] px-3 sm:px-4 py-2.5 rounded-theme-card text-white text-sm font-medium transition touch-manipulation bg-green-600 ${
+                isAttend ? selectedRing : 'opacity-60 hover:opacity-80'
               }`}
             >
-              Present
+              <span className="inline-flex items-center gap-1.5">
+                {isAttend && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                Present
+              </span>
             </button>
             <button
               type="button"
               disabled={disabled}
               onClick={() => handleAbsentChange({ target: { checked: true } } as React.ChangeEvent<HTMLInputElement>)}
-              className={`min-h-[44px] min-w-[72px] px-3 sm:px-4 py-2.5 rounded-lg text-white text-sm font-medium transition touch-manipulation bg-red-600 ${
-                isAbsent ? 'ring-2 ring-white ring-offset-2 ring-offset-[#710D15]' : 'opacity-80 hover:opacity-100'
+              aria-pressed={isAbsent}
+              className={`min-h-[44px] min-w-[72px] px-3 sm:px-4 py-2.5 rounded-theme-card text-white text-sm font-medium transition touch-manipulation bg-red-600 ${
+                isAbsent ? selectedRing : 'opacity-60 hover:opacity-80'
               }`}
             >
-              Absent
+              <span className="inline-flex items-center gap-1.5">
+                {isAbsent && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                Absent
+              </span>
             </button>
             <button
               type="button"
               disabled={disabled}
               onClick={handleHoldChange}
-              className={`min-h-[44px] min-w-[72px] px-3 sm:px-4 py-2.5 rounded-lg text-white text-sm font-medium transition touch-manipulation bg-yellow-500 ${
-                isHold ? 'ring-2 ring-white ring-offset-2 ring-offset-[#710D15]' : 'opacity-80 hover:opacity-100'
+              aria-pressed={isHold}
+              className={`min-h-[44px] min-w-[72px] px-3 sm:px-4 py-2.5 rounded-theme-card text-white text-sm font-medium transition touch-manipulation bg-yellow-500 ${
+                isHold ? selectedRing : 'opacity-60 hover:opacity-80'
               }`}
             >
-              Vacation
+              <span className="inline-flex items-center gap-1.5">
+                {isHold && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                Vacation
+              </span>
             </button>
           </div>
         </div>
@@ -562,34 +640,45 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       {/* Attendance type: buttons when Standard (hideModeToggle), dropdown otherwise */}
       {(isAttend) && (
         <div className="w-full space-y-2">
-          <label className="block text-white text-sm font-medium mb-1">حاله الحضور</label>
+          <label className={`block text-sm font-medium mb-1 ${isSaqiya ? 'text-theme-accent' : 'text-white'}`}>حاله الحضور</label>
+          <p className={`text-xs mb-1 ${isSaqiya ? 'text-theme-accent/80' : 'text-white/80'}`}>
+            Select one: Weekend or Holiday (or neither).
+          </p>
           {hideModeToggle ? (
             <div className="flex flex-wrap gap-2 justify-center">
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => handleDropDownAttendance('Weekend')}
+                aria-pressed={weekendSelected}
                 className={`min-h-[40px] px-3 py-2 rounded-lg text-sm font-medium transition touch-manipulation bg-blue-600 text-white ${
-                  attendance === 'Weekend' ? 'ring-2 ring-white ring-offset-2 ring-offset-[#710D15]' : 'opacity-80 hover:opacity-100'
+                  weekendSelected ? selectedRing : 'opacity-60 hover:opacity-80'
                 }`}
               >
-                Weekend
+                <span className="inline-flex items-center gap-1.5">
+                  {weekendSelected && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                  Weekend
+                </span>
               </button>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => handleDropDownAttendance('Holiday-Work')}
+                aria-pressed={holidaySelected}
                 className={`min-h-[40px] px-3 py-2 rounded-lg text-sm font-medium transition touch-manipulation bg-amber-500 text-white ${
-                  attendance === 'Holiday-Work' ? 'ring-2 ring-white ring-offset-2 ring-offset-[#710D15]' : 'opacity-80 hover:opacity-100'
+                  holidaySelected ? selectedRing : 'opacity-60 hover:opacity-80'
                 }`}
               >
-                Holiday
+                <span className="inline-flex items-center gap-1.5">
+                  {holidaySelected && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                  Holiday
+                </span>
               </button>
             </div>
           ) : (
             <select
-              value={attendance ?? 'undefined'}
-              onChange={(e) => handleDropDownAttendance(e.target.value)}
+              value={weekendSelected ? 'Weekend' : holidaySelected ? 'Holiday-Work' : (attendance ?? 'undefined')}
+              onChange={(e) => handleDropDownAttendance(e.target.value, true)}
               className="w-full sm:w-[10rem] p-2 border rounded-lg focus:ring focus:ring-blue-200 text-black"
             >
               <option value="undefined">Status of attend</option>
@@ -600,8 +689,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
           )}
         </div>
       )}
-      {/* Project section: hide when Weekend or Holiday (no project_index needed) */}
-      {((attendance !== undefined && attendance !== 'Weekend' && attendance !== 'Holiday-Work' && !isAbsent && !isHold && (isCustomizeFromParent || isStandar !== true)) || (showProjectsWhenPresent && isAttend && !isAbsent && !isHold && attendance !== 'Weekend' && attendance !== 'Holiday-Work')) && (
+      {/* Project section: hide when Holiday only (no projects); show for Present and when Weekend selected */}
+      {((attendance !== undefined && (weekendSelected || !holidaySelected) && !isAbsent && !isHold && (isCustomizeFromParent || isStandar !== true)) || (showProjectsWhenPresent && isAttend && !isAbsent && !isHold && (weekendSelected || !holidaySelected))) && (
       <div>
         <label className='block mb-2 text-xl mt-[4rem]'>
           How many projects on this day

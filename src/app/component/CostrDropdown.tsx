@@ -165,6 +165,11 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
   },[employee1?.employee_id])
 
   useEffect(() => {
+    const hasProject = employee1?.projects?.projectId?.[input_index]?.projectName?.length;
+    if (hasProject) setOvertimeInput(true);
+  }, [employee1?.projects?.projectId?.[input_index]?.projectName, input_index]);
+
+  useEffect(() => {
 
     if (input_index + 1 === totalProjects)
       setOvertimeInput(true)
@@ -224,6 +229,7 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
     const hours = parseInt("8", 10);
 
     setProject(selected_project);
+    setOvertimeInput(true);
 
     console.log("here call the function ")
     // if (input_index > 0)
@@ -334,7 +340,7 @@ const handleOvertTimeHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => 
           </select>
         </div>
       } */}
-      {(overtime_input && position !== 'foreman' && employee1?.employee_status![0].status_employee !== 'Sick Leave') && (
+      {(overtime_input && employee1?.employee_status![0].status_employee !== 'Sick Leave') && (
         <div>
           <select 
             value={selectedOvertime ?? ''}

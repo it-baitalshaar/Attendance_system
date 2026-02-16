@@ -8,6 +8,21 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      colors: {
+        /* Theme-aware colors (use CSS variables so department theme can override) */
+        "theme-primary": "var(--theme-primary, #0E4C82)",
+        "theme-accent": "var(--theme-accent, #1A1A1A)",
+        "theme-white": "var(--theme-white, #FFFFFF)",
+        "theme-subtle": "var(--theme-subtle, #F8FAFC)",
+        "theme-card-bg": "var(--theme-card-bg, var(--theme-white))",
+      },
+      fontFamily: {
+        "heading-en": ["var(--font-heading-en)", "Georgia", "serif"],
+        "heading-ar": ["var(--font-heading-ar)", "sans-serif"],
+      },
+      borderRadius: {
+        "theme-card": "var(--theme-radius, 2px)",
+      },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "gradient-conic":

@@ -26,7 +26,10 @@ export function useEmployeeManagement() {
   const [message, setMessage] = useState('');
 
   const loadEmployees = useCallback(async () => {
+    const startedAt = Date.now();
+    const MIN_LOADING_MS = 400;
     setLoading(true);
+    setMessage('');
     try {
       const [employeesRes, deptList] = await Promise.all([
         fetchEmployeesService(),
@@ -38,6 +41,9 @@ export function useEmployeeManagement() {
       console.error('Error fetching employees:', error);
       setMessage('Failed to load employees');
     } finally {
+      const elapsed = Date.now() - startedAt;
+      const wait = Math.max(0, MIN_LOADING_MS - elapsed);
+      if (wait) await new Promise((r) => setTimeout(r, wait));
       setLoading(false);
     }
   }, []);

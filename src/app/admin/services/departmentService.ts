@@ -1,51 +1,88 @@
 import { createSupabbaseFrontendClient } from '@/lib/supabase';
+import type { DepartmentThemeId } from '@/app/constants/themes';
 
 export interface Department {
   id: string;
   name: string;
+  theme_id?: string | null;
   created_at?: string;
 }
 
 export async function fetchDepartmentsService(): Promise<Department[]> {
   const supabase = createSupabbaseFrontendClient();
 
+  const { data: dataWithTheme, error: errorWithTheme } = await supabase
+    .from('departments')
+    .select('id, name, theme_id, created_at')
+    .order('name');
+
+  if (!errorWithTheme) {
+    return (dataWithTheme || []) as Department[];
+  }
+
   const { data, error } = await supabase
     .from('departments')
     .select('id, name, created_at')
     .order('name');
-
   if (error) throw error;
   return (data || []) as Department[];
 }
 
-export async function createDepartmentService(name: string): Promise<void> {
+export async function createDepartmentService(
+  name: string,
+  themeId: DepartmentThemeId = 'default'
+): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Department name is required');
 
-  const { error } = await supabase.from('departments').insert({ name: trimmed });
+  const { error } = await supabase.from('departments').insert({ name: trimmed, theme_id: themeId });
+  if (!error) return;
 
-  if (error) throw error;
+  const colMissing = error.message?.includes('theme_id') || error.code === '42703';
+  if (colMissing) {
+    const { error: err2 } = await supabase.from('departments').insert({ name: trimmed });
+    if (err2) throw err2;
+    return;
+  }
+  throw error;
 }
 
 export async function updateDepartmentService(
   id: string,
   oldName: string,
-  newName: string
+  newName: string,
+  themeId?: DepartmentThemeId
 ): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = newName.trim();
   const trimmedOld = oldName.trim();
   if (!trimmed) throw new Error('Department name is required');
-  if (trimmed.toLowerCase() === trimmedOld.toLowerCase()) return;
 
-  const { error } = await supabase.rpc('update_department_name', {
-    p_department_id: id,
-    p_old_name: trimmedOld,
-    p_new_name: trimmed,
-  });
+  if (trimmed.toLowerCase() !== trimmedOld.toLowerCase()) {
+    const { error: rpcError } = await supabase.rpc('update_department_name', {
+      p_department_id: id,
+      p_old_name: trimmedOld,
+      p_new_name: trimmed,
+    });
+    if (rpcError) throw rpcError;
+  }
 
-  if (error) throw error;
+  if (themeId !== undefined) {
+    const { error: updateError } = await supabase
+      .from('departments')
+      .update({ theme_id: themeId })
+      .eq('id', id);
+    if (updateError) {
+      const msg = updateError.message || '';
+      if (msg.includes('theme_id') || updateError.code === '42703') {
+        throw new Error(
+          'Theme could not be saved. Add the theme_id column: run the migration in supabase/migrations/add_department_theme_id.sql in the Supabase SQL editor.'
+        );
+      }
+      throw updateError;
+    }
+  }
 }
 
 export async function getEmployeeCountByDepartment(

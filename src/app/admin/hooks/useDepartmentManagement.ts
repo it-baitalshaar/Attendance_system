@@ -6,6 +6,7 @@ import {
   deleteDepartmentService,
 } from '../services/departmentService';
 import type { Department } from '../services/departmentService';
+import type { DepartmentThemeId } from '@/app/constants/themes';
 
 export function useDepartmentManagement() {
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -31,10 +32,10 @@ export function useDepartmentManagement() {
     loadDepartments();
   }, [loadDepartments]);
 
-  const addDepartment = async (name: string) => {
+  const addDepartment = async (name: string, themeId: DepartmentThemeId = 'default') => {
     setMessage('');
     try {
-      await createDepartmentService(name);
+      await createDepartmentService(name, themeId);
       setMessage('Department created successfully');
       setMessageType('success');
       await loadDepartments();
@@ -44,10 +45,15 @@ export function useDepartmentManagement() {
     }
   };
 
-  const updateDepartment = async (id: string, oldName: string, newName: string) => {
+  const updateDepartment = async (
+    id: string,
+    oldName: string,
+    newName: string,
+    themeId?: DepartmentThemeId
+  ) => {
     setMessage('');
     try {
-      await updateDepartmentService(id, oldName, newName);
+      await updateDepartmentService(id, oldName, newName, themeId);
       setMessage('Department updated successfully');
       setMessageType('success');
       await loadDepartments();

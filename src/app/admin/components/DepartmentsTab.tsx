@@ -3,14 +3,16 @@
 import { useState, useEffect } from 'react';
 import type { Department } from '../services/departmentService';
 import { getEmployeeCountByDepartment } from '../services/departmentService';
+import { THEME_OPTIONS } from '@/app/constants/themes';
+import type { DepartmentThemeId } from '@/app/constants/themes';
 
 interface DepartmentsTabProps {
   departments: Department[];
   loading: boolean;
   message: string;
   messageType: 'success' | 'error';
-  onAddDepartment: (name: string) => Promise<void>;
-  onUpdateDepartment: (id: string, oldName: string, newName: string) => Promise<void>;
+  onAddDepartment: (name: string, themeId: DepartmentThemeId) => Promise<void>;
+  onUpdateDepartment: (id: string, oldName: string, newName: string, themeId?: DepartmentThemeId) => Promise<void>;
   onDeleteDepartment: (id: string, name: string, confirmName: string) => Promise<void>;
   onClearMessage: () => void;
 }
@@ -26,8 +28,10 @@ export function DepartmentsTab({
   onClearMessage,
 }: DepartmentsTabProps) {
   const [newName, setNewName] = useState('');
+  const [newThemeId, setNewThemeId] = useState<DepartmentThemeId>('default');
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [editName, setEditName] = useState('');
+  const [editThemeId, setEditThemeId] = useState<DepartmentThemeId>('default');
   const [deletingDept, setDeletingDept] = useState<Department | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
   const [employeeCounts, setEmployeeCounts] = useState<Record<string, number>>({});
@@ -48,6 +52,7 @@ export function DepartmentsTab({
   const openEdit = (d: Department) => {
     setEditingDept(d);
     setEditName(d.name);
+    setEditThemeId((d.theme_id as DepartmentThemeId) || 'default');
     onClearMessage();
   };
 
@@ -62,8 +67,9 @@ export function DepartmentsTab({
     if (!newName.trim()) return;
     setSubmitting(true);
     try {
-      await onAddDepartment(newName.trim());
+      await onAddDepartment(newName.trim(), newThemeId);
       setNewName('');
+      setNewThemeId('default');
     } finally {
       setSubmitting(false);
     }
@@ -71,11 +77,21 @@ export function DepartmentsTab({
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingDept || !editName.trim() || editName.trim() === editingDept.name)
+    if (!editingDept || !editName.trim()) return;
+    const nameUnchanged = editName.trim() === editingDept.name;
+    const themeUnchanged = (editThemeId || 'default') === (editingDept.theme_id || 'default');
+    if (nameUnchanged && themeUnchanged) {
+      setEditingDept(null);
       return;
+    }
     setSubmitting(true);
     try {
-      await onUpdateDepartment(editingDept.id, editingDept.name, editName.trim());
+      await onUpdateDepartment(
+        editingDept.id,
+        editingDept.name,
+        editName.trim(),
+        editThemeId
+      );
       setEditingDept(null);
     } finally {
       setSubmitting(false);
@@ -111,6 +127,20 @@ export function DepartmentsTab({
               placeholder="e.g. Construction"
               required
             />
+          </div>
+          <div className="min-w-[180px]">
+            <label className="block text-sm font-medium mb-1">Theme</label>
+            <select
+              value={newThemeId}
+              onChange={(e) => setNewThemeId(e.target.value as DepartmentThemeId)}
+              className="w-full p-2 border rounded"
+            >
+              {THEME_OPTIONS.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
           </div>
           <button
             type="submit"
@@ -154,6 +184,9 @@ export function DepartmentsTab({
                     Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Theme
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Employees
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
@@ -166,6 +199,9 @@ export function DepartmentsTab({
                   <tr key={d.id}>
                     <td className="px-6 py-4 whitespace-nowrap font-medium">
                       {d.name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-600">
+                      {THEME_OPTIONS.find((t) => t.value === (d.theme_id || 'default'))?.label ?? 'Default'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {employeeCounts[d.id] ?? '—'}
@@ -200,18 +236,37 @@ export function DepartmentsTab({
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <h3 className="text-lg font-semibold mb-4">Edit Department</h3>
             <form onSubmit={handleEditSubmit}>
-              <div>
-                <label className="block text-sm font-medium mb-1">Name</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full p-2 border rounded"
-                  required
-                />
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full p-2 border rounded"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Theme</label>
+                  <select
+                    value={editThemeId}
+                    onChange={(e) => setEditThemeId(e.target.value as DepartmentThemeId)}
+                    className="w-full p-2 border rounded"
+                  >
+                    {THEME_OPTIONS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Users in this department will see this theme when they log in.
+                  </p>
+                </div>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                This will update the department name for all employees and projects.
+                Name change will update all employees and projects. Theme applies to the attendance UI.
               </p>
               <div className="mt-4 flex gap-2 justify-end">
                 <button
@@ -223,7 +278,7 @@ export function DepartmentsTab({
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || editName.trim() === editingDept.name}
+                  disabled={submitting}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                 >
                   {submitting ? 'Saving...' : 'Save'}

@@ -2,32 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
-/* :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+/* ========== Department theme variables ========== */
+:root {
+  --theme-primary: #0E4C82;
+  --theme-accent: #1A1A1A;
+  --theme-white: #FFFFFF;
+  --theme-subtle: #F8FAFC;
+  --theme-radius: 2px;
+  --font-heading-en: "Inter", system-ui, sans-serif;
+  --font-heading-ar: "Inter", system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+/* Al Saqiya theme: Modern Heritage (Royal Blue, geometric motif, Serif/Naskh) */
+.theme-saqiya {
+  --theme-primary: #0E4C82;
+  --theme-accent: #1A1A1A;
+  --theme-white: #FFFFFF;
+  --theme-subtle: #F8FAFC;
+  --theme-card-bg: #E6EEF8;
+  --theme-radius: 6px;
+  --font-heading-en: var(--font-playfair), Georgia, serif;
+  --font-heading-ar: var(--font-noto-kufi-arabic), sans-serif;
+}
+
+/* Saqiya: structured cards and buttons */
+.theme-saqiya .btn-theme-primary {
+  background-color: var(--theme-primary);
+  color: var(--theme-white);
+}
+.theme-saqiya .btn-theme-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.theme-saqiya .card-theme {
+  background-color: var(--theme-card-bg, var(--theme-white));
+  border: 2px solid var(--theme-accent);
+  border-radius: var(--theme-radius);
+  box-shadow: 0 2px 8px rgba(14, 76, 130, 0.06), 0 1px 2px rgba(26, 26, 26, 0.04);
+}
+.theme-saqiya .card-theme-ring {
+  --tw-ring-color: var(--theme-primary);
+  --tw-ring-offset-color: var(--theme-card-bg, var(--theme-white));
+}
+
+/* Saqiya: consistent focus and touch targets */
+.theme-saqiya input:focus,
+.theme-saqiya select:focus,
+.theme-saqiya textarea:focus,
+.theme-saqiya button:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 2px;
+}
+
+/* Geometric border: sawtooth/triangle pattern (Sadu / Islamic geometric style) */
+@layer components {
+  .geometric-border-top {
+    position: relative;
+    height: 12px;
+    background: var(--theme-accent, #1A1A1A);
+    clip-path: polygon(
+      0 100%,
+      2.5% 0,
+      5% 100%,
+      7.5% 0,
+      10% 100%,
+      12.5% 0,
+      15% 100%,
+      17.5% 0,
+      20% 100%,
+      22.5% 0,
+      25% 100%,
+      27.5% 0,
+      30% 100%,
+      32.5% 0,
+      35% 100%,
+      37.5% 0,
+      40% 100%,
+      42.5% 0,
+      45% 100%,
+      47.5% 0,
+      50% 100%,
+      52.5% 0,
+      55% 100%,
+      57.5% 0,
+      60% 100%,
+      62.5% 0,
+      65% 100%,
+      67.5% 0,
+      70% 100%,
+      72.5% 0,
+      75% 100%,
+      77.5% 0,
+      80% 100%,
+      82.5% 0,
+      85% 100%,
+      87.5% 0,
+      90% 100%,
+      92.5% 0,
+      95% 100%,
+      97.5% 0,
+      100% 100%
+    );
   }
-}
-
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
-} */
+}

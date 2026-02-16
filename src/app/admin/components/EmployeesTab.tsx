@@ -158,7 +158,10 @@ export function EmployeesTab({
         </div>
 
         {loading ? (
-          <p className="p-4 text-center">Loading employees...</p>
+          <div className="p-8 flex flex-col items-center justify-center gap-3">
+            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-gray-600">Loading employees...</p>
+          </div>
         ) : employees.length > 0 && filteredEmployees.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">

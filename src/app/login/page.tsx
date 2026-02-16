@@ -36,7 +36,7 @@ export default function Login() {
             .single();
             
           if (profile) {
-            dispatch(setDepartment(profile.Department));
+            dispatch(setDepartment(profile.Department ?? ''));
             
             if (profile.role === 'admin') {
               router.replace('/admin');
@@ -141,7 +141,7 @@ export default function Login() {
           return;
         }
 
-        dispatch(setDepartment(profile?.Department));
+        dispatch(setDepartment(profile?.Department ?? ''));
         
         // Redirect based on role - use replace instead of push
         if (profile?.role === 'admin') {
