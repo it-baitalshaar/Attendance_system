@@ -49,6 +49,7 @@ interface employee_status {
 
 interface Project {
   type: string | null;
+  hours?: number;
 }
 
 const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = false, isCustomizeFromParent = false, disabled = false, initialStatus, initialNotes, showProjectsWhenPresent = false, themeId }) => {
@@ -71,7 +72,6 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   const [workingHours, setworkingHours] = useState<number | null>(null);
   const [notes, setNotes] = useState(initialNotes ?? '');
   const [isHold, setIsHold] = useState(false);
-  const [HowManyProjects, setHowManyProjects] = useState<number | string>('');
   const [selectedProjects, setSelectedProjects] = useState<ProjectData[]>([]);  // Store selected projects
   const [staus, setStatus] = useState<employee_status>();  // Store selected projects
 
@@ -126,7 +126,10 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     dispatch(setEmployeesStatus({ status: statusForApi, employee_id: employee.employee_id }));
     if (weekend || holiday) {
       setProject(weekend);
-      if (holiday && !weekend) setHowManyProjects('');
+      if (holiday && !weekend) {
+        setArryProjects([]);
+        dispatch(setTotalProject(0));
+      }
     }
   };
 
@@ -142,7 +145,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
         setWeekendSelected(false);
         setAttendance('Present');
         setProject(false);
-        setHowManyProjects('');
+        setArryProjects([]);
+        dispatch(setTotalProject(0));
         applyAttendanceTypeToRedux(false, true);
       } else if (select_status === 'Present') {
         setWeekendSelected(false);
@@ -171,7 +175,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       else {
         setAttendance('Present');
         setProject(false);
-        setHowManyProjects('');
+        setArryProjects([]);
+        dispatch(setTotalProject(0));
       }
       applyAttendanceTypeToRedux(false, next);
     } else if (select_status === 'undefined' || select_status === 'Present') {
@@ -242,12 +247,15 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     }
     if ((isAttend === false || isAttend === true) && isStandar)
     {
-      if (newAttendance === false)
-        setProject(false)
+      if (newAttendance === false) {
+        setProject(false);
+        setArryProjects([]);
+        dispatch(setTotalProject(0));
+      }
       if (isAttend === false)
       {
-        handleStandarChange('standard')
-        handleInputChange(1)
+        handleStandarChange('standard');
+        addProject();
       }
       else {
         dispatch(setAttendanceStatus({status:"present", employee_id: employee.employee_id}))
@@ -264,14 +272,16 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
           dispatch(setLeftHours(0))
         }
         if (newAttendance) {
-          setHowManyProjects('')
-          setProject(false)
+          setArryProjects([]);
+          dispatch(setTotalProject(0));
+          setProject(false);
           setAbsenceReason('');
         }
         else
         {
-          setHowManyProjects('')
-          setProject(false)
+          setArryProjects([]);
+          dispatch(setTotalProject(0));
+          setProject(false);
         }
     }
   };
@@ -291,8 +301,6 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   };
 
   const handleProjects = (projectType: string) => {
-    if (attendance === 'half-day')
-      setHowManyProjects(1);
     if (projectType == 'Construction')
     {
       if (isConstruction == true)
@@ -362,79 +370,35 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     setIsAttend(false);
     setIsAbsent(false);
     setProject(false);
-    setHowManyProjects('');
+    setArryProjects([]);
+    dispatch(setTotalProject(0));
   };
-  
+
   const [arr_projects, setArryProjects] = useState<Project[]>([]);
   const employees_statis = useSelector((state: RootState) => state.project.employees);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLSelectElement> | number) => {
+  const addProject = () => {
+    setArryProjects((prev) => {
+      if (prev.length >= 5) return prev;
+      const next = attendance === 'half-day'
+        ? [...prev, { type: null, hours: 4 }]
+        : [...prev, { type: null }];
+      dispatch(setTotalProject(next.length));
+      return next;
+    });
+    setProject(true);
+    setVisibleProjects((prev) => prev + 1);
+  };
 
-    let newValue: string | number;
-
-    if (typeof e === 'number') {
-      // If it's a number, use it directly
-      newValue = e;
-    } else {
-      // If it's an event, extract the value from the event target
-      newValue = e.target.value;
-    }
-
-
-    console.log("from the handle input change function ", attendance)
- 
-    const the_employee = employees_statis.find(employee_id => employee_id.employee_status)
-    setStatus(the_employee?.employee_status![0])
-    console.log("this is the emplouu", the_employee?.employee_status![0])
-    if (Number(newValue) <= 10 && Number(newValue) > 0) {
-      const projectCount = typeof newValue === 'number' ? newValue : parseInt(newValue, 10);
-      console.log("this is the number for the how many projects ", projectCount)
-      setHowManyProjects(projectCount);
-      // Update Redux store with the total project count
-      dispatch(setTotalProject(projectCount));
-
-      // Adjust projects array dynamically based on input
-      console.log("this is before the set array projects ", arr_projects)
-      setArryProjects((prevProjects) => {
-        const updatedProjects = [...prevProjects];
-        if (attendance === 'half-day'){
-          if (updatedProjects.length === 1) {
-            // Update the existing single project
-            updatedProjects[0] = { type: null}; // Set 4 hours for half-day
-          } else {
-            // Reset or create a single project with 4 hours
-            return [{ type: null, hours: 4 }];
-          }
-        }
-        else {
-          if (projectCount > updatedProjects.length) {
-            // Add new entries if the number of projects increases
-            for (let i = updatedProjects.length; i < projectCount; i++) {
-              updatedProjects.push({ type: null });
-            }
-          } else {
-            // Remove entries if the number of projects decreases
-            updatedProjects.splice(projectCount);
-          }
-        }
-        // const updatedProjects = [...prevProjects];
-        return updatedProjects;
-      });
-      
-      console.log("this is After the set array projects ", arr_projects)
-      setProject(true);
-      setVisibleProjects(1);
-
-      return 1;
-    } else if (newValue === '') {
-      setHowManyProjects(newValue);
-      setProject(false);
-      setArryProjects([]); // Reset the projects when no input is provided
-      setVisibleProjects(1);
-      return 0;
-    }
-
-    return 1;
+  const removeLastProject = () => {
+    setArryProjects((prev) => {
+      if (prev.length <= 0) return prev;
+      const next = prev.slice(0, -1);
+      dispatch(setTotalProject(next.length));
+      if (next.length === 0) setProject(false);
+      return next;
+    });
+    setVisibleProjects((prev) => Math.max(1, prev - 1));
   };
 
   const handleAbsentReason = (e: string) => {
@@ -443,8 +407,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       setAbsenceReason(e)
       if (e === 'Sick Leave')
       {
-        console.log("This is the absent the function ")
-        handleInputChange(1)
+        addProject();
       }
       dispatch(setEmployeesStatus({status:e, employee_id: employee.employee_id}))
     }
@@ -691,27 +654,25 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       )}
       {/* Project section: hide when Holiday only (no projects); show for Present and when Weekend selected */}
       {((attendance !== undefined && (weekendSelected || !holidaySelected) && !isAbsent && !isHold && (isCustomizeFromParent || isStandar !== true)) || (showProjectsWhenPresent && isAttend && !isAbsent && !isHold && (weekendSelected || !holidaySelected))) && (
-      <div>
-        <label className='block mb-2 text-xl mt-[4rem]'>
-          How many projects on this day
-        </label>
-        <select
-          onChange={handleInputChange}
-          value={HowManyProjects}
-          className='text-black p-2 border rounded-lg focus:ring focus:ring-blue-200 w-full mt-5'
+      <div className="mt-[4rem]">
+        <button
+          type="button"
+          disabled={disabled || arr_projects.length >= 5}
+          onClick={addProject}
+          className="w-full sm:w-auto min-h-[40px] px-4 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          <option value="">Select how many projects</option>
-          {[...Array(5)].map((_, i) => (
-            <option key={i + 1} value={i + 1}>
-              {i + 1} project{ i > 0 && 's'}
-            </option>
-          ))}
-        </select>
+          Add project
+        </button>
+        {arr_projects.length > 0 && (
+          <p className="text-sm text-white/80 mt-2">
+            {arr_projects.length} project{arr_projects.length !== 1 ? 's' : ''} on this day
+          </p>
+        )}
       </div>
     )}
     {isCustomer && (
         <div  className="mt-10">
-          {Array.from({ length: Number(HowManyProjects) }).map((_, index) => (
+          {Array.from({ length: arr_projects.length }).map((_, index) => (
             <div key={index} className="my-3">
               {<OthersComponents employee_id={employee.employee_id} input_index={index} atten_status={staus} />}
             </div>
@@ -724,29 +685,47 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
           {arr_projects.slice(0, visibleProjects).map((proj, index) => (
             <div key={index} className="my-[2.5rem] flex flex-col justfiy-center items-center">
               <hr className='w-[15.26rem] h-6'/>
-              <div className='text-lg font-medium bg-white  text-black p-2 rounded-xl w-[150px] '>
+              {/* Project number as a button-style label */}
+              <div className='text-lg font-medium bg-white text-black px-5 py-2.5 rounded-xl min-w-[150px] text-center shadow-sm border border-gray-200'>
                 المشروع <span className="text-lg font-bold mr-3">{index + 1}</span>
               </div>
-              {/* Checkboxes to choose the type of project */}
-              <div className="flex flex-col items-center mt-10 gap-3">
-                <Checkbox
-                  label="صيانه"
-                  checked={proj.type === 'maintenance'}
-                  onChange={() => handleProjectTypeChange(index, 'maintenance')}
-                />
-                <Checkbox
-                  label="مقاولات"
-                  checked={proj.type === 'Construction'}
-                  onChange={() => handleProjectTypeChange(index, 'Construction')}
-                />
-                { (department !== 'Construction') &&
-                  <Checkbox
-                    label="مشاريع اخرى"
-                    checked={proj.type === 'customer'}
-                    onChange={() => handleProjectTypeChange(index, 'customer')}
-                  />
-
-                }
+              {/* Project type as toggle buttons (same logic as before) */}
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-10">
+                <button
+                  type="button"
+                  onClick={() => handleProjectTypeChange(index, 'maintenance')}
+                  className={`min-h-[40px] px-4 py-2 rounded-lg text-sm font-medium transition touch-manipulation ${
+                    proj.type === 'maintenance'
+                      ? 'bg-blue-500 text-white ring-2 ring-white/50'
+                      : 'bg-white/10 text-white border border-white/30 hover:bg-white/20'
+                  }`}
+                >
+                  صيانه
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleProjectTypeChange(index, 'Construction')}
+                  className={`min-h-[40px] px-4 py-2 rounded-lg text-sm font-medium transition touch-manipulation ${
+                    proj.type === 'Construction'
+                      ? 'bg-blue-500 text-white ring-2 ring-white/50'
+                      : 'bg-white/10 text-white border border-white/30 hover:bg-white/20'
+                  }`}
+                >
+                  مقاولات
+                </button>
+                {department !== 'Construction' && (
+                  <button
+                    type="button"
+                    onClick={() => handleProjectTypeChange(index, 'customer')}
+                    className={`min-h-[40px] px-4 py-2 rounded-lg text-sm font-medium transition touch-manipulation ${
+                      proj.type === 'customer'
+                        ? 'bg-blue-500 text-white ring-2 ring-white/50'
+                        : 'bg-white/10 text-white border border-white/30 hover:bg-white/20'
+                    }`}
+                  >
+                    مشاريع اخرى
+                  </button>
+                )}
               </div>
 
               {/* Conditionally show dropdowns based on the selected project type */}
@@ -783,10 +762,21 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
           {/* Show "Show Next Project" button if there are more projects to display */}
           {visibleProjects < arr_projects.length && (
             <button
+              type="button"
               onClick={handleShowNextProject}
               className="mt-5 p-2 bg-blue-500 text-white rounded"
             >
               Show Next Project
+            </button>
+          )}
+          {/* Remove last project */}
+          {arr_projects.length > 0 && (
+            <button
+              type="button"
+              onClick={removeLastProject}
+              className="mt-5 p-2 bg-red-500/80 text-white rounded hover:bg-red-600"
+            >
+              Remove last project
             </button>
           )}
         </div>
