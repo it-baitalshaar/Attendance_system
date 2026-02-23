@@ -6,6 +6,7 @@ import { AdminHeader } from './components/AdminHeader';
 import { AdminTabsNav } from './components/AdminTabsNav';
 import { EmployeesTab } from './components/EmployeesTab';
 import { DepartmentsTab } from './components/DepartmentsTab';
+import { ProjectsTab } from './components/ProjectsTab';
 import { UsersTab } from './components/UsersTab';
 import { AttendanceTab } from './components/AttendanceTab';
 import { ReportsTab } from './components/ReportsTab';
@@ -17,8 +18,9 @@ import { useLeaveReportDashboard } from './hooks/useLeaveReportDashboard';
 import { useAdminAuth } from './hooks/useAdminAuth';
 import { useUserManagement } from './hooks/useUserManagement';
 import { useDepartmentManagement } from './hooks/useDepartmentManagement';
+import { useProjectManagement } from './hooks/useProjectManagement';
 
-const VALID_TABS = ['employees', 'departments', 'users', 'attendance', 'reports', 'reminders', 'profile'] as const;
+const VALID_TABS = ['employees', 'departments', 'projects', 'users', 'attendance', 'reports', 'reminders', 'profile'] as const;
 
 function AdminPageContent() {
   const searchParams = useSearchParams();
@@ -110,6 +112,16 @@ function AdminPageContent() {
     setMessage: setDepartmentsMessage,
   } = useDepartmentManagement();
 
+  const {
+    projects,
+    loading: projectsLoading,
+    message: projectsMessage,
+    messageType: projectsMessageType,
+    addProject,
+    updateProject,
+    setMessage: setProjectsMessage,
+  } = useProjectManagement();
+
   useEffect(() => {
     if (!isSuperUser && activeTab === 'users') {
       setActiveTab('employees');
@@ -155,6 +167,18 @@ function AdminPageContent() {
           onUpdateDepartment={updateDepartment}
           onDeleteDepartment={deleteDepartment}
           onClearMessage={() => setDepartmentsMessage('')}
+        />
+      )}
+
+      {activeTab === 'projects' && (
+        <ProjectsTab
+          projects={projects}
+          loading={projectsLoading}
+          message={projectsMessage}
+          messageType={projectsMessageType}
+          onAddProject={addProject}
+          onUpdateProject={updateProject}
+          onClearMessage={() => setProjectsMessage('')}
         />
       )}
 
