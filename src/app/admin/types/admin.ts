@@ -5,6 +5,23 @@ export interface Employee {
   position: string;
   department: string;
   status: string;
+  salary?: number | null;
+}
+
+export interface EmployeeUpdatePayload {
+  name?: string;
+  position?: string;
+  department?: string;
+  status?: string;
+  salary?: number | null;
+}
+
+export interface EmployeeHistoryRecord {
+  id: string;
+  employee_id: string;
+  action: string;
+  details: string | null;
+  created_at: string;
 }
 
 export interface AttendanceRecord {

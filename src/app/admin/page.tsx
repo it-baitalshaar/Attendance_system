@@ -58,6 +58,15 @@ function AdminPageContent() {
     message: employeesMessage,
     handleInputChange,
     handleSubmit,
+    manageEmployeeId,
+    setManageEmployeeId,
+    selectedEmployee,
+    employeeHistory,
+    historyLoading,
+    updateMessage,
+    setUpdateMessage,
+    updateLoading,
+    handleUpdateEmployee,
   } = useEmployeeManagement();
 
   const {
@@ -154,6 +163,15 @@ function AdminPageContent() {
           message={employeesMessage}
           onInputChange={handleInputChange}
           onSubmit={handleSubmit}
+          manageEmployeeId={manageEmployeeId}
+          setManageEmployeeId={setManageEmployeeId}
+          selectedEmployee={selectedEmployee}
+          employeeHistory={employeeHistory}
+          historyLoading={historyLoading}
+          updateMessage={updateMessage}
+          setUpdateMessage={setUpdateMessage}
+          updateLoading={updateLoading}
+          onUpdateEmployee={handleUpdateEmployee}
         />
       )}
 

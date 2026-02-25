@@ -1,12 +1,13 @@
 import { useEmployeeFilters } from '../hooks/useEmployeeFilters';
-import { EmployeeFilters } from './employees';
-import { Employee } from '../types/admin';
+import { EmployeeFilters, ManageEmployeePanel } from './employees';
+import { Employee, EmployeeHistoryRecord } from '../types/admin';
 
 interface NewEmployeeState {
   name: string;
   position: string;
   department: string;
   employee_id: string;
+  salary: string;
 }
 
 interface EmployeesTabProps {
@@ -19,6 +20,15 @@ interface EmployeesTabProps {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => void;
   onSubmit: (e: React.FormEvent) => void;
+  manageEmployeeId: string | null;
+  setManageEmployeeId: (id: string | null) => void;
+  selectedEmployee: Employee | undefined;
+  employeeHistory: EmployeeHistoryRecord[];
+  historyLoading: boolean;
+  updateMessage: string;
+  setUpdateMessage: (msg: string) => void;
+  updateLoading: boolean;
+  onUpdateEmployee: (id: string, payload: import('../types/admin').EmployeeUpdatePayload) => Promise<void>;
 }
 
 export function EmployeesTab({
@@ -29,6 +39,15 @@ export function EmployeesTab({
   message,
   onInputChange,
   onSubmit,
+  manageEmployeeId,
+  setManageEmployeeId,
+  selectedEmployee,
+  employeeHistory,
+  historyLoading,
+  updateMessage,
+  setUpdateMessage,
+  updateLoading,
+  onUpdateEmployee,
 }: EmployeesTabProps) {
   const {
     filteredEmployees,
@@ -106,6 +125,22 @@ export function EmployeesTab({
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Salary (optional)
+              </label>
+              <input
+                type="number"
+                name="salary"
+                min={0}
+                step={0.01}
+                value={newEmployee.salary}
+                onChange={onInputChange}
+                className="w-full p-2 border rounded"
+                placeholder="Optional"
+              />
+            </div>
           </div>
 
           <button
@@ -182,11 +217,14 @@ export function EmployeesTab({
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredEmployees.map((employee) => (
-                  <tr key={employee.id}>
+                  <tr key={employee.id ?? employee.employee_id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {employee.name}
                     </td>
@@ -210,6 +248,17 @@ export function EmployeesTab({
                         {employee.status}
                       </span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setManageEmployeeId(employee.id ?? employee.employee_id)
+                        }
+                        className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                      >
+                        Manage
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -223,6 +272,22 @@ export function EmployeesTab({
           </p>
         )}
       </div>
+
+      {selectedEmployee && (
+        <ManageEmployeePanel
+          employee={selectedEmployee}
+          departments={departments}
+          onClose={() => {
+            setManageEmployeeId(null);
+            setUpdateMessage('');
+          }}
+          onUpdate={onUpdateEmployee}
+          updateLoading={updateLoading}
+          updateMessage={updateMessage}
+          history={employeeHistory}
+          historyLoading={historyLoading}
+        />
+      )}
     </>
   );
 }
