@@ -272,7 +272,9 @@ async function ensureFutureAttendanceAllowed(
   const { data, error } = await supabase
     .from('departments')
     .select('allow_future_attendance')
-    .ilike('name', department.trim());
+    .ilike('name', department.trim())
+    .order('created_at', { ascending: false })
+    .limit(1);
 
   if (error) {
     const msg = error.message || '';
@@ -284,7 +286,9 @@ async function ensureFutureAttendanceAllowed(
     throw new FutureAttendanceError('Future attendance is not enabled for this department.');
   }
 
-  const allowed = (data as { allow_future_attendance?: boolean } | null)?.allow_future_attendance === true;
+  const rowArray = (data as { allow_future_attendance?: boolean }[] | null) ?? [];
+  const row = rowArray[0] as { allow_future_attendance?: boolean } | undefined;
+  const allowed = row?.allow_future_attendance === true;
   if (!allowed) {
     throw new FutureAttendanceError('Future attendance is not enabled for this department.');
   }
