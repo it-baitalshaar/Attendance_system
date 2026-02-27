@@ -1,4 +1,5 @@
 import { LeaveReportRow } from '../services/reportService';
+import { AttendanceReportSection } from './reports/AttendanceReportSection';
 
 interface ReportsTabProps {
   leaveReport: LeaveReportRow[];
@@ -180,6 +181,8 @@ export function ReportsTab({
           No leave data found for the selected date range
         </p>
       )}
+
+      <AttendanceReportSection />
     </div>
   );
 }
