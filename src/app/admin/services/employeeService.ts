@@ -54,8 +54,8 @@ export async function addEmployeeService(
     employee_id: payload.employee_id,
     status: 'active',
   };
-  if (payload.salary != null && payload.salary !== '' && !Number.isNaN(Number(payload.salary))) {
-    row.salary = Number(payload.salary);
+  if (payload.salary !== null && payload.salary !== undefined && !Number.isNaN(payload.salary)) {
+    row.salary = payload.salary;
   }
   const { error } = await supabase.from('Employee').insert([row]);
 
