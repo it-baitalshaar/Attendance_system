@@ -239,6 +239,57 @@ interface AttendancePayload {
   entries: SimpleEntry[];
 }
 
+class FutureAttendanceError extends Error {}
+
+function getTodayIsoDate(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function getDaysFromToday(targetDate: string): number {
+  const today = getTodayIsoDate();
+  const baseMs = new Date(`${today}T00:00:00Z`).getTime();
+  const targetMs = new Date(`${targetDate}T00:00:00Z`).getTime();
+  const diffDays = Math.round((targetMs - baseMs) / (1000 * 60 * 60 * 24));
+  return diffDays;
+}
+
+async function ensureFutureAttendanceAllowed(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
+  department: string,
+  targetDate: string,
+  maxFutureDays: number
+): Promise<void> {
+  const today = getTodayIsoDate();
+  if (targetDate <= today) return;
+
+  const diffDays = getDaysFromToday(targetDate);
+  if (diffDays > maxFutureDays) {
+    throw new FutureAttendanceError(
+      `Attendance can only be submitted up to ${maxFutureDays} days in advance.`
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('departments')
+    .select('allow_future_attendance')
+    .ilike('name', department.trim());
+
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('allow_future_attendance') || (error as any).code === '42703') {
+      // Column missing – default to not allowing future attendance
+      throw new FutureAttendanceError('Future attendance is not enabled for this department.');
+    }
+    console.error('Error checking future attendance setting', error);
+    throw new FutureAttendanceError('Future attendance is not enabled for this department.');
+  }
+
+  const allowed = (data as { allow_future_attendance?: boolean } | null)?.allow_future_attendance === true;
+  if (!allowed) {
+    throw new FutureAttendanceError('Future attendance is not enabled for this department.');
+  }
+}
+
 async function trackAttendance(
   supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
   attendance_id: string,
@@ -281,7 +332,8 @@ interface AttendanceProject {
     overtime_hours: number;
     overtime_rate: number;
 }
-  
+
+const MAX_FUTURE_DAYS = 10;
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -293,6 +345,8 @@ export async function POST(request: Request) {
       const supabase = createSupabaseServerComponentClient();
       const targetDate = payload.date.includes('T') ? payload.date.split('T')[0] : payload.date;
       const department = payload.department;
+
+      await ensureFutureAttendanceAllowed(supabase, department, targetDate, MAX_FUTURE_DAYS);
 
       const { data: existingTrack } = await supabase
         .from('Track_Attendance')
@@ -385,6 +439,9 @@ export async function POST(request: Request) {
         isEdit,
       });
     } catch (err) {
+      if (err instanceof FutureAttendanceError) {
+        return NextResponse.json({ error: err.message }, { status: 403 });
+      }
       console.error('Simplified attendance submit error', err);
       return NextResponse.json(
         { error: 'Error submitting attendance', details: String(err) },
@@ -421,6 +478,9 @@ export async function POST(request: Request) {
     let tracker_attend: number | null = null;
     const rawDate = selectedDate || new Date().toISOString().split('T')[0];
     const targetDate = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
+
+    await ensureFutureAttendanceAllowed(supabase, department, targetDate, MAX_FUTURE_DAYS);
+
     const submittedEmployees: string[] = [];
     const skippedEmployees: string[] = [];
 
@@ -613,6 +673,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(payload);
   } catch (error) {
+    if (error instanceof FutureAttendanceError) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return NextResponse.json({ error: 'Error submitting attendance', details: error }, { status: 500 });
   }
 }

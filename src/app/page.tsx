@@ -4,6 +4,7 @@ import { useHomeAuth } from './hooks/useHomeAuth';
 import { useHomePageState } from './hooks/useHomePageState';
 import { useHomeSubmit } from './hooks/useHomeSubmit';
 import { useDepartmentTheme } from './hooks/useDepartmentTheme';
+import { useDepartmentFutureAttendance } from './hooks/useDepartmentFutureAttendance';
 import { HomeHeader } from './components/home/HomeHeader';
 import { HomeDepartmentDate } from './components/home/HomeDepartmentDate';
 import { HomeAttendanceBanner } from './components/home/HomeAttendanceBanner';
@@ -17,6 +18,7 @@ export default function Home() {
   const { userDisplay, userDepartment, handleLogout } = useHomeAuth();
   const theme = useDepartmentTheme(userDepartment);
   const state = useHomePageState();
+  const { allowFutureAttendance, maxFutureDays } = useDepartmentFutureAttendance(state.departmentForFetch);
   const submit = useHomeSubmit({
     employeeList: state.employeeList,
     selectedDepartment: state.selectedDepartment,
@@ -70,6 +72,8 @@ export default function Home() {
           setUserHasUnlocked={state.setUserHasUnlocked}
           DEPARTMENTS={state.DEPARTMENTS}
           theme={theme}
+          allowFutureAttendance={allowFutureAttendance}
+          maxFutureDays={maxFutureDays}
         />
         <HomeAttendanceBanner
           selectedDepartment={state.selectedDepartment}

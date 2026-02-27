@@ -5,6 +5,7 @@ export interface Department {
   id: string;
   name: string;
   theme_id?: string | null;
+  allow_future_attendance?: boolean | null;
   created_at?: string;
 }
 
@@ -13,7 +14,7 @@ export async function fetchDepartmentsService(): Promise<Department[]> {
 
   const { data: dataWithTheme, error: errorWithTheme } = await supabase
     .from('departments')
-    .select('id, name, theme_id, created_at')
+    .select('id, name, theme_id, allow_future_attendance, created_at')
     .order('name');
 
   if (!errorWithTheme) {
@@ -30,16 +31,27 @@ export async function fetchDepartmentsService(): Promise<Department[]> {
 
 export async function createDepartmentService(
   name: string,
-  themeId: DepartmentThemeId = 'default'
+  themeId: DepartmentThemeId = 'default',
+  allowFutureAttendance: boolean = false
 ): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = name.trim();
   if (!trimmed) throw new Error('Department name is required');
 
-  const { error } = await supabase.from('departments').insert({ name: trimmed, theme_id: themeId });
+  const { error } = await supabase
+    .from('departments')
+    .insert({ name: trimmed, theme_id: themeId, allow_future_attendance: allowFutureAttendance });
   if (!error) return;
 
-  const colMissing = error.message?.includes('theme_id') || error.code === '42703';
+  const msg = error.message || '';
+
+  if (msg.includes('allow_future_attendance')) {
+    throw new Error(
+      'Future attendance setting could not be saved. Add the allow_future_attendance column: run the migration in supabase/migrations/add_department_allow_future_attendance.sql in the Supabase SQL editor.'
+    );
+  }
+
+  const colMissing = msg.includes('theme_id') || error.code === '42703';
   if (colMissing) {
     const { error: err2 } = await supabase.from('departments').insert({ name: trimmed });
     if (err2) throw err2;
@@ -52,7 +64,8 @@ export async function updateDepartmentService(
   id: string,
   oldName: string,
   newName: string,
-  themeId?: DepartmentThemeId
+  themeId?: DepartmentThemeId,
+  allowFutureAttendance?: boolean
 ): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = newName.trim();
@@ -68,13 +81,26 @@ export async function updateDepartmentService(
     if (rpcError) throw rpcError;
   }
 
+  const updates: Record<string, unknown> = {};
   if (themeId !== undefined) {
+    updates.theme_id = themeId;
+  }
+  if (allowFutureAttendance !== undefined) {
+    updates.allow_future_attendance = allowFutureAttendance;
+  }
+
+  if (Object.keys(updates).length > 0) {
     const { error: updateError } = await supabase
       .from('departments')
-      .update({ theme_id: themeId })
+      .update(updates)
       .eq('id', id);
     if (updateError) {
       const msg = updateError.message || '';
+      if (msg.includes('allow_future_attendance')) {
+        throw new Error(
+          'Future attendance setting could not be saved. Add the allow_future_attendance column: run the migration in supabase/migrations/add_department_allow_future_attendance.sql in the Supabase SQL editor.'
+        );
+      }
       if (msg.includes('theme_id') || updateError.code === '42703') {
         throw new Error(
           'Theme could not be saved. Add the theme_id column: run the migration in supabase/migrations/add_department_theme_id.sql in the Supabase SQL editor.'

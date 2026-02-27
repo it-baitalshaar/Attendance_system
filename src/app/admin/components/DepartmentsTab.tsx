@@ -11,8 +11,14 @@ interface DepartmentsTabProps {
   loading: boolean;
   message: string;
   messageType: 'success' | 'error';
-  onAddDepartment: (name: string, themeId: DepartmentThemeId) => Promise<void>;
-  onUpdateDepartment: (id: string, oldName: string, newName: string, themeId?: DepartmentThemeId) => Promise<void>;
+  onAddDepartment: (name: string, themeId: DepartmentThemeId, allowFutureAttendance: boolean) => Promise<void>;
+  onUpdateDepartment: (
+    id: string,
+    oldName: string,
+    newName: string,
+    themeId?: DepartmentThemeId,
+    allowFutureAttendance?: boolean
+  ) => Promise<void>;
   onDeleteDepartment: (id: string, name: string, confirmName: string) => Promise<void>;
   onClearMessage: () => void;
 }
@@ -29,9 +35,11 @@ export function DepartmentsTab({
 }: DepartmentsTabProps) {
   const [newName, setNewName] = useState('');
   const [newThemeId, setNewThemeId] = useState<DepartmentThemeId>('default');
+  const [newAllowFutureAttendance, setNewAllowFutureAttendance] = useState(false);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [editName, setEditName] = useState('');
   const [editThemeId, setEditThemeId] = useState<DepartmentThemeId>('default');
+  const [editAllowFutureAttendance, setEditAllowFutureAttendance] = useState(false);
   const [deletingDept, setDeletingDept] = useState<Department | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
   const [employeeCounts, setEmployeeCounts] = useState<Record<string, number>>({});
@@ -53,6 +61,7 @@ export function DepartmentsTab({
     setEditingDept(d);
     setEditName(d.name);
     setEditThemeId((d.theme_id as DepartmentThemeId) || 'default');
+    setEditAllowFutureAttendance(Boolean(d.allow_future_attendance));
     onClearMessage();
   };
 
@@ -67,9 +76,10 @@ export function DepartmentsTab({
     if (!newName.trim()) return;
     setSubmitting(true);
     try {
-      await onAddDepartment(newName.trim(), newThemeId);
+      await onAddDepartment(newName.trim(), newThemeId, newAllowFutureAttendance);
       setNewName('');
       setNewThemeId('default');
+      setNewAllowFutureAttendance(false);
     } finally {
       setSubmitting(false);
     }
@@ -80,7 +90,9 @@ export function DepartmentsTab({
     if (!editingDept || !editName.trim()) return;
     const nameUnchanged = editName.trim() === editingDept.name;
     const themeUnchanged = (editThemeId || 'default') === (editingDept.theme_id || 'default');
-    if (nameUnchanged && themeUnchanged) {
+    const futureUnchanged =
+      Boolean(editAllowFutureAttendance) === Boolean(editingDept.allow_future_attendance);
+    if (nameUnchanged && themeUnchanged && futureUnchanged) {
       setEditingDept(null);
       return;
     }
@@ -90,7 +102,8 @@ export function DepartmentsTab({
         editingDept.id,
         editingDept.name,
         editName.trim(),
-        editThemeId
+        editThemeId,
+        editAllowFutureAttendance
       );
       setEditingDept(null);
     } finally {
@@ -141,6 +154,17 @@ export function DepartmentsTab({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="flex items-center gap-2 min-w-[220px]">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={newAllowFutureAttendance}
+                onChange={(e) => setNewAllowFutureAttendance(e.target.checked)}
+                className="rounded"
+              />
+              <span>Allow future attendance (up to 10 days)</span>
+            </label>
           </div>
           <button
             type="submit"
@@ -262,6 +286,20 @@ export function DepartmentsTab({
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
                     Users in this department will see this theme when they log in.
+                  </p>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={editAllowFutureAttendance}
+                      onChange={(e) => setEditAllowFutureAttendance(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span>Allow future attendance (up to 10 days)</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    When enabled, supervisors can submit attendance up to 10 days in advance for this department.
                   </p>
                 </div>
               </div>

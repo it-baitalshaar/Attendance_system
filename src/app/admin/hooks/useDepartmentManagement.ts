@@ -32,10 +32,14 @@ export function useDepartmentManagement() {
     loadDepartments();
   }, [loadDepartments]);
 
-  const addDepartment = async (name: string, themeId: DepartmentThemeId = 'default') => {
+  const addDepartment = async (
+    name: string,
+    themeId: DepartmentThemeId = 'default',
+    allowFutureAttendance: boolean = false
+  ) => {
     setMessage('');
     try {
-      await createDepartmentService(name, themeId);
+      await createDepartmentService(name, themeId, allowFutureAttendance);
       setMessage('Department created successfully');
       setMessageType('success');
       await loadDepartments();
@@ -49,11 +53,12 @@ export function useDepartmentManagement() {
     id: string,
     oldName: string,
     newName: string,
-    themeId?: DepartmentThemeId
+    themeId?: DepartmentThemeId,
+    allowFutureAttendance?: boolean
   ) => {
     setMessage('');
     try {
-      await updateDepartmentService(id, oldName, newName, themeId);
+      await updateDepartmentService(id, oldName, newName, themeId, allowFutureAttendance);
       setMessage('Department updated successfully');
       setMessageType('success');
       await loadDepartments();

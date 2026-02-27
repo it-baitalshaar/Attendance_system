@@ -9,6 +9,8 @@ interface HomeDepartmentDateProps {
   setUserHasUnlocked: (v: boolean) => void;
   DEPARTMENTS: readonly { value: string; label: string }[];
   theme?: DepartmentTheme;
+  allowFutureAttendance?: boolean;
+  maxFutureDays?: number;
 }
 
 export function HomeDepartmentDate({
@@ -19,6 +21,8 @@ export function HomeDepartmentDate({
   setUserHasUnlocked,
   DEPARTMENTS,
   theme,
+  allowFutureAttendance,
+  maxFutureDays,
 }: HomeDepartmentDateProps) {
   const isSaqiya = theme?.id === 'saqiya';
   const label =
@@ -46,8 +50,14 @@ export function HomeDepartmentDate({
           setUserHasUnlocked(false);
           setSelectedDate(next);
         }}
+        allowFutureDays={allowFutureAttendance ? maxFutureDays : 0}
         className="flex items-center gap-2"
       />
+      {allowFutureAttendance && maxFutureDays && maxFutureDays > 0 && (
+        <p className="w-full text-center text-xs sm:text-sm text-gray-600 mt-1">
+          Future attendance is enabled for this department (up to {maxFutureDays} days ahead).
+        </p>
+      )}
     </div>
   );
 }
