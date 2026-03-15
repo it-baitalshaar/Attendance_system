@@ -10,7 +10,7 @@ import {
 } from '../services/profileService';
 import { isSuperUserEmail } from '../constants';
 
-type AdminTab = 'employees' | 'departments' | 'projects' | 'users' | 'attendance' | 'profile' | 'reports' | 'reminders';
+type AdminTab = 'employees' | 'officeEmployees' | 'departments' | 'projects' | 'users' | 'attendance' | 'profile' | 'reports' | 'reminders';
 
 export function useAdminAuth(initialTab: AdminTab = 'employees') {
   const router = useRouter();

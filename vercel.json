@@ -1,0 +1,9 @@
+{
+  "crons": [
+    {
+      "path": "/api/office/biotime/sync",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
+

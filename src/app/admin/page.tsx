@@ -12,6 +12,7 @@ import { AttendanceTab } from './components/AttendanceTab';
 import { ReportsTab } from './components/ReportsTab';
 import { ProfileTab } from './components/ProfileTab';
 import { RemindersTab } from './components/RemindersTab';
+import { OfficeEmployeesTab } from './components/OfficeEmployeesTab';
 import { useEmployeeManagement } from './hooks/useEmployeeManagement';
 import { useAttendanceDashboard } from './hooks/useAttendanceDashboard';
 import { useLeaveReportDashboard } from './hooks/useLeaveReportDashboard';
@@ -20,7 +21,7 @@ import { useUserManagement } from './hooks/useUserManagement';
 import { useDepartmentManagement } from './hooks/useDepartmentManagement';
 import { useProjectManagement } from './hooks/useProjectManagement';
 
-const VALID_TABS = ['employees', 'departments', 'projects', 'users', 'attendance', 'reports', 'reminders', 'profile'] as const;
+const VALID_TABS = ['employees', 'officeEmployees', 'departments', 'projects', 'users', 'attendance', 'reports', 'reminders', 'profile'] as const;
 
 function AdminPageContent() {
   const searchParams = useSearchParams();
@@ -174,6 +175,8 @@ function AdminPageContent() {
           onUpdateEmployee={handleUpdateEmployee}
         />
       )}
+
+      {activeTab === 'officeEmployees' && <OfficeEmployeesTab />}
 
       {activeTab === 'departments' && (
         <DepartmentsTab
