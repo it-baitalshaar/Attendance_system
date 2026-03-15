@@ -84,7 +84,12 @@ export function useOfficeEmployeesRealtime() {
         return;
       }
       setEmployees((empRes.data ?? []) as OfficeEmployeeRow[]);
-      setAttendanceToday((attRes.data ?? []) as OfficeAttendanceRow[]);
+      const rawAttendance = (attRes.data ?? []) as Array<Omit<OfficeAttendanceRow, 'office_employees'> & { office_employees?: OfficeAttendanceRow['office_employees'] | Array<{ employee_code: string; name: string; department: string }> }>;
+      const normalized: OfficeAttendanceRow[] = rawAttendance.map((row) => ({
+        ...row,
+        office_employees: Array.isArray(row.office_employees) ? row.office_employees[0] ?? null : row.office_employees ?? null,
+      }));
+      setAttendanceToday(normalized);
       setLoading(false);
     }
 
@@ -129,7 +134,14 @@ export function useOfficeEmployeesRealtime() {
               )
               .eq('id', full.id)
               .single();
-            if (mounted && data) setAttendanceToday((prev) => upsertAttendanceById(prev, data as OfficeAttendanceRow));
+            if (mounted && data) {
+              const d = data as typeof data & { office_employees?: OfficeAttendanceRow['office_employees'] | Array<{ employee_code: string; name: string; department: string }> };
+              const normalized: OfficeAttendanceRow = {
+                ...d,
+                office_employees: Array.isArray(d?.office_employees) ? d.office_employees[0] ?? null : d?.office_employees ?? null,
+              };
+              setAttendanceToday((prev) => upsertAttendanceById(prev, normalized));
+            }
           } else if (event === 'DELETE') {
             const id = (payload.old as { id?: string })?.id;
             if (!id) return;

@@ -101,9 +101,8 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
     getProjects();
   }, [input_index, employee1]);
 
-  // // console.log("this os th",left_Hours)
+  const hoursAtInputIndex = employee1?.projects?.projectId?.[input_index]?.hours;
   useEffect(() => {
-    console.log("thbkjbkjbkjsbkjavdjv")
     const project = employee1?.projects?.projectId?.[input_index]; // Safely access the project
     // console.log("the field Effect ", project?.hours, input_index)
     if (project && project.hours === -1) {
@@ -145,75 +144,54 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
       // }
       // console.log("This is the field", input_index, project.hours, change_total);
     }
-  }, [employee1?.projects?.projectId?.[input_index]?.hours]);
-
-  useEffect(()=>{
-    // const the_employee = employees_statis.find(employee1 => employee1.employee_id)
-    // console.log("from the useeffect ",the_employee?.employee_status![0])
-    if (employee1?.employee_status![0].status_attendance === 'present')
-    {
-      // console.log("insdie first condition ", the_employee?.employee_status![0].status_employee )
-      if (employee1?.employee_status![0].status_employee !== 'Present')
-      {
-        console.log("inside the anohter condition ")
-        setOvertimeInput(true)
-      }
-      showHours(employee1?.employee_status![0].status_employee)
-      console.log("this is the showhours value ", show_H)
-    }
-    console.log("this is the in useeffect employeeid", employee1?.employee_status![0])
-  },[employee1?.employee_id])
+    // employee1.projects omitted to avoid re-running on every project list change; effect only needs hours at this index.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoursAtInputIndex, dispatch, employee_id, input_index, totalProjects]);
 
   useEffect(() => {
-    const hasProject = employee1?.projects?.projectId?.[input_index]?.projectName?.length;
+    const status = employee1?.employee_status?.[0];
+    if (!status) return;
+    if (status.status_attendance === 'present') {
+      if (status.status_employee !== 'Present') {
+        setOvertimeInput(true);
+      }
+      showHours(status.status_employee ?? null);
+    }
+    // Re-run when employee or their status changes; omit show_H to avoid feedback loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee1?.employee_id, employee1?.employee_status]);
+
+  const projectNameAtIdx = employee1?.projects?.projectId?.[input_index]?.projectName;
+  useEffect(() => {
+    const hasProject = projectNameAtIdx?.length;
     if (hasProject) setOvertimeInput(true);
-  }, [employee1?.projects?.projectId?.[input_index]?.projectName, input_index]);
+  }, [projectNameAtIdx, input_index]);
 
   useEffect(() => {
-
     if (input_index + 1 === totalProjects)
-      setOvertimeInput(true)
+      setOvertimeInput(true);
     if (totalProjects === 1) {
-      setHours(8)
-      return ;
+      setHours(8);
+      return;
     }
-    // if (atten_status[0].employee_status === 'half-day')
-    // {
-    //   const newHours = Array.from({ length: 4 }, (_, i) => i + 1);
-    //   setHours(newHours);
-    // }
-    else 
-    {
-      if (input_index === 0)
-      {
-        const newHours = Array.from({ length: (8 - totalProjects) + 1 }, (_, i) => i + 1);
+    if (input_index === 0) {
+      const newHours = Array.from({ length: (8 - totalProjects) + 1 }, (_, i) => i + 1);
+      setHours(newHours);
+    } else {
+      const tthour = employee1?.projects?.tthour ?? 0;
+      if (input_index + 1 === totalProjects) {
+        setHours(8 - tthour);
+      } else {
+        const reach = 8 - tthour;
+        const newHours = Array.from({ length: reach - 1 }, (_, i) => i + 1);
         setHours(newHours);
-      }
-      else{
-        // console.log("this is the selected ", left_Hours + remaining)
-        // console.log(8 - remaining)
-  
-          if (input_index + 1 ===  totalProjects)
-          {
-            // console.log("this is the input index",employee1!.projects!.tthour) 
-            let reach = 8 - employee1!.projects!.tthour
-            setHours(reach);  
-          }
-          else
-          {
-            let reach = 8 - employee1!.projects!.tthour
-            const newHours = Array.from({ length: reach - 1 }, (_, i) => i + 1);
-            setHours(newHours);
-          }
       }
     }
 
     return () => {
-
       console.log('Component is being unmounted or cleaned up.');
-    }
-
-  }, []);
+    };
+  }, [input_index, totalProjects, employee1?.projects?.tthour]);
   // useEffect(() => {
 
   //   return () => {

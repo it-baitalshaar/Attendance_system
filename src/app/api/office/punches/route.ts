@@ -54,8 +54,8 @@ export async function GET(request: Request) {
     return Number.isNaN(d.getTime()) ? fallback.toISOString() : d.toISOString();
   }
 
-  const startIso = toStartOfDayISO(startParam, defaultStart);
-  const endIso = toEndOfDayISO(endParam, defaultEnd);
+  const startIso = toStartOfDayISO(startParam ?? null, defaultStart);
+  const endIso = toEndOfDayISO(endParam ?? null, defaultEnd);
 
   if (startIso > endIso) {
     return NextResponse.json({ error: 'Start must be before or equal to end' }, { status: 400 });
@@ -85,15 +85,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  type Emp = { employee_code: string; name: string; department: string };
   type Row = {
     employee_id: string;
     action: string;
     timestamp: string;
-    office_employees: { employee_code: string; name: string; department: string } | null;
+    office_employees?: Emp | Emp[] | null;
   };
 
   const punches = (rows ?? []).map((r: Row) => {
-    const emp = r.office_employees ?? { employee_code: '', name: 'Unknown', department: '' };
+    const raw = r.office_employees;
+    const emp: Emp = Array.isArray(raw) ? (raw[0] ?? { employee_code: '', name: 'Unknown', department: '' }) : (raw ?? { employee_code: '', name: 'Unknown', department: '' });
     return {
       employeeId: r.employee_id,
       employee_code: emp.employee_code,

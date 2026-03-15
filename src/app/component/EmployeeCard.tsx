@@ -80,15 +80,17 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   const left_Hours = useSelector((state: RootState) =>
     state.project.leftHours
   );
+  const department = useSelector((state: RootState) => state.project.department);
 
-  
   useEffect(() => {
     if (department === 'Construction') {
       handleStandarChange('standard');
     } else {
       setIsStandar(false);
     }
-  }, []);
+    // Run on mount and when department changes; handleStandarChange omitted to avoid stale closure / extra runs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [department]);
 
   // Sync from server/parent: when initialStatus/initialNotes are provided, keep card state and Redux in sync.
   // When absent, do NOT overwrite status_employee here so the "Reason for Absence" dropdown value is preserved.
@@ -445,8 +447,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     state.project.totalProjects
   );
 
-  
-  const department = useSelector((state: RootState) => state.project.department);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce() hides callback deps; dispatch is stable
   const debouncedDispatch = useCallback(
     debounce((emp: Employee, isHoldVal: boolean, absenceReasonVal: string, newNotes: string) => {
       if (isHoldVal || (absenceReasonVal === 'Absence with excuse' || absenceReasonVal === 'Absence without excuse')) {

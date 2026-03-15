@@ -144,8 +144,7 @@ console.log("this is the employee _id" , employee_id)
   }, [input_index, employee1]);
 
 
-  // // // // console.log("this os th",left_Hours)
-  // console.log("this is the status ", atten_status)
+  const hoursAtInputIndex = employee1?.projects?.projectId?.[input_index]?.hours;
   useEffect(() => {
     const project = employee1?.projects?.projectId?.[input_index]; // Safely access the project
     // // // console.log("the field Effect ", project?.hours, input_index)
@@ -181,24 +180,21 @@ console.log("this is the employee _id" , employee_id)
       }
       // // // console.log("This is the field", input_index, project.hours, change_total);
     }
-  }, [employee1?.projects?.projectId?.[input_index]?.hours]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- narrow deps intentional; omit employee1.projects to avoid extra runs
+  }, [hoursAtInputIndex]);
   
-  useEffect(()=>{
-    // const the_employee = employees_statis.find(employee1 => employee1.employee_id)
-    // console.log("from the useeffect ",the_employee?.employee_status![0])
-    if (employee1?.employee_status![0].status_attendance === 'present')
+  useEffect(() => {
+    const status = employee1?.employee_status?.[0];
+    if (!status) return;
+    if (status.status_attendance === 'present')
     {
-      // console.log("insdie first condition ", the_employee?.employee_status![0].status_employee )
-      if (employee1?.employee_status![0].status_employee !== 'Present')
-      {
-        console.log("inside the anohter condition ")
-        setOvertimeInput(true)
+      if (status.status_employee !== 'Present') {
+        setOvertimeInput(true);
       }
-      showHours(employee1?.employee_status![0].status_employee)
-      console.log("this is the showhours value ", show_H)
+      showHours(status.status_employee ?? null);
     }
-    console.log("this is the in useeffect employeeid", employee1?.employee_status![0])
-  },[employee1?.employee_id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- omit show_H to avoid feedback loop
+  }, [employee1?.employee_id, employee1?.employee_status]);
 
   useEffect(() => {
     
@@ -251,7 +247,8 @@ console.log("this is the employee _id" , employee_id)
           setHours(newHours);
         }
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- init on mount; deps omitted to run once
+  }, [input_index, totalProjects, employee1?.projects?.tthour]);
 
 
   const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>, index: number) => {

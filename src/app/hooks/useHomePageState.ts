@@ -70,6 +70,8 @@ export function useHomePageState() {
       setLoading(false);
       loadAttendance(selectedDate, departmentForFetch, list);
     });
+  // loadAttendance omitted to avoid re-run loop; it's stable per selectedDepartment/departmentForFetch/selectedDate.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDepartment, departmentForFetch, dispatch, selectedDate]);
 
   useEffect(() => {

@@ -72,20 +72,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  type Emp = { id: string; name: string; department: string };
   type Row = {
     employee_id: string;
     date: string;
     worked_hours: number | null;
-    office_employees: { id: string; name: string; department: string } | null;
+    office_employees?: Emp | Emp[] | null;
   };
 
   const byEmployee = new Map<
     string,
-    { employee: { id: string; name: string; department: string }; daily: Record<string, number>; total: number }
+    { employee: Emp; daily: Record<string, number>; total: number }
   >();
 
-  for (const r of (rows ?? []) as Row[]) {
-    const emp = r.office_employees ?? { id: r.employee_id, name: 'Unknown', department: '' };
+  const rawRows = (rows ?? []) as Row[];
+  for (const r of rawRows) {
+    const raw = r.office_employees;
+    const emp: Emp = Array.isArray(raw) ? (raw[0] ?? { id: r.employee_id, name: 'Unknown', department: '' }) : (raw ?? { id: r.employee_id, name: 'Unknown', department: '' });
     const key = r.employee_id;
     if (!byEmployee.has(key)) {
       byEmployee.set(key, { employee: emp, daily: {}, total: 0 });
