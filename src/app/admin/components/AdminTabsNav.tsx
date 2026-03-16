@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-type AdminTab = 'employees' | 'officeEmployees' | 'departments' | 'projects' | 'users' | 'attendance' | 'reports' | 'reminders' | 'profile';
+type AdminTab = 'employees' | 'officeEmployees' | 'departments' | 'projects' | 'users' | 'attendance' | 'reports' | 'reminders' | 'officeReport' | 'profile';
 
 interface AdminTabsNavProps {
   activeTab?: AdminTab;
@@ -43,6 +43,7 @@ export function AdminTabsNav({ activeTab = 'employees', onTabChange, isSuperUser
       <Tab tab="attendance" label="Attendance Records" />
       <Tab tab="reports" label="Reports" />
       <Tab tab="reminders" label="Attendance Reminders" />
+      <Tab tab="officeReport" label="Office Report Settings" />
       <Tab tab="profile" label="My Profile" />
     </div>
   );

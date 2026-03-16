@@ -63,7 +63,7 @@ export async function GET(request: Request) {
 
   const { data: rows, error } = await supabase
     .from('office_attendance')
-    .select('id, employee_id, date, check_in, check_out, worked_hours, office_employees(id, name, department)')
+    .select('id, employee_id, date, check_in, check_out, worked_hours, office_employees(id, employee_code, name, department)')
     .gte('date', start)
     .lte('date', end)
     .order('date', { ascending: true });
@@ -72,35 +72,49 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  type Emp = { id: string; name: string; department: string };
+  type Emp = { id: string; employee_code: string; name: string; department: string };
   type Row = {
     employee_id: string;
     date: string;
+    check_in: string | null;
+    check_out: string | null;
     worked_hours: number | null;
     office_employees?: Emp | Emp[] | null;
   };
 
+  type DayEntry = { checkIn: string | null; checkOut: string | null; hours: number };
   const byEmployee = new Map<
     string,
-    { employee: Emp; daily: Record<string, number>; total: number }
+    { employee: Emp; daily: Record<string, DayEntry>; total: number }
   >();
 
   const rawRows = (rows ?? []) as Row[];
   for (const r of rawRows) {
     const raw = r.office_employees;
-    const emp: Emp = Array.isArray(raw) ? (raw[0] ?? { id: r.employee_id, name: 'Unknown', department: '' }) : (raw ?? { id: r.employee_id, name: 'Unknown', department: '' });
+    const emp: Emp = Array.isArray(raw)
+      ? (raw[0] ?? { id: r.employee_id, employee_code: '', name: 'Unknown', department: '' })
+      : (raw ?? { id: r.employee_id, employee_code: '', name: 'Unknown', department: '' });
     const key = r.employee_id;
     if (!byEmployee.has(key)) {
       byEmployee.set(key, { employee: emp, daily: {}, total: 0 });
     }
     const rec = byEmployee.get(key)!;
     const hours = Number(r.worked_hours) || 0;
-    rec.daily[r.date] = hours;
+    rec.daily[r.date] = {
+      checkIn: r.check_in ?? null,
+      checkOut: r.check_out ?? null,
+      hours,
+    };
     rec.total += hours;
   }
 
   const results = Array.from(byEmployee.values()).map(({ employee, daily, total }) => ({
-    employee: { id: employee.id, name: employee.name, department: employee.department },
+    employee: {
+      id: employee.id,
+      employee_code: employee.employee_code ?? '',
+      name: employee.name,
+      department: employee.department,
+    },
     daily,
     monthlyTotal: Math.round(total * 100) / 100,
   }));
