@@ -5,7 +5,17 @@ import {
   fetchLeaveReportService,
 } from '../services/reportService';
 
-type AdminTab = 'employees' | 'officeEmployees' | 'departments' | 'projects' | 'users' | 'attendance' | 'profile' | 'reports' | 'reminders';
+type AdminTab =
+  'employees'
+  | 'officeEmployees'
+  | 'departments'
+  | 'projects'
+  | 'users'
+  | 'attendance'
+  | 'profile'
+  | 'reports'
+  | 'reminders'
+  | 'officeReport';
 
 export function useLeaveReportDashboard(activeTab: AdminTab) {
   const [leaveReport, setLeaveReport] = useState<LeaveReportRow[]>([]);
