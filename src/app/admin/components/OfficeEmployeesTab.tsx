@@ -421,25 +421,29 @@ export function OfficeEmployeesTab() {
     setSendingReportId(employeeId);
     setReportSendStatus(null);
     try {
-      const res = await fetch('/api/office/send-employee-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId }),
-        credentials: 'include',
+      const { data, error } = await supabase.functions.invoke('send-office-employee-report', {
+        body: { employeeId },
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setReportSendStatus({ id: employeeId, msg: 'Report sent.' });
-        setTimeout(() => setReportSendStatus(null), 3000);
+      if (error) {
+        const msg = (error as { message?: string })?.message ?? 'Failed to send';
+        setReportSendStatus({ id: employeeId, msg });
       } else {
-        setReportSendStatus({ id: employeeId, msg: data?.error ?? 'Failed to send' });
+        const ok = (data as { ok?: boolean })?.ok ?? true;
+        if (ok) {
+          setReportSendStatus({ id: employeeId, msg: 'Report sent.' });
+          setTimeout(() => setReportSendStatus(null), 3000);
+        } else {
+          const errMsg = (data as { error?: string })?.error ?? 'Failed to send';
+          setReportSendStatus({ id: employeeId, msg: errMsg });
+        }
       }
-    } catch {
-      setReportSendStatus({ id: employeeId, msg: 'Request failed' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Request failed';
+      setReportSendStatus({ id: employeeId, msg });
     } finally {
       setSendingReportId(null);
     }
-  }, []);
+  }, [supabase]);
 
   const saveEdit = useCallback(async () => {
     if (!editEmployee) return;

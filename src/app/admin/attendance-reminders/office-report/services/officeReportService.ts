@@ -78,17 +78,12 @@ export async function updateOfficeReportTime(
 export async function sendTestOfficeReport(
   department: OfficeReportDepartmentKey
 ): Promise<{ sent?: number; reason?: string; error?: unknown }> {
-  const res = await fetch('/api/office/send-daily-report', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ department }),
-    credentials: 'include',
+  const supabase = createSupabbaseFrontendClient();
+  const { data, error } = await supabase.functions.invoke('send-office-daily-report', {
+    body: { department },
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { error: data?.error ?? 'Request failed', reason: data?.errors?.join?.(', ') };
-  }
-  const sent = data.sent;
-  const reason = data.errors?.length ? data.errors.join('; ') : undefined;
+  if (error) return { error };
+  const sent = (data as { sent?: number })?.sent;
+  const reason = (data as { reason?: string })?.reason;
   return { sent, reason };
 }
