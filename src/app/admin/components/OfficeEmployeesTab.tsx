@@ -168,7 +168,6 @@ function downloadReportAsPDF(
         ...dateColumnStyles,
         [head.length - 1]: { cellWidth: 12 },
       },
-      minCellHeight: 7,
     });
 
     const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY ?? 18;
