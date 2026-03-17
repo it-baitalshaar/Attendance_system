@@ -116,18 +116,29 @@ async function main() {
 
   if (empErr) throw new Error(`Failed loading office_employees: ${empErr.message}`);
 
+  function normalizeCode(code) {
+    return String(code || '').trim().replace(/\s+/g, '');
+  }
+
   const employeeIdByCode = new Map();
   (empRows || []).forEach((r) => {
-    if (r?.employee_code) employeeIdByCode.set(String(r.employee_code), String(r.id));
+    if (!r?.employee_code) return;
+    const raw = String(r.employee_code).trim();
+    const id = String(r.id);
+    employeeIdByCode.set(raw, id);
+    const norm = normalizeCode(raw);
+    if (norm !== raw) employeeIdByCode.set(norm, id);
   });
 
   let processed = 0;
   let skipped = 0;
   let unknownEmployees = 0;
+  let unknownCodes = [];
   let duplicates = 0;
 
   for (const tx of txs) {
-    const employeeCode = String(tx?.employee_code ?? '').trim();
+    const rawCode = String(tx?.employee_code ?? tx?.emp_code ?? tx?.code ?? tx?.pin ?? '').trim();
+    const employeeCode = rawCode || normalizeCode(tx?.employee_code ?? tx?.emp_code ?? tx?.code ?? tx?.pin);
     const punchTime = String(tx?.punch_time ?? '').trim();
     const punchState = tx?.punch_state;
 
@@ -136,9 +147,11 @@ async function main() {
       continue;
     }
 
-    const employeeId = employeeIdByCode.get(employeeCode);
+    let employeeId = employeeIdByCode.get(employeeCode);
+    if (!employeeId) employeeId = employeeIdByCode.get(normalizeCode(employeeCode));
     if (!employeeId) {
       unknownEmployees++;
+      if (unknownCodes.length < 15 && !unknownCodes.includes(employeeCode)) unknownCodes.push(employeeCode);
       continue;
     }
 
@@ -215,6 +228,9 @@ async function main() {
   console.log(
     `[office-biotime-sync] processed=${processed} skipped=${skipped} unknownEmployees=${unknownEmployees} duplicates=${duplicates}`
   );
+  if (unknownCodes.length > 0) {
+    console.log('[office-biotime-sync] unknown employee_code values from BioTime (check if they exist in office_employees):', unknownCodes.join(', '));
+  }
 }
 
 main()

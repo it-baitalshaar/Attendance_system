@@ -1,0 +1,18 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.99.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "sync": "node scripts/office-biotime-office-sync.js",
+    "sync:generic": "node scripts/office-biotime-sync.js",
+    "sync:office": "node scripts/office-biotime-office-sync.js",
+    "token": "node scripts/get-auth-token.js",
+    "report": "node scripts/report-departments.js"
+  }
+}

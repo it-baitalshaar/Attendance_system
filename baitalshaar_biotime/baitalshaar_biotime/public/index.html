@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BioTime Dashboard</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .section { background: white; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1, h2 { color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #f0f0f0; }
+    .status { padding: 0.5rem; border-radius: 4px; }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .loading { background: #fff3cd; color: #856404; }
+    button { padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    .controls { margin-bottom: 1rem; }
+    .summary { font-weight: bold; margin-top: 1rem; }
+    .muted { color: #666; font-size: 0.9rem; margin: 0.25rem 0 0.5rem 0; }
+    /* Monthly Report */
+    .section.report-section { border-left: 4px solid #0d6efd; }
+    .report-summary-bar {
+      display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center; margin-bottom: 1rem;
+      padding: 1rem 1.25rem; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius: 8px; border: 1px solid #dee2e6;
+    }
+    .report-summary-bar .report-period { font-size: 1rem; color: #495057; }
+    .report-summary-bar .report-period strong { color: #212529; }
+    .report-summary-bar .report-grand-total {
+      font-size: 1.25rem; font-weight: 700; color: #0d6efd; padding: 0.35rem 0.75rem;
+      background: rgba(13, 110, 253, 0.12); border-radius: 6px;
+    }
+    .report-summary-bar .report-count { font-size: 0.9rem; color: #6c757d; }
+    #reportTable { margin-top: 0; }
+    #reportTable thead th { background: #343a40; color: #fff; font-weight: 600; padding: 0.65rem 0.75rem; }
+    #reportTable thead th:nth-child(4) { text-align: right; }
+    #reportTable tbody tr:nth-child(even) { background: #f8f9fa; }
+    #reportTable tbody tr:hover { background: #e7f1ff; }
+    #reportTable tbody td { padding: 0.6rem 0.75rem; vertical-align: top; }
+    #reportTable tbody td.report-total { font-weight: 700; text-align: right; color: #0d6efd; white-space: nowrap; }
+    .report-daily-list {
+      display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; max-width: 100%; font-size: 0.8rem;
+      color: #495057; line-height: 1.4;
+    }
+    .report-daily-list span { white-space: nowrap; }
+    .report-daily-list .day-hrs { color: #0d6efd; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>BioTime Dashboard</h1>
+    <div class="controls">
+      <button id="refresh">Refresh All</button>
+      <button id="syncNow">Sync now (BioTime → Supabase)</button>
+      <button id="autoRefresh">Toggle Auto-Refresh (5min)</button>
+      <button id="loadEmployees">Load Employees Only</button>
+      <button id="importEmployees">Import Employees from BioTime</button>
+    </div>
+    <p id="cacheHint" class="muted" aria-live="polite"></p>
+
+    <div class="section">
+      <h2>Sync Status</h2>
+      <pre id="status" class="status loading">Loading...</pre>
+      <p id="syncHint" class="muted" style="margin-top: 0.5rem;"></p>
+    </div>
+
+    <div class="section">
+      <h2>Employees (<span id="empCount">0</span>)</h2>
+      <table id="employeesTable">
+        <thead>
+          <tr><th>Employee Code</th><th>Name</th><th>Department</th></tr>
+        </thead>
+        <tbody id="employeesBody">
+          <tr><td colspan="3">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Recent Punches (<span id="punchCount">0</span>)</h2>
+      <table id="punchesTable">
+        <thead>
+          <tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Datetime</th><th>Type</th></tr>
+        </thead>
+        <tbody id="punchesBody">
+          <tr><td colspan="5">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Live from BioTime (Real-Time Monitoring)</h2>
+      <p class="muted">Fetched directly from the device (last <span id="liveMinutes">60</span> min). Same data as BioTime Real-Time Monitoring view.</p>
+      <div class="controls">
+        <button id="fetchLive">Fetch now</button>
+        <label>Minutes: <input type="number" id="liveMinutesInput" min="5" max="1440" value="60" style="width:4rem" /></label>
+        <span id="liveStatus" class="muted"></span>
+      </div>
+      <table id="liveTable">
+        <thead>
+          <tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Time</th><th>Type</th></tr>
+        </thead>
+        <tbody id="liveBody">
+          <tr><td colspan="5">Click "Fetch now" to load recent punches from BioTime.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Last check-in / check-out (per employee)</h2>
+      <p class="muted">Latest punch per employee from synced data.</p>
+      <table id="lastAttendanceTable">
+        <thead>
+          <tr><th>Employee Code</th><th>Name</th><th>Department</th><th>Last check-in</th><th>Last check-out</th></tr>
+        </thead>
+        <tbody id="lastAttendanceBody">
+          <tr><td colspan="5">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Check-in / Check-out (by date)</h2>
+      <div class="controls">
+        <label>Date: <input type="date" id="attendanceDate" /></label>
+        <button id="loadAttendance">Load</button>
+      </div>
+      <p class="muted">No data? Run sync, then pick a date when punches occurred (see Recent Punches for dates).</p>
+      <p id="attendanceHint" class="muted" aria-live="polite"></p>
+      <table id="attendanceTable">
+        <thead>
+          <tr><th>Employee Code</th><th>Employee</th><th>Department</th><th>Check-in</th><th>Check-out</th><th>Hours</th></tr>
+        </thead>
+        <tbody id="attendanceBody">
+          <tr><td colspan="6">Pick a date and click Load</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section report-section">
+      <h2>Monthly Report</h2>
+      <div id="reportSummary" class="report-summary-bar" aria-live="polite">
+        <span class="report-period">Period: <strong id="reportPeriodText">—</strong></span>
+        <span class="report-grand-total" id="reportGrandTotal">0.00 h</span>
+        <span class="report-count" id="reportCountText">0 employees</span>
+      </div>
+      <table id="reportTable">
+        <thead>
+          <tr><th>Employee</th><th>Department</th><th>Daily Hours</th><th>Total Hours</th></tr>
+        </thead>
+        <tbody id="reportBody">
+          <tr><td colspan="4">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const CACHE_KEY = 'biotime_dash_cache';
+    const CACHE_ATTENDANCE_PREFIX = 'biotime_att_';
+    let autoRefreshInterval = null;
+
+    function getCache(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    }
+    function setCache(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (e) { console.warn('Cache write failed', e); }
+    }
+
+    async function fetchJsonSafe(url) {
+      try {
+        const r = await fetch(url);
+        const text = await r.text();
+        let json = null;
+        try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+        return { ok: r.ok, status: r.status, json, text };
+      } catch (err) {
+        return { ok: false, status: 0, json: null, text: String(err?.message || err) };
+      }
+    }
+
+    function applyData(stR, emR, punchesR, repR, lastR) {
+      const em = emR?.json;
+      const statusEl = document.getElementById('status');
+      const syncHintEl = document.getElementById('syncHint');
+      if (syncHintEl) syncHintEl.textContent = '';
+      if (stR?.ok && stR?.json) {
+        statusEl.textContent = JSON.stringify(stR.json, null, 2);
+        statusEl.className = 'status ' + (stR.json.success ? 'success' : 'error');
+        const stats = stR.json.stats;
+        if (stats && stats.unknown > 0 && stats.success === 0) {
+          if (syncHintEl) syncHintEl.textContent = '⚠️ All transactions were "unknown" — no employees matched. Click "Import Employees from BioTime" first, then run Sync again.';
+        } else if (stats && stats.success > 0) {
+          if (syncHintEl) syncHintEl.textContent = '✓ Data synced. Click "Refresh All" above if you don\'t see punches yet (clears cache and reloads from server).';
+        }
+      } else {
+        statusEl.textContent = stR ? `Error loading status (${stR.status})` : 'No data';
+        statusEl.className = 'status error';
+        const msg = (stR?.json?.message || '').toLowerCase();
+        if (msg && (msg.includes('fetch') || msg.includes('unreachable') || msg.includes('failed')) && syncHintEl) {
+          syncHintEl.textContent = '⚠️ Sync cannot reach BioTime — check BIOTIME_BASE_URL in .env, device is on and reachable, and network/firewall. Data below is from the last successful sync (no new 2026 data until sync succeeds).';
+        }
+      }
+
+      const empBody = document.getElementById('employeesBody');
+      empBody.innerHTML = '';
+      if (emR?.ok && Array.isArray(em)) {
+        em.forEach(e => {
+          const row = empBody.insertRow();
+          row.insertCell().textContent = e.employee_code ?? '';
+          row.insertCell().textContent = e.name ?? '';
+          row.insertCell().textContent = e.department ?? '';
+        });
+        document.getElementById('empCount').textContent = em.length;
+      } else {
+        empBody.innerHTML = '<tr><td colspan="3">No employees. Click Refresh All or Load Employees.</td></tr>';
+        document.getElementById('empCount').textContent = '0';
+      }
+
+      const punchBody = document.getElementById('punchesBody');
+      punchBody.innerHTML = '';
+      const punches = punchesR?.json;
+      const idToEmp = new Map();
+      if (emR?.ok && Array.isArray(em)) {
+        em.forEach(e => {
+          const k = e.id != null ? String(e.id).toLowerCase() : null;
+          if (k) idToEmp.set(k, { employee_code: e.employee_code, name: e.name, department: e.department });
+        });
+      }
+      if (punchesR?.ok && Array.isArray(punches)) {
+        punches.slice(0, 50).forEach(p => {
+          const row = punchBody.insertRow();
+          const fallback = p.employeeId ? idToEmp.get(String(p.employeeId).toLowerCase()) : null;
+          row.insertCell().textContent = p.employee_code ?? fallback?.employee_code ?? '—';
+          row.insertCell().textContent = p.name ?? fallback?.name ?? '—';
+          row.insertCell().textContent = p.department ?? fallback?.department ?? '—';
+          row.insertCell().textContent = p.datetime ? new Date(p.datetime).toLocaleString() : '';
+          row.insertCell().textContent = p.type ?? '';
+        });
+        document.getElementById('punchCount').textContent = punches.length;
+      } else {
+        punchBody.innerHTML = '<tr><td colspan="5">No punches. Click Refresh All.</td></tr>';
+        document.getElementById('punchCount').textContent = '0';
+      }
+
+      const lastBody = document.getElementById('lastAttendanceBody');
+      lastBody.innerHTML = '';
+      const lastList = lastR?.ok && lastR?.json?.last ? lastR.json.last : [];
+      if (lastList.length === 0) {
+        lastBody.innerHTML = '<tr><td colspan="5">No punch data yet. Run sync to pull from BioTime.</td></tr>';
+      } else {
+        lastList.forEach(a => {
+          const row = lastBody.insertRow();
+          row.insertCell().textContent = a.employee_code ?? '—';
+          row.insertCell().textContent = a.name ?? '—';
+          row.insertCell().textContent = a.department ?? '—';
+          row.insertCell().textContent = a.last_checkin ? new Date(a.last_checkin).toLocaleString() : '—';
+          row.insertCell().textContent = a.last_checkout ? new Date(a.last_checkout).toLocaleString() : '—';
+        });
+      }
+
+      const repBody = document.getElementById('reportBody');
+      repBody.innerHTML = '';
+      const periodEl = document.getElementById('reportPeriodText');
+      const grandEl = document.getElementById('reportGrandTotal');
+      const countEl = document.getElementById('reportCountText');
+      const rep = repR?.json;
+      const reportResults = Array.isArray(rep) ? rep : (rep && (rep.results ?? rep.data?.results)) || [];
+      const hasReportMeta = rep && (rep.start != null || rep.end != null || Array.isArray(rep.results));
+      if (repR?.ok && rep && hasReportMeta) {
+        const startStr = rep.start != null ? new Date(rep.start).toLocaleDateString() : '—';
+        const endStr = rep.end != null ? new Date(rep.end).toLocaleDateString() : '—';
+        const total = rep.grandTotal != null ? Number(rep.grandTotal) : 0;
+        if (periodEl) periodEl.textContent = startStr + ' – ' + endStr;
+        if (grandEl) grandEl.textContent = total.toFixed(2) + ' h';
+        if (countEl) countEl.textContent = reportResults.length + ' employee(s)';
+        if (reportResults.length === 0) {
+          repBody.innerHTML = '<tr><td colspan="4">No hours this month. Run sync so office_attendance has data.</td></tr>';
+        } else {
+          reportResults.forEach(r => {
+            const row = repBody.insertRow();
+            row.insertCell().textContent = r.employee?.name || '';
+            row.insertCell().textContent = r.employee?.department || '';
+            const dailyCell = row.insertCell();
+            const daily = r.daily || {};
+            const entries = Object.entries(daily).sort((a, b) => a[0].localeCompare(b[0]));
+            const listDiv = document.createElement('div');
+            listDiv.className = 'report-daily-list';
+            entries.forEach(([d, h]) => {
+              const span = document.createElement('span');
+              span.innerHTML = d + ': <span class="day-hrs">' + Number(h).toFixed(2) + 'h</span>';
+              listDiv.appendChild(span);
+            });
+            if (entries.length === 0) listDiv.textContent = '—';
+            dailyCell.appendChild(listDiv);
+            const totalCell = row.insertCell();
+            totalCell.className = 'report-total';
+            totalCell.textContent = r.monthlyTotal != null ? Number(r.monthlyTotal).toFixed(2) + ' h' : '0 h';
+          });
+        }
+      } else {
+        if (periodEl) periodEl.textContent = repR ? 'Error ' + repR.status : 'No data';
+        if (grandEl) grandEl.textContent = '—';
+        if (countEl) countEl.textContent = '';
+        repBody.innerHTML = '<tr><td colspan="4">No data</td></tr>';
+      }
+    }
+
+    function loadFromCache() {
+      const cache = getCache(CACHE_KEY);
+      if (!cache || !cache.savedAt) return false;
+      applyData(cache.status, cache.employees, cache.punches, cache.report, cache.last);
+      const hint = document.getElementById('cacheHint');
+      if (hint) hint.textContent = 'Showing cached data (saved ' + new Date(cache.savedAt).toLocaleString() + '). Click Refresh All to fetch latest.';
+      const date = document.getElementById('attendanceDate')?.value;
+      if (date && cache.attendanceByDate && cache.attendanceByDate[date]) {
+        applyAttendanceList(cache.attendanceByDate[date], date);
+      }
+      return true;
+    }
+
+    function applyAttendanceList(list, date) {
+      const body = document.getElementById('attendanceBody');
+      const hintEl = document.getElementById('attendanceHint');
+      body.innerHTML = '';
+      (list || []).forEach(a => {
+        const row = body.insertRow();
+        row.insertCell().textContent = a.employee_code ?? '';
+        row.insertCell().textContent = a.name ?? '';
+        row.insertCell().textContent = a.department ?? '';
+        row.insertCell().textContent = a.check_in ? new Date(a.check_in).toLocaleString() : '—';
+        row.insertCell().textContent = a.check_out ? new Date(a.check_out).toLocaleString() : '—';
+        row.insertCell().textContent = a.hours != null ? a.hours + 'h' : '—';
+      });
+      if ((list || []).length === 0) {
+        body.innerHTML = '<tr><td colspan="6">No records for this date. Run <strong>Sync now</strong>, then <strong>Refresh All</strong>. For dates from July 2025 onward, run a full sync once: set BIOTIME_FULL_SYNC=1 in .env, click Sync, then remove that line.</td></tr>';
+      }
+      if (hintEl) hintEl.textContent = 'Loaded ' + (list || []).length + ' record(s) for ' + date;
+    }
+
+    async function fetchData() {
+      const [stR, emR, punchesR, repR, lastR] = await Promise.all([
+        fetchJsonSafe('/status'),
+        fetchJsonSafe('/api/employees'),
+        fetchJsonSafe('/api/punches'),
+        fetchJsonSafe('/api/report'),
+        fetchJsonSafe('/api/attendance/last')
+      ]);
+      const cache = {
+        status: stR,
+        employees: emR,
+        punches: punchesR,
+        report: repR,
+        last: lastR,
+        attendanceByDate: getCache(CACHE_KEY)?.attendanceByDate || {},
+        savedAt: new Date().toISOString()
+      };
+      setCache(CACHE_KEY, cache);
+      applyData(stR, emR, punchesR, repR, lastR);
+      const hint = document.getElementById('cacheHint');
+      if (hint) hint.textContent = 'Data saved to cache. Next time you open this page it will show without API calls until you click Refresh All.';
+    }
+
+    document.getElementById('refresh').addEventListener('click', () => { fetchData(); fetchAttendance(); });
+
+    document.getElementById('syncNow').addEventListener('click', async () => {
+      const btn = document.getElementById('syncNow');
+      btn.disabled = true;
+      btn.textContent = 'Syncing...';
+      try {
+        const r = await fetch('/sync');
+        const j = await r.json().catch(() => ({}));
+        if (j.success) {
+          btn.textContent = 'Sync now (BioTime → Supabase)';
+          await fetchData();
+          fetchAttendance();
+        } else {
+          btn.textContent = 'Sync failed';
+        }
+      } catch (e) {
+        btn.textContent = 'Sync error';
+      }
+      btn.disabled = false;
+    });
+
+    document.getElementById('loadEmployees').addEventListener('click', async () => {
+      try {
+        const em = await fetch('/api/employees').then(r => r.json());
+        const empBody = document.getElementById('employeesBody');
+        empBody.innerHTML = '';
+        if (Array.isArray(em)) {
+          em.forEach(e => {
+            const row = empBody.insertRow();
+            row.insertCell().textContent = e.employee_code ?? '';
+            row.insertCell().textContent = e.name ?? '';
+            row.insertCell().textContent = e.department ?? '';
+          });
+          document.getElementById('empCount').textContent = em.length;
+        } else {
+          empBody.innerHTML = '<tr><td colspan="3">Error loading employees</td></tr>';
+        }
+      } catch (err) {
+        console.error('Error loading employees only:', err);
+        const empBody = document.getElementById('employeesBody');
+        empBody.innerHTML = '<tr><td colspan="3">Error loading employees</td></tr>';
+      }
+    });
+
+    document.getElementById('importEmployees').addEventListener('click', async () => {
+      try {
+        const btn = document.getElementById('importEmployees');
+        const old = btn.textContent;
+        btn.textContent = 'Importing...';
+        btn.disabled = true;
+
+        const resp = await fetch('/api/biotime/employees/load', { method: 'POST' });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          console.error('Import failed', body);
+          alert('Import failed: ' + (body?.error?.message || resp.status));
+        } else {
+          alert(`Imported. fetched=${body.fetched}, upserted=${body.upserted}`);
+        }
+        await fetchData();
+        btn.textContent = old;
+        btn.disabled = false;
+      } catch (err) {
+        console.error('Import employees error:', err);
+        alert('Import failed: ' + (err?.message || String(err)));
+        const btn = document.getElementById('importEmployees');
+        btn.textContent = 'Import Employees from BioTime';
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('autoRefresh').addEventListener('click', () => {
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        document.getElementById('autoRefresh').textContent = 'Toggle Auto-Refresh (5min)';
+      } else {
+        autoRefreshInterval = setInterval(fetchData, 5 * 60 * 1000); // 5 minutes
+        document.getElementById('autoRefresh').textContent = 'Stop Auto-Refresh';
+      }
+    });
+
+    // Check-in / Check-out by date
+    const attendanceDateEl = document.getElementById('attendanceDate');
+    attendanceDateEl.value = new Date().toISOString().slice(0, 10);
+    async function fetchAttendance() {
+      const date = attendanceDateEl.value;
+      const body = document.getElementById('attendanceBody');
+      const hintEl = document.getElementById('attendanceHint');
+      if (hintEl) hintEl.textContent = '';
+      body.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+      try {
+        const r = await fetchJsonSafe('/api/attendance?date=' + encodeURIComponent(date) + '&_=' + Date.now());
+        const data = r.json;
+        let list = [];
+        if (Array.isArray(data)) list = data;
+        else if (data && Array.isArray(data.attendance)) list = data.attendance;
+        else if (data && data.data && Array.isArray(data.data.attendance)) list = data.data.attendance;
+        else if (data && Array.isArray(data.data)) list = data.data;
+        if (!r.ok) {
+          body.innerHTML = '<tr><td colspan="6">Error loading attendance (' + r.status + ')</td></tr>';
+          if (hintEl) hintEl.textContent = 'API returned ' + r.status + (data?.error?.message ? ': ' + data.error.message : '');
+          return;
+        }
+        applyAttendanceList(list, date);
+        var cache = getCache(CACHE_KEY) || { attendanceByDate: {} };
+        cache.attendanceByDate = cache.attendanceByDate || {};
+        cache.attendanceByDate[date] = list;
+        cache.savedAt = cache.savedAt || new Date().toISOString();
+        setCache(CACHE_KEY, cache);
+      } catch (err) {
+        body.innerHTML = '<tr><td colspan="6">Error: ' + (err?.message || err) + '</td></tr>';
+        if (hintEl) hintEl.textContent = 'Error: ' + (err?.message || err);
+      }
+    }
+    document.getElementById('loadAttendance').addEventListener('click', fetchAttendance);
+
+    // Live from BioTime (Real-Time Monitoring)
+    async function fetchLiveFromBioTime() {
+      const minutes = Math.min(1440, Math.max(5, parseInt(document.getElementById('liveMinutesInput')?.value || 60, 10) || 60));
+      const body = document.getElementById('liveBody');
+      const statusEl = document.getElementById('liveStatus');
+      if (document.getElementById('liveMinutes')) document.getElementById('liveMinutes').textContent = minutes;
+      body.innerHTML = '<tr><td colspan="5">Loading...</td></tr>';
+      if (statusEl) statusEl.textContent = 'Fetching from BioTime...';
+      try {
+        const r = await fetch('/api/biotime/recent?minutes=' + minutes);
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          body.innerHTML = '<tr><td colspan="5">Error: ' + (data?.error?.message || r.status) + '. Check server can reach BioTime (BIOTIME_BASE_URL).</td></tr>';
+          if (statusEl) statusEl.textContent = 'Error';
+          return;
+        }
+        const list = data.recent || [];
+        body.innerHTML = '';
+        list.forEach(p => {
+          const row = body.insertRow();
+          row.insertCell().textContent = p.employee_code ?? '';
+          row.insertCell().textContent = p.name ?? '';
+          row.insertCell().textContent = p.department ?? '';
+          row.insertCell().textContent = p.datetime ? new Date(p.datetime).toLocaleString() : '';
+          row.insertCell().textContent = p.type === 'checkin' ? 'Check In' : (p.type === 'checkout' ? 'Check Out' : p.type ?? '');
+        });
+        if (list.length === 0) {
+          body.innerHTML = '<tr><td colspan="5">No punches in the last ' + minutes + ' minutes.</td></tr>';
+        }
+        if (statusEl) statusEl.textContent = 'Loaded ' + list.length + ' (from ' + (data.from ? new Date(data.from).toLocaleTimeString() : '') + ')';
+      } catch (err) {
+        body.innerHTML = '<tr><td colspan="5">Error: ' + (err?.message || err) + '</td></tr>';
+        if (statusEl) statusEl.textContent = 'Error';
+      }
+    }
+    document.getElementById('fetchLive').addEventListener('click', fetchLiveFromBioTime);
+    document.getElementById('liveMinutesInput').addEventListener('change', function() {
+      if (document.getElementById('liveMinutes')) document.getElementById('liveMinutes').textContent = this.value || 60;
+    });
+
+    // Initial load: show cached data first (no API calls), then user can click Refresh All
+    if (loadFromCache()) {
+      // Cached data shown
+    } else {
+      document.getElementById('cacheHint').textContent = 'No cached data. Click Refresh All to load and save data.';
+      document.getElementById('status').textContent = 'Click Refresh All to load data';
+      document.getElementById('status').className = 'status loading';
+      document.getElementById('employeesBody').innerHTML = '<tr><td colspan="3">Click Refresh All to load</td></tr>';
+      document.getElementById('punchesBody').innerHTML = '<tr><td colspan="5">Click Refresh All to load</td></tr>';
+      document.getElementById('lastAttendanceBody').innerHTML = '<tr><td colspan="5">Click Refresh All to load</td></tr>';
+      const rp = document.getElementById('reportPeriodText');
+      const rg = document.getElementById('reportGrandTotal');
+      const rc = document.getElementById('reportCountText');
+      if (rp) rp.textContent = 'Click Refresh All to load report';
+      if (rg) rg.textContent = '—';
+      if (rc) rc.textContent = '';
+      document.getElementById('reportBody').innerHTML = '<tr><td colspan="4">Click Refresh All to load</td></tr>';
+    }
+    const ad = document.getElementById('attendanceDate')?.value;
+    if (ad && document.getElementById('attendanceBody').innerHTML.includes('Pick a date')) {
+      document.getElementById('attendanceBody').innerHTML = '<tr><td colspan="6">Pick a date and click Load (data is cached after first load)</td></tr>';
+    }
+  </script>
+</body>
+</html>

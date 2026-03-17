@@ -397,14 +397,10 @@ export function OfficeEmployeesTab() {
 
   const openEdit = useCallback((e: OfficeEmployeeRow) => {
     setEditEmployee(e);
-    const dept =
-      e.department && (OFFICE_EMPLOYEE_DEPARTMENTS as readonly string[]).includes(e.department)
-        ? e.department
-        : 'Office';
     setEditForm({
       personal_email: e.personal_email ?? '',
       phone: e.phone ?? '',
-      department: dept,
+      department: e.department,
       salary: e.salary != null ? String(e.salary) : '',
       min_working_hours: e.min_working_hours != null ? String(e.min_working_hours) : '',
       max_working_hours: e.max_working_hours != null ? String(e.max_working_hours) : '',
@@ -477,7 +473,6 @@ export function OfficeEmployeesTab() {
       .update({
         personal_email: editForm.personal_email.trim() || null,
         phone: editForm.phone.trim() || null,
-        department: editForm.department.trim() || 'Office',
         salary: salaryNum,
         min_working_hours: minH,
         max_working_hours: maxH,
@@ -945,16 +940,15 @@ export function OfficeEmployeesTab() {
               }}
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                <select
-                  value={editForm.department}
-                  onChange={(e) => setEditForm((f) => ({ ...f, department: e.target.value }))}
-                  className="w-full border rounded px-3 py-2 bg-white"
-                >
-                  {OFFICE_EMPLOYEE_DEPARTMENTS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department (from BioTime)</label>
+                <input
+                  type="text"
+                  value={editEmployee.department ?? ''}
+                  readOnly
+                  className="w-full border rounded px-3 py-2 bg-gray-100 text-gray-600"
+                  title="Synced from BioTime; not editable here"
+                />
+                <p className="text-xs text-gray-500 mt-0.5">From BioTime sync. Not editable here.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email (from BioTime)</label>
