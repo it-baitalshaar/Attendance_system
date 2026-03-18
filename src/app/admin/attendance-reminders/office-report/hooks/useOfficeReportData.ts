@@ -17,40 +17,40 @@ import type { OfficeReportSetting, OfficeReportEmailRow } from '../types';
 export function useOfficeReportData() {
   const [settings, setSettings] = useState<OfficeReportSetting[]>([]);
   const [emailsByDept, setEmailsByDept] = useState<Record<OfficeReportDepartmentKey, OfficeReportEmailRow[]>>({
-    'Office Baitalshaar': [],
-    'Alsaqia Showroom': [],
+    'Bait Alshaar': [],
+    'Al Saqia': [],
   });
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState<Record<OfficeReportDepartmentKey, string>>({
-    'Office Baitalshaar': '',
-    'Alsaqia Showroom': '',
+    'Bait Alshaar': '',
+    'Al Saqia': '',
   });
   const [errorByDept, setErrorByDept] = useState<Record<OfficeReportDepartmentKey, string>>({
-    'Office Baitalshaar': '',
-    'Alsaqia Showroom': '',
+    'Bait Alshaar': '',
+    'Al Saqia': '',
   });
   const [toggling, setToggling] = useState<OfficeReportDepartmentKey | null>(null);
   const [testingDept, setTestingDept] = useState<OfficeReportDepartmentKey | null>(null);
   const [testStatusByDept, setTestStatusByDept] = useState<Record<OfficeReportDepartmentKey, string>>({
-    'Office Baitalshaar': '',
-    'Alsaqia Showroom': '',
+    'Bait Alshaar': '',
+    'Al Saqia': '',
   });
   const [timeByDept, setTimeByDept] = useState<Record<OfficeReportDepartmentKey, string>>({
-    'Office Baitalshaar': '10:00',
-    'Alsaqia Showroom': '10:00',
+    'Bait Alshaar': '10:00',
+    'Al Saqia': '10:00',
   });
 
   const refreshSettings = useCallback(async () => {
     const rows = await loadOfficeReportSettings();
     setSettings(rows);
     const nextTimes: Record<OfficeReportDepartmentKey, string> = {
-      'Office Baitalshaar': '10:00',
-      'Alsaqia Showroom': '10:00',
+      'Bait Alshaar': '10:00',
+      'Al Saqia': '10:00',
     };
     rows.forEach((row) => {
       const [h = '00', m = '00'] = row.report_time.split(':');
       const key = row.department as OfficeReportDepartmentKey;
-      if (key === 'Office Baitalshaar' || key === 'Alsaqia Showroom') {
+      if (key === 'Bait Alshaar' || key === 'Al Saqia') {
         nextTimes[key] = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
       }
     });

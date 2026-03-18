@@ -44,7 +44,7 @@ export function OfficeReportSection({
     <section className="mb-8 p-4 bg-white rounded-lg shadow">
       <h2 className="text-xl font-semibold mb-2">Office Daily Report (10 AM)</h2>
       <p className="text-gray-600 mb-6">
-        Daily email at 10:00 AM with today&apos;s check-in/check-out and monthly total hours for Office Baitalshaar and Alsaqia Showroom.
+        Daily email at 10:00 AM with today&apos;s check-in/check-out and monthly total hours for Bait Alshaar and Al Saqia.
       </p>
       <div className="space-y-6">
         {OFFICE_REPORT_DEPARTMENTS.map(({ value, label }) => {

@@ -1,11 +1,11 @@
 // Supabase Edge Function: send office daily report (check-in + monthly total hours)
 // CRON: run daily at 10:00 AM (configure in Supabase Dashboard → Database → Cron)
-// Body (optional): { "department": "Office Baitalshaar" } for test send of one department
+// Body (optional): { "department": "Bait Alshaar" } for test send of one department
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Resend } from 'https://esm.sh/resend@2';
 
-const OFFICE_DEPARTMENTS = ['Office Baitalshaar', 'Alsaqia Showroom'] as const;
+const OFFICE_DEPARTMENTS = ['Bait Alshaar', 'Al Saqia'] as const;
 type OfficeDept = (typeof OFFICE_DEPARTMENTS)[number];
 
 function isOfficeDept(s: string): s is OfficeDept {
@@ -42,7 +42,17 @@ function formatTime(iso: string | null): string {
   }
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
+};
+
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
   try {
     const body = await req.json().catch(() => ({}));
     const singleDept = typeof body?.department === 'string' && isOfficeDept(body.department)
@@ -196,13 +206,13 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ ok: true, sent: totalSent }),
-      { headers: { 'Content-Type': 'application/json' }, status: 200 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
       JSON.stringify({ ok: false, error: message }),
-      { headers: { 'Content-Type': 'application/json' }, status: 500 }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });

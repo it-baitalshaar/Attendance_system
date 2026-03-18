@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sendMail } from '@/lib/email';
 
-const OFFICE_DEPARTMENTS = ['Office Baitalshaar', 'Alsaqia Showroom'] as const;
+const OFFICE_DEPARTMENTS = ['Bait Alshaar', 'Al Saqia'] as const;
 type OfficeDept = (typeof OFFICE_DEPARTMENTS)[number];
 
 function isOfficeDept(s: string): s is OfficeDept {

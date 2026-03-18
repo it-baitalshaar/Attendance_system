@@ -79,7 +79,7 @@ type PunchRow = {
   type: 'checkin' | 'checkout';
 };
 
-const OFFICE_EMPLOYEE_DEPARTMENTS = ['Office Baitalshaar', 'Alsaqia Showroom', 'Office'] as const;
+const OFFICE_EMPLOYEE_DEPARTMENTS = ['Bait Alshaar', 'Al Saqia', 'Office'] as const;
 
 const DAYS_PER_PDF_PAGE = 15;
 
@@ -417,20 +417,22 @@ export function OfficeEmployeesTab() {
     setSendingReportId(employeeId);
     setReportSendStatus(null);
     try {
-      const res = await fetch('/api/office/send-employee-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId }),
-        credentials: 'include',
+      const supabaseClient = createSupabbaseFrontendClient();
+      const { data, error } = await supabaseClient.functions.invoke('send-office-employee-report', {
+        body: { employeeId },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setReportSendStatus({ id: employeeId, msg: (data as { error?: string })?.error ?? 'Failed to send' });
-      } else if ((data as { ok?: boolean }).ok) {
+      if (error) {
+        const msg = (error as { message?: string })?.message ?? 'Failed to send';
+        setReportSendStatus({ id: employeeId, msg });
+        return;
+      }
+      const ok = (data as { ok?: boolean })?.ok;
+      const errMsg = (data as { error?: string })?.error;
+      if (ok) {
         setReportSendStatus({ id: employeeId, msg: 'Report sent.' });
         setTimeout(() => setReportSendStatus(null), 3000);
       } else {
-        setReportSendStatus({ id: employeeId, msg: (data as { error?: string })?.error ?? 'Failed to send' });
+        setReportSendStatus({ id: employeeId, msg: errMsg ?? 'Failed to send' });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Request failed';

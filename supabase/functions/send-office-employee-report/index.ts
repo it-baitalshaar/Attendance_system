@@ -77,8 +77,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const toEmail = (employee as { personal_email?: string | null; email?: string | null }).personal_email
-      || (employee as { email?: string | null }).email
+    const { data: overrideRow } = await supabase
+      .from('office_employee_overrides')
+      .select('personal_email')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+
+    const overrideEmail = (overrideRow as { personal_email?: string | null } | null)?.personal_email?.trim() || null;
+    const toEmail = overrideEmail
+      || (employee as { personal_email?: string | null }).personal_email?.trim()
+      || (employee as { email?: string | null }).email?.trim()
       || '';
     if (!toEmail) {
       return new Response(

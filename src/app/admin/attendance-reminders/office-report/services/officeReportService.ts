@@ -2,7 +2,7 @@ import { createSupabbaseFrontendClient } from '@/lib/supabase';
 import type { OfficeReportDepartmentKey } from '../types';
 import type { OfficeReportSetting, OfficeReportEmailRow } from '../types';
 
-const OFFICE_DEPTS: OfficeReportDepartmentKey[] = ['Office Baitalshaar', 'Alsaqia Showroom'];
+const OFFICE_DEPTS: OfficeReportDepartmentKey[] = ['Bait Alshaar', 'Al Saqia'];
 
 export async function loadOfficeReportSettings(): Promise<OfficeReportSetting[]> {
   const supabase = createSupabbaseFrontendClient();
@@ -28,12 +28,12 @@ export async function loadOfficeReportEmails(): Promise<Record<OfficeReportDepar
     .order('created_at');
   if (error) {
     console.error('Error loading office report emails', error);
-    return { 'Office Baitalshaar': [], 'Alsaqia Showroom': [] };
+    return { 'Bait Alshaar': [], 'Al Saqia': [] };
   }
   const rows = (data ?? []) as OfficeReportEmailRow[];
   return {
-    'Office Baitalshaar': rows.filter((r) => r.department === 'Office Baitalshaar'),
-    'Alsaqia Showroom': rows.filter((r) => r.department === 'Alsaqia Showroom'),
+    'Bait Alshaar': rows.filter((r) => r.department === 'Bait Alshaar'),
+    'Al Saqia': rows.filter((r) => r.department === 'Al Saqia'),
   };
 }
 

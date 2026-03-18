@@ -1,4 +1,4 @@
-export type OfficeReportDepartmentKey = 'Office Baitalshaar' | 'Alsaqia Showroom';
+export type OfficeReportDepartmentKey = 'Bait Alshaar' | 'Al Saqia';
 
 export interface OfficeReportSetting {
   id: string;

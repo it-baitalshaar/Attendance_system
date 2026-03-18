@@ -13,7 +13,7 @@ export function OfficeReportSettingsTab() {
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Office Report Settings</h2>
         <p className="mt-1 text-gray-600">
-          Manage daily report emails and recipients for Office Baitalshaar and Alsaqia Showroom.
+          Manage daily report emails and recipients for Bait Alshaar and Al Saqia.
         </p>
       </div>
 
@@ -25,7 +25,7 @@ export function OfficeReportSettingsTab() {
           <li>Monthly total hours (current month)</li>
         </ul>
         <p className="mt-2 text-sm text-blue-700">
-          Reports are sent via Gmail (same as construction/maintenance reminders). Assign employees to departments in{' '}
+          Reports are sent via Supabase (Resend), same as attendance reminders. Assign employees to departments in{' '}
           <Link href="/admin?tab=officeEmployees" className="underline font-medium hover:text-blue-900">
             Office Employees
           </Link>
@@ -65,10 +65,9 @@ export function OfficeReportSettingsTab() {
       <section className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
         <h3 className="font-semibold text-gray-800 mb-2">Scheduled sending</h3>
         <p>
-          To send this report automatically every day (e.g. at 10:00 AM), call{' '}
-          <code className="px-1.5 py-0.5 bg-gray-200 rounded text-xs">POST /api/office/send-daily-report</code>{' '}
-          from a cron job or scheduler. If you set <code className="px-1.5 py-0.5 bg-gray-200 rounded text-xs">CRON_SECRET</code> in your environment,
-          send it in the <code className="px-1.5 py-0.5 bg-gray-200 rounded text-xs">X-Cron-Secret</code> header.
+          To send this report automatically every day, use Supabase cron or an external scheduler to call the{' '}
+          <code className="px-1.5 py-0.5 bg-gray-200 rounded text-xs">send-office-daily-report</code> Edge Function
+          (same as the test button above). Times and recipients are controlled by the settings on this page.
         </p>
       </section>
     </div>
