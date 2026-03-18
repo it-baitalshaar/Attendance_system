@@ -127,11 +127,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     const statusForApi = weekend ? 'Weekend' : holiday ? 'Holiday-Work' : 'Present';
     dispatch(setEmployeesStatus({ status: statusForApi, employee_id: employee.employee_id }));
     if (weekend || holiday) {
-      setProject(weekend);
-      if (holiday && !weekend) {
-        setArryProjects([]);
-        dispatch(setTotalProject(0));
-      }
+      setProject(weekend || holiday);
     }
   };
 
@@ -146,9 +142,6 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
         setHolidaySelected(true);
         setWeekendSelected(false);
         setAttendance('Present');
-        setProject(false);
-        setArryProjects([]);
-        dispatch(setTotalProject(0));
         applyAttendanceTypeToRedux(false, true);
       } else if (select_status === 'Present') {
         setWeekendSelected(false);
@@ -174,12 +167,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       setHolidaySelected(next);
       setWeekendSelected(false);
       if (!next) setAttendance(undefined);
-      else {
-        setAttendance('Present');
-        setProject(false);
-        setArryProjects([]);
-        dispatch(setTotalProject(0));
-      }
+      else setAttendance('Present');
       applyAttendanceTypeToRedux(false, next);
     } else if (select_status === 'undefined' || select_status === 'Present') {
       setAttendance(select_status === 'Present' ? 'Present' : undefined);
@@ -653,8 +641,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
           )}
         </div>
       )}
-      {/* Project section: hide when Holiday only (no projects); show for Present and when Weekend selected */}
-      {((attendance !== undefined && (weekendSelected || !holidaySelected) && !isAbsent && !isHold && (isCustomizeFromParent || isStandar !== true)) || (showProjectsWhenPresent && isAttend && !isAbsent && !isHold && (weekendSelected || !holidaySelected))) && (
+      {/* Project section: show for Present, when Weekend selected, or when Holiday selected (same as Weekend) */}
+      {((attendance !== undefined && (weekendSelected || holidaySelected || !holidaySelected) && !isAbsent && !isHold && (isCustomizeFromParent || isStandar !== true)) || (showProjectsWhenPresent && isAttend && !isAbsent && !isHold && (weekendSelected || holidaySelected || !holidaySelected))) && (
       <div className="mt-[4rem]">
         <button
           type="button"

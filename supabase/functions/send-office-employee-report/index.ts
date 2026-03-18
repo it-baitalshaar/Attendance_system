@@ -5,6 +5,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Resend } from 'https://esm.sh/resend@2';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
+};
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -36,13 +43,17 @@ function formatTime(iso: string | null): string {
 }
 
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
   try {
     const body = await req.json().catch(() => ({}));
     const employeeId = typeof body?.employeeId === 'string' ? body.employeeId.trim() : '';
     if (!employeeId) {
       return new Response(
         JSON.stringify({ ok: false, error: 'employeeId is required' }),
-        { headers: { 'Content-Type': 'application/json' }, status: 400 },
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
       );
     }
 
@@ -62,7 +73,7 @@ Deno.serve(async (req: Request) => {
     if (empError || !employee) {
       return new Response(
         JSON.stringify({ ok: false, error: 'Employee not found' }),
-        { headers: { 'Content-Type': 'application/json' }, status: 404 },
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 },
       );
     }
 
@@ -72,7 +83,7 @@ Deno.serve(async (req: Request) => {
     if (!toEmail) {
       return new Response(
         JSON.stringify({ ok: false, error: 'Employee has no email or personal_email set' }),
-        { headers: { 'Content-Type': 'application/json' }, status: 400 },
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 },
       );
     }
 
@@ -141,7 +152,7 @@ Deno.serve(async (req: Request) => {
     if (!apiKey) {
       return new Response(
         JSON.stringify({ ok: false, error: 'RESEND_API_KEY is not configured' }),
-        { headers: { 'Content-Type': 'application/json' }, status: 500 },
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 },
       );
     }
 
@@ -155,13 +166,13 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ ok: true, sent: true }),
-      { headers: { 'Content-Type': 'application/json' }, status: 200 },
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
       JSON.stringify({ ok: false, error: message }),
-      { headers: { 'Content-Type': 'application/json' }, status: 500 },
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 },
     );
   }
 });

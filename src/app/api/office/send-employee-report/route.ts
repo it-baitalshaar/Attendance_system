@@ -86,7 +86,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
   }
 
-  const toEmail = (employee as { personal_email?: string | null; email?: string }).personal_email?.trim() ||
+  const { data: override } = await supabase
+    .from('office_employee_overrides')
+    .select('personal_email')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+
+  const toEmail = (override as { personal_email?: string | null } | null)?.personal_email?.trim() ||
+    (employee as { personal_email?: string | null }).personal_email?.trim() ||
     (employee as { email?: string }).email?.trim();
   if (!toEmail) {
     return NextResponse.json({ error: 'Employee has no email or personal email set' }, { status: 400 });
