@@ -57,6 +57,14 @@ To use local time, change the cron schedule in the Database (e.g. SQL Editor or 
 - **Primary function:** `send-office-employee-report`.
 - **Compatibility fallback:** if your deployed project still uses legacy name `send-employee-report`, the app now falls back automatically.
 - **Required deploy:** deploy at least one of these two function names in the target Supabase project.
+- **Manual send:** per employee via **Email report** button.
+- **Auto daily/month-end send:** configure each employee in **Edit employee** modal:
+  - `Enable daily automatic report` + `Daily report time`
+  - `Enable month-end automatic report` + `Month-end report time`
+  - all times are interpreted as **UAE** (`Asia/Dubai`)
+- **Scheduler endpoint:** `POST /api/office/send-employee-reports-due`
+  - call every 5-10 minutes from cron/scheduler
+  - if `CRON_SECRET` is set, send it in `X-Cron-Secret` or `Authorization: Bearer <CRON_SECRET>`
 
 ## Deploy on Vercel
 

@@ -15,6 +15,12 @@ export type OfficeEmployeeRow = {
   salary: number | null;
   min_working_hours: number | null;
   max_working_hours: number | null;
+  auto_daily_report_enabled: boolean;
+  auto_daily_report_time: string;
+  auto_month_end_report_enabled: boolean;
+  auto_month_end_report_time: string;
+  last_daily_report_sent_on: string | null;
+  last_month_end_report_sent_month: string | null;
 };
 
 export type OfficeAttendanceRow = {
@@ -68,7 +74,7 @@ export function useOfficeEmployeesRealtime() {
       const [empRes, attRes] = await Promise.all([
         supabase
           .from('office_employees')
-          .select('id, employee_code, name, email, personal_email, phone, department, device_id, dynamic_link_token, created_at, salary, min_working_hours, max_working_hours')
+          .select('id, employee_code, name, email, personal_email, phone, department, device_id, dynamic_link_token, created_at, salary, min_working_hours, max_working_hours, auto_daily_report_enabled, auto_daily_report_time, auto_month_end_report_enabled, auto_month_end_report_time, last_daily_report_sent_on, last_month_end_report_sent_month')
           .order('created_at', { ascending: false }),
         supabase
           .from('office_attendance')

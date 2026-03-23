@@ -243,7 +243,22 @@ export function OfficeEmployeesTab() {
     salary: string;
     min_working_hours: string;
     max_working_hours: string;
-  }>({ personal_email: '', phone: '', department: 'Office', salary: '', min_working_hours: '', max_working_hours: '' });
+    auto_daily_report_enabled: boolean;
+    auto_daily_report_time: string;
+    auto_month_end_report_enabled: boolean;
+    auto_month_end_report_time: string;
+  }>({
+    personal_email: '',
+    phone: '',
+    department: 'Office',
+    salary: '',
+    min_working_hours: '',
+    max_working_hours: '',
+    auto_daily_report_enabled: false,
+    auto_daily_report_time: '10:00',
+    auto_month_end_report_enabled: false,
+    auto_month_end_report_time: '18:00',
+  });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [sendingReportId, setSendingReportId] = useState<string | null>(null);
@@ -404,6 +419,10 @@ export function OfficeEmployeesTab() {
       salary: e.salary != null ? String(e.salary) : '',
       min_working_hours: e.min_working_hours != null ? String(e.min_working_hours) : '',
       max_working_hours: e.max_working_hours != null ? String(e.max_working_hours) : '',
+      auto_daily_report_enabled: !!e.auto_daily_report_enabled,
+      auto_daily_report_time: (e.auto_daily_report_time || '10:00').slice(0, 5),
+      auto_month_end_report_enabled: !!e.auto_month_end_report_enabled,
+      auto_month_end_report_time: (e.auto_month_end_report_time || '18:00').slice(0, 5),
     });
     setEditError('');
   }, []);
@@ -476,6 +495,10 @@ export function OfficeEmployeesTab() {
         salary: salaryNum,
         min_working_hours: minH,
         max_working_hours: maxH,
+        auto_daily_report_enabled: editForm.auto_daily_report_enabled,
+        auto_daily_report_time: editForm.auto_daily_report_time,
+        auto_month_end_report_enabled: editForm.auto_month_end_report_enabled,
+        auto_month_end_report_time: editForm.auto_month_end_report_time,
       })
       .eq('id', editEmployee.id);
     setEditSaving(false);
@@ -1021,6 +1044,49 @@ export function OfficeEmployeesTab() {
                     placeholder="e.g. 200"
                   />
                 </div>
+              </div>
+              <div className="rounded border border-gray-200 p-3 space-y-3 bg-gray-50">
+                <h4 className="text-sm font-semibold text-gray-800">Auto report schedule (UAE time)</h4>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editForm.auto_daily_report_enabled}
+                    onChange={(e) => setEditForm((f) => ({ ...f, auto_daily_report_enabled: e.target.checked }))}
+                  />
+                  Enable daily automatic report for this employee
+                </label>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Daily report time (UAE)</label>
+                  <input
+                    type="time"
+                    value={editForm.auto_daily_report_time}
+                    onChange={(e) => setEditForm((f) => ({ ...f, auto_daily_report_time: e.target.value }))}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editForm.auto_month_end_report_enabled}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, auto_month_end_report_enabled: e.target.checked }))
+                    }
+                  />
+                  Enable month-end automatic report
+                </label>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Month-end report time (UAE)</label>
+                  <input
+                    type="time"
+                    value={editForm.auto_month_end_report_time}
+                    onChange={(e) => setEditForm((f) => ({ ...f, auto_month_end_report_time: e.target.value }))}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  Scheduler endpoint: <code>/api/office/send-employee-reports-due</code> (call by cron every 5-10
+                  minutes with <code>X-Cron-Secret</code> if set).
+                </p>
               </div>
               {editError && (
                 <p className="text-sm text-red-600">{editError}</p>
