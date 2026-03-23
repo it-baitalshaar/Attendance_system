@@ -6,6 +6,7 @@ import { sendMail } from '@/lib/email';
 
 const OFFICE_DEPARTMENTS = ['Bait Alshaar', 'Al Saqia'] as const;
 type OfficeDept = (typeof OFFICE_DEPARTMENTS)[number];
+const UAE_TIMEZONE = 'Asia/Dubai';
 
 function isOfficeDept(s: string): s is OfficeDept {
   return OFFICE_DEPARTMENTS.includes(s as OfficeDept);
@@ -35,7 +36,13 @@ function formatTime(iso: string | null): string {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (Number.isNaN(d.getTime())) return '—';
+    return new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: UAE_TIMEZONE,
+    }).format(d);
   } catch {
     return '—';
   }

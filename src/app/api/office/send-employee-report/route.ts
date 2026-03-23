@@ -9,6 +9,7 @@ import { sendMail } from '@/lib/email';
  * Email is sent from Supabase (same as send-attendance-reminder) using Supabase secrets.
  * Deploy the function: supabase functions deploy send-office-employee-report
  */
+const UAE_TIMEZONE = 'Asia/Dubai';
 
 async function ensureAdmin(): Promise<{ ok: true } | { error: string; status: number }> {
   const cookieStore = cookies();
@@ -56,7 +57,13 @@ function formatTime(iso: string | null): string {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (Number.isNaN(d.getTime())) return '—';
+    return new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: UAE_TIMEZONE,
+    }).format(d);
   } catch {
     return '—';
   }

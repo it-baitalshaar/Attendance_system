@@ -4,6 +4,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Resend } from 'https://esm.sh/resend@2';
+const UAE_TIMEZONE = 'Asia/Dubai';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,7 +37,13 @@ function formatTime(iso: string | null): string {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (Number.isNaN(d.getTime())) return '—';
+    return new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: UAE_TIMEZONE,
+    }).format(d);
   } catch {
     return '—';
   }
