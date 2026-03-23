@@ -460,6 +460,34 @@ export function OfficeEmployeesTab() {
     }
   }, []);
 
+  const sendEmployeeMonthEndReport = useCallback(async (employeeId: string) => {
+    setSendingReportId(employeeId);
+    setReportSendStatus(null);
+    try {
+      const res = await fetch('/api/office/send-employee-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId, reportType: 'monthEnd' }),
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = (data as { error?: string })?.error ?? 'Failed to send';
+        setReportSendStatus({ id: employeeId, msg });
+      } else if ((data as { ok?: boolean }).ok) {
+        setReportSendStatus({ id: employeeId, msg: 'Month-end report sent.' });
+        setTimeout(() => setReportSendStatus(null), 3000);
+      } else {
+        setReportSendStatus({ id: employeeId, msg: (data as { error?: string })?.error ?? 'Failed to send' });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Request failed';
+      setReportSendStatus({ id: employeeId, msg });
+    } finally {
+      setSendingReportId(null);
+    }
+  }, []);
+
   const saveEdit = useCallback(async () => {
     if (!editEmployee) return;
     setEditSaving(true);
@@ -912,6 +940,15 @@ export function OfficeEmployeesTab() {
                           className="text-sm px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {sendingReportId === e.id ? 'Sending…' : 'Email report'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => sendEmployeeMonthEndReport(e.id)}
+                          disabled={sendingReportId === e.id || (!e.personal_email && !e.email)}
+                          title={e.personal_email || e.email ? 'Email this employee month-end work hours' : 'Add personal email to send report'}
+                          className="text-sm px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {sendingReportId === e.id ? 'Sending…' : 'Month-end'}
                         </button>
                         {reportSendStatus?.id === e.id && (
                           <span className="text-xs text-gray-600">{reportSendStatus.msg}</span>

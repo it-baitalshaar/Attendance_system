@@ -13,22 +13,34 @@ function isOfficeDept(s: string): s is OfficeDept {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: UAE_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+  const y = Number(parts.year ?? '1970');
+  const m = Number(parts.month ?? '1');
+  const d = Number(parts.day ?? '1');
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
 }
 
-function firstDayOfMonth(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
+function firstDayOfMonth(baseDateIso: string): string {
+  const [y = '1970', m = '01'] = baseDateIso.split('-');
   return `${y}-${m}-01`;
 }
 
-function lastDayOfMonth(): string {
-  const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  const y = last.getFullYear();
-  const m = String(last.getMonth() + 1).padStart(2, '0');
-  const day = String(last.getDate()).padStart(2, '0');
+function lastDayOfMonth(baseDateIso: string): string {
+  const [y = '1970', m = '01'] = baseDateIso.split('-');
+  const last = new Date(Date.UTC(Number(y), Number(m), 0));
+  const day = String(last.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
@@ -93,9 +105,9 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const today = todayIso();
-  const monthStart = firstDayOfMonth();
-  const monthEnd = lastDayOfMonth();
+  const reportDate = todayIso();
+  const monthStart = firstDayOfMonth(reportDate);
+  const monthEnd = lastDayOfMonth(reportDate);
 
   const departmentsToRun: OfficeDept[] = singleDept ? [singleDept] : [...OFFICE_DEPARTMENTS];
   let totalSent = 0;
@@ -118,7 +130,7 @@ export async function POST(request: Request) {
     if (recipients.length === 0) continue;
 
     let html: string;
-    const subject = `Office Daily Report — ${department} — ${today}`;
+    const subject = `Office Daily Report — ${department} — ${reportDate}`;
 
     const { data: employees } = await supabase
       .from('office_employees')
@@ -130,7 +142,7 @@ export async function POST(request: Request) {
     if (empIds.length === 0) {
       html = `
         <h2>Office Daily Report — ${department}</h2>
-        <p><strong>Date:</strong> ${today}</p>
+        <p><strong>Date:</strong> ${reportDate}</p>
         <p>No employees in this department.</p>
         <p><strong>Monthly period:</strong> ${monthStart} to ${monthEnd}</p>
       `;
@@ -138,7 +150,7 @@ export async function POST(request: Request) {
       const { data: todayAttendance } = await supabase
         .from('office_attendance')
         .select('employee_id, check_in, check_out, worked_hours')
-        .eq('date', today)
+        .eq('date', reportDate)
         .in('employee_id', empIds);
 
       const { data: monthAttendance } = await supabase
@@ -194,7 +206,7 @@ export async function POST(request: Request) {
 <head><meta charset="utf-8"><title>Office Daily Report — ${department}</title></head>
 <body style="font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 16px;">
   <h2>Office Daily Report — ${department}</h2>
-  <p><strong>Date:</strong> ${today}</p>
+  <p><strong>Date:</strong> ${reportDate}</p>
   <p><strong>Monthly period:</strong> ${monthStart} to ${monthEnd}</p>
   <h3>Daily check-in &amp; monthly total hours</h3>
   <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">

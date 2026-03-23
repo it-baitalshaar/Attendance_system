@@ -3,23 +3,40 @@ import { sendMail } from '@/lib/email';
 
 const UAE_TIMEZONE = 'Asia/Dubai';
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+function getUaeDateIso(offsetDays = 0): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: UAE_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+  const y = Number(parts.year ?? '1970');
+  const m = Number(parts.month ?? '1');
+  const d = Number(parts.day ?? '1');
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
 }
 
-function firstDayOfMonth(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
+function getUaeMonthEndIso(): string {
+  const nowIso = getUaeDateIso(0);
+  return lastDayOfMonth(nowIso);
+}
+
+function firstDayOfMonth(baseDateIso: string): string {
+  const [y = '1970', m = '01'] = baseDateIso.split('-');
   return `${y}-${m}-01`;
 }
 
-function lastDayOfMonth(): string {
-  const d = new Date();
-  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  const y = last.getFullYear();
-  const m = String(last.getMonth() + 1).padStart(2, '0');
-  const day = String(last.getDate()).padStart(2, '0');
+function lastDayOfMonth(baseDateIso: string): string {
+  const [y = '1970', m = '01'] = baseDateIso.split('-');
+  const last = new Date(Date.UTC(Number(y), Number(m), 0));
+  const day = String(last.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
@@ -44,12 +61,14 @@ export async function sendOfficeEmployeeReportByIdentifier({
   serviceRoleKey,
   employeeIdentifier,
   subjectPrefix = 'Your work hours',
+  reportType = 'daily',
 }: {
   supabaseUrl: string;
   serviceRoleKey: string;
   employeeIdentifier: string;
   subjectPrefix?: string;
-}): Promise<{ ok: boolean; error?: string; employeeId?: string }> {
+  reportType?: 'daily' | 'monthEnd';
+}): Promise<{ ok: boolean; error?: string; employeeId?: string; reportDate?: string }> {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   let { data: employee, error: empError } = await supabase
@@ -90,15 +109,15 @@ export async function sendOfficeEmployeeReportByIdentifier({
     return { ok: false, error: 'Employee has no email or personal_email set' };
   }
 
-  const today = todayIso();
-  const monthStart = firstDayOfMonth();
-  const monthEnd = lastDayOfMonth();
+  const reportDate = reportType === 'monthEnd' ? getUaeMonthEndIso() : getUaeDateIso(-1);
+  const monthStart = firstDayOfMonth(reportDate);
+  const monthEnd = lastDayOfMonth(reportDate);
 
   const { data: todayRow } = await supabase
     .from('office_attendance')
     .select('check_in, check_out, worked_hours')
     .eq('employee_id', resolvedEmployeeId)
-    .eq('date', today)
+    .eq('date', reportDate)
     .maybeSingle();
 
   const { data: monthRows } = await supabase
@@ -132,7 +151,7 @@ export async function sendOfficeEmployeeReportByIdentifier({
 <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 16px;">
   <h2>${subjectPrefix}</h2>
   <p>Hi ${name},</p>
-  <p><strong>Date:</strong> ${today}</p>
+  <p><strong>Date:</strong> ${reportDate}</p>
   <p><strong>Monthly period:</strong> ${monthStart} to ${monthEnd}</p>
   <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">
     <thead>
@@ -158,9 +177,9 @@ export async function sendOfficeEmployeeReportByIdentifier({
 
   const result = await sendMail({
     to: toEmail,
-    subject: `${subjectPrefix} — ${today}`,
+    subject: `${subjectPrefix} — ${reportDate}`,
     html,
   });
   if (!result.ok) return { ok: false, error: result.error ?? 'Failed to send email' };
-  return { ok: true, employeeId: resolvedEmployeeId };
+  return { ok: true, employeeId: resolvedEmployeeId, reportDate };
 }

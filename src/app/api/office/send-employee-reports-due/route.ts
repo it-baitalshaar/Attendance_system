@@ -119,25 +119,27 @@ export async function POST(request: Request) {
   const candidates = (rows ?? []) as EmployeeScheduleRow[];
 
   for (const row of candidates) {
-    const dailyDue =
-      !!row.auto_daily_report_enabled &&
-      normalizeHm(row.auto_daily_report_time, '10:00') <= currentHm &&
-      row.last_daily_report_sent_on !== today;
-
     const monthEndDue =
       isMonthEnd &&
       !!row.auto_month_end_report_enabled &&
       normalizeHm(row.auto_month_end_report_time, '18:00') <= currentHm &&
       row.last_month_end_report_sent_month !== monthKey;
 
+    const dailyDue =
+      !!row.auto_daily_report_enabled &&
+      normalizeHm(row.auto_daily_report_time, '10:00') <= currentHm &&
+      row.last_daily_report_sent_on !== today &&
+      !monthEndDue; // On the month-end day, send only month-end to avoid duplicates.
+
     if (!dailyDue && !monthEndDue) continue;
 
-    const subjectPrefix = monthEndDue ? 'Month-end work hours report' : 'Your work hours';
+    const reportType = monthEndDue ? 'monthEnd' : 'daily';
     const send = await sendOfficeEmployeeReportByIdentifier({
       supabaseUrl,
       serviceRoleKey,
       employeeIdentifier: row.id,
-      subjectPrefix,
+      subjectPrefix: reportType === 'monthEnd' ? 'Month-end work hours report' : 'Your work hours',
+      reportType,
     });
 
     if (!send.ok || !send.employeeId) {
