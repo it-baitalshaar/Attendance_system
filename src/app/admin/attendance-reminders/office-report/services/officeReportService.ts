@@ -79,10 +79,45 @@ export async function sendTestOfficeReport(
   department: OfficeReportDepartmentKey
 ): Promise<{ sent?: number; reason?: string; error?: unknown }> {
   const supabase = createSupabbaseFrontendClient();
-  const { data, error } = await supabase.functions.invoke('send-office-daily-report', {
+  let { data, error } = await supabase.functions.invoke('send-office-daily-report', {
     body: { department },
   });
-  if (error) return { error };
+  if (error) {
+    // On some deployments the browser call can fail (preflight/JWT/function routing).
+    // Fallback to server route so test-send still works in production.
+    const looksLikeEdgeRoutingIssue =
+      (error as { context?: { body?: string } })?.context?.body?.includes('404')
+      || (error as { message?: string })?.message?.toLowerCase().includes('preflight')
+      || (error as { message?: string })?.message?.includes('404');
+
+    if (!looksLikeEdgeRoutingIssue) return { error };
+
+    const res = await fetch('/api/office/send-daily-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ department }),
+    });
+    const fallbackData = (await res.json().catch(() => ({}))) as {
+      sent?: number;
+      reason?: string;
+      error?: string;
+      errors?: string[];
+    };
+    if (!res.ok) {
+      return {
+        error: {
+          message:
+            fallbackData.error
+            ?? fallbackData.errors?.join('; ')
+            ?? res.statusText
+            ?? 'Request failed',
+        },
+      };
+    }
+    data = fallbackData;
+    error = null;
+  }
   const sent = (data as { sent?: number })?.sent;
   const reason = (data as { reason?: string })?.reason;
   return { sent, reason };
