@@ -4,6 +4,34 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sendMail } from '@/lib/email';
 
+/**
+ * Proxies to the Supabase Edge Function send-office-employee-report.
+ * Email is sent from Supabase (same as send-attendance-reminder) using Supabase secrets.
+ * Deploy the function: supabase functions deploy send-office-employee-report
+ */
+
+async function ensureAdmin(): Promise<{ ok: true } | { error: string; status: number }> {
+  const cookieStore = cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'Unauthorized', status: 401 };
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+  if (!profile || (profile as { role?: string }).role !== 'admin') return { error: 'Forbidden', status: 403 };
+  return { ok: true };
+}
+
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -34,26 +62,6 @@ function formatTime(iso: string | null): string {
   }
 }
 
-async function ensureAdmin(): Promise<{ ok: true } | { error: string; status: number }> {
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-      },
-    }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Unauthorized', status: 401 };
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-  if (!profile || (profile as { role?: string }).role !== 'admin') return { error: 'Forbidden', status: 403 };
-  return { ok: true };
-}
-
 export async function POST(request: Request) {
   const auth = await ensureAdmin();
   if (!('ok' in auth)) {
@@ -71,63 +79,121 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'employeeId is required' }, { status: 400 });
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
-  const { data: employee, error: empError } = await supabase
-    .from('office_employees')
-    .select('id, employee_code, name, email, personal_email, department')
-    .eq('id', employeeId)
-    .single();
-
-  if (empError || !employee) {
-    return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    return NextResponse.json(
+      { error: 'Server misconfiguration: Supabase URL or service role key missing' },
+      { status: 500 }
+    );
   }
 
-  const { data: override } = await supabase
-    .from('office_employee_overrides')
-    .select('personal_email')
-    .eq('employee_id', employeeId)
-    .maybeSingle();
+  const invoke = async (functionName: string) => {
+    const functionUrl = `${supabaseUrl}/functions/v1/${functionName}`;
+    const res = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ employeeId }),
+    });
+    const data = await res.json().catch(() => ({ error: 'Invalid response from Edge Function' }));
+    return { res, data };
+  };
 
-  const toEmail = (override as { personal_email?: string | null } | null)?.personal_email?.trim() ||
-    (employee as { personal_email?: string | null }).personal_email?.trim() ||
-    (employee as { email?: string }).email?.trim();
-  if (!toEmail) {
-    return NextResponse.json({ error: 'Employee has no email or personal email set' }, { status: 400 });
+  let { res, data } = await invoke('send-office-employee-report');
+  // Backward compatibility: some projects deployed this as send-employee-report.
+  if (res.status === 404) {
+    const fallback = await invoke('send-employee-report');
+    res = fallback.res;
+    data = fallback.data;
   }
 
-  const today = todayIso();
-  const monthStart = firstDayOfMonth();
-  const monthEnd = lastDayOfMonth();
+  if (!res.ok) {
+    {
+      const supabase = createClient(supabaseUrl, serviceRoleKey);
+      let { data: employee, error: empError } = await supabase
+        .from('office_employees')
+        .select('id, employee_code, name, email, personal_email, department')
+        .eq('id', employeeId)
+        .single();
 
-  const { data: todayRow } = await supabase
-    .from('office_attendance')
-    .select('check_in, check_out, worked_hours')
-    .eq('employee_id', employeeId)
-    .eq('date', today)
-    .maybeSingle();
+      if (empError || !employee) {
+        // Some environments still pass employee_code instead of row id.
+        const fallbackByCode = await supabase
+          .from('office_employees')
+          .select('id, employee_code, name, email, personal_email, department')
+          .eq('employee_code', employeeId)
+          .maybeSingle();
+        employee = fallbackByCode.data as typeof employee;
+        empError = fallbackByCode.error as typeof empError;
+      }
 
-  const { data: monthRows } = await supabase
-    .from('office_attendance')
-    .select('worked_hours')
-    .eq('employee_id', employeeId)
-    .gte('date', monthStart)
-    .lte('date', monthEnd);
+      if (empError || !employee) {
+        return NextResponse.json(
+          { ok: false, error: `Employee not found for identifier: ${employeeId}` },
+          { status: 404 }
+        );
+      }
 
-  const todayEntry = (todayRow ?? null) as { check_in: string | null; check_out: string | null; worked_hours: number | null } | null;
-  const monthHours = (monthRows ?? []).reduce((sum, r) => sum + (Number((r as { worked_hours: number | null }).worked_hours) || 0), 0);
-  const monthlyTotal = Math.round(monthHours * 100) / 100;
+      const resolvedEmployeeId = (employee as { id: string }).id;
 
-  const name = (employee as { name?: string }).name ?? 'Employee';
-  const code = (employee as { employee_code?: string }).employee_code ?? '';
-  const checkIn = todayEntry ? formatTime(todayEntry.check_in) : '—';
-  const checkOut = todayEntry ? formatTime(todayEntry.check_out) : '—';
-  const todayHours = todayEntry ? (Number(todayEntry.worked_hours) || 0).toFixed(2) : '—';
+      const { data: overrideRow } = await supabase
+        .from('office_employee_overrides')
+        .select('personal_email')
+        .eq('employee_id', resolvedEmployeeId)
+        .maybeSingle();
 
-  const html = `
+      const overrideEmail = (overrideRow as { personal_email?: string | null } | null)?.personal_email?.trim() || null;
+      const toEmail =
+        overrideEmail ||
+        (employee as { personal_email?: string | null }).personal_email?.trim() ||
+        (employee as { email?: string | null }).email?.trim() ||
+        '';
+      if (!toEmail) {
+        return NextResponse.json(
+          { ok: false, error: 'Employee has no email or personal_email set' },
+          { status: 400 }
+        );
+      }
+
+      const today = todayIso();
+      const monthStart = firstDayOfMonth();
+      const monthEnd = lastDayOfMonth();
+
+      const { data: todayRow } = await supabase
+        .from('office_attendance')
+        .select('check_in, check_out, worked_hours')
+        .eq('employee_id', resolvedEmployeeId)
+        .eq('date', today)
+        .maybeSingle();
+
+      const { data: monthRows } = await supabase
+        .from('office_attendance')
+        .select('worked_hours')
+        .eq('employee_id', resolvedEmployeeId)
+        .gte('date', monthStart)
+        .lte('date', monthEnd);
+
+      const todayEntry = (todayRow ?? null) as {
+        check_in: string | null;
+        check_out: string | null;
+        worked_hours: number | null;
+      } | null;
+      const monthHours = (monthRows ?? []).reduce(
+        (sum, r) => sum + (Number((r as { worked_hours: number | null }).worked_hours) || 0),
+        0
+      );
+      const monthlyTotal = Math.round(monthHours * 100) / 100;
+
+      const name = (employee as { name?: string }).name ?? 'Employee';
+      const code = (employee as { employee_code?: string }).employee_code ?? '';
+      const checkIn = todayEntry ? formatTime(todayEntry.check_in) : '—';
+      const checkOut = todayEntry ? formatTime(todayEntry.check_out) : '—';
+      const todayHours = todayEntry ? (Number(todayEntry.worked_hours) || 0).toFixed(2) : '—';
+
+      const html = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Your work hours — ${name}</title></head>
@@ -158,15 +224,20 @@ export async function POST(request: Request) {
 </body>
 </html>`;
 
-  const result = await sendMail({
-    to: toEmail,
-    subject: `Your work hours — ${today}`,
-    html,
-  });
+      const result = await sendMail({
+        to: toEmail,
+        subject: `Your work hours — ${today}`,
+        html,
+      });
 
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error ?? 'Failed to send email' }, { status: 500 });
+      if (!result.ok) {
+        return NextResponse.json(
+          { ok: false, error: result.error ?? 'Failed to send email' },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json({ ok: true, sent: true });
+    }
   }
-
-  return NextResponse.json({ ok: true, sent: true });
+  return NextResponse.json(data);
 }

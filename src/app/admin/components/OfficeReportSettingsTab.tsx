@@ -25,7 +25,8 @@ export function OfficeReportSettingsTab() {
           <li>Monthly total hours (current month)</li>
         </ul>
         <p className="mt-2 text-sm text-blue-700">
-          Reports are sent via Supabase (Resend), same as attendance reminders. Assign employees to departments in{' '}
+          Reports are sent via Supabase Edge Functions (same pipeline as attendance reminders). Assign employees to
+          departments in{' '}
           <Link href="/admin?tab=officeEmployees" className="underline font-medium hover:text-blue-900">
             Office Employees
           </Link>
