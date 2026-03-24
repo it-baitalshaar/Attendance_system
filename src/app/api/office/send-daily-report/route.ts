@@ -179,7 +179,8 @@ export async function POST(request: Request) {
 
         const empMap = new Map(empList.map((e) => [e.id, e] as const));
         const totals = new Map<string, { hours: number; days: Set<string> }>();
-        const detailRows: string[] = [];
+        const byDateEmp = new Map<string, Map<string, { check_in: string | null; check_out: string | null; h: number }>>();
+        let maxDateSeen = monthStart;
 
         for (const row of (monthAttendance ?? []) as {
           employee_id: string;
@@ -193,15 +194,11 @@ export async function POST(request: Request) {
           t.hours += h;
           if (row.date) t.days.add(row.date);
           totals.set(row.employee_id, t);
+          if (row.date > maxDateSeen) maxDateSeen = row.date;
 
-          const emp = empMap.get(row.employee_id);
-          const name = emp?.name ?? row.employee_id;
-          const code = emp?.employee_code ?? '—';
-          detailRows.push(
-            `<tr><td>${name}</td><td>${code}</td><td>${row.date}</td><td>${formatTime(row.check_in)}</td><td>${formatTime(row.check_out)}</td><td>${h.toFixed(
-              2
-            )}</td></tr>`
-          );
+          const dateMap = byDateEmp.get(row.date) ?? new Map<string, { check_in: string | null; check_out: string | null; h: number }>();
+          dateMap.set(row.employee_id, { check_in: row.check_in, check_out: row.check_out, h });
+          byDateEmp.set(row.date, dateMap);
         }
 
         const summaryRows = empList
@@ -212,18 +209,48 @@ export async function POST(request: Request) {
             )}</td></tr>`;
           })
           .join('');
+        const endDateForGrid = maxDateSeen > monthStart ? maxDateSeen : monthEnd;
+        const dateList: string[] = [];
+        {
+          const start = new Date(`${monthStart}T00:00:00.000Z`);
+          const end = new Date(`${endDateForGrid}T00:00:00.000Z`);
+          for (const d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+            dateList.push(d.toISOString().slice(0, 10));
+          }
+        }
 
-        const detailTable =
-          detailRows.length > 0
-            ? `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; margin-top: 12px;">
+        const headerCols = empList
+          .map((emp) => `<th style="min-width: 140px;">${emp.name}<br/><span style="font-weight: normal; color: #6b7280;">${emp.employee_code}</span></th>`)
+          .join('');
+
+        const gridRows = dateList
+          .map((date) => {
+            const perEmp = byDateEmp.get(date) ?? new Map<string, { check_in: string | null; check_out: string | null; h: number }>();
+            const cols = empList
+              .map((emp) => {
+                const r = perEmp.get(emp.id);
+                if (!r) return '<td style="color:#9ca3af;">—</td>';
+                const cin = formatTime(r.check_in);
+                const cout = formatTime(r.check_out);
+                const hasEither = cin !== '—' || cout !== '—';
+                const timeRange = hasEither ? `${cin}-${cout}` : '—';
+                return `<td>${timeRange}<br/><span style="font-size:11px;color:#6b7280;">${r.h.toFixed(2)}h</span></td>`;
+              })
+              .join('');
+            return `<tr><td><strong>${date}</strong></td>${cols}</tr>`;
+          })
+          .join('');
+
+        const detailTable = `
+  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 12px;">
     <thead>
       <tr style="background: #f3f4f6;">
-        <th>Name</th><th>Code</th><th>Date</th><th>Check-in</th><th>Check-out</th><th>Hours</th>
+        <th style="min-width: 110px;">Date</th>
+        ${headerCols}
       </tr>
     </thead>
-    <tbody>${detailRows.join('')}</tbody>
-  </table>`
-            : `<p>No attendance rows for this month.</p>`;
+    <tbody>${gridRows}</tbody>
+  </table>`;
 
         html = `
 <!DOCTYPE html>
@@ -237,7 +264,7 @@ export async function POST(request: Request) {
     <thead><tr style="background: #f3f4f6;"><th>Name</th><th>Code</th><th>Worked days</th><th>Total hours</th></tr></thead>
     <tbody>${summaryRows}</tbody>
   </table>
-  <h3 style="margin-top: 16px;">Daily details</h3>
+  <h3 style="margin-top: 16px;">Daily details (employees as columns)</h3>
   ${detailTable}
 </body>
 </html>`;
