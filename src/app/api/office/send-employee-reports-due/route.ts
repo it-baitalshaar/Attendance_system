@@ -86,7 +86,7 @@ async function ensureAdminOrCron(request: Request): Promise<{ ok: true } | { err
   return { ok: true };
 }
 
-export async function POST(request: Request) {
+async function runDueReports(request: Request) {
   const auth = await ensureAdminOrCron(request);
   if (!('ok' in auth)) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -172,4 +172,12 @@ export async function POST(request: Request) {
     sentMonthEnd,
     errors,
   });
+}
+
+export async function POST(request: Request) {
+  return runDueReports(request);
+}
+
+export async function GET(request: Request) {
+  return runDueReports(request);
 }
