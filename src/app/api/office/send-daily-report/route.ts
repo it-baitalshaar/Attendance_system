@@ -155,7 +155,9 @@ export async function POST(request: Request) {
       .from('office_employees')
       .select('id, employee_code, name')
       .eq('department', department);
-    const empList = (employees ?? []) as { id: string; employee_code: string; name: string }[];
+    const empList = ((employees ?? []) as { id: string; employee_code: string; name: string }[]).sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+    );
     const empIds = empList.map((e) => e.id);
 
     if (empIds.length === 0) {
