@@ -229,12 +229,18 @@ export async function POST(request: Request) {
             const cols = empList
               .map((emp) => {
                 const r = perEmp.get(emp.id);
-                if (!r) return '<td style="color:#9ca3af;">—</td>';
+                if (!r) {
+                  return '<td style="color:#9ca3af;background:#f3f4f6;">—</td>';
+                }
                 const cin = formatTime(r.check_in);
                 const cout = formatTime(r.check_out);
                 const hasEither = cin !== '—' || cout !== '—';
                 const timeRange = hasEither ? `${cin}-${cout}` : '—';
-                return `<td>${timeRange}<br/><span style="font-size:11px;color:#6b7280;">${r.h.toFixed(2)}h</span></td>`;
+                const incomplete = cin !== '—' && cout === '—';
+                const cellStyle = incomplete ? 'background:#fffbeb;color:#92400e;' : '';
+                return `<td style="${cellStyle}">${timeRange}<br/><span style="font-size:11px;color:#6b7280;">${r.h.toFixed(
+                  2
+                )}h</span></td>`;
               })
               .join('');
             return `<tr><td><strong>${date}</strong></td>${cols}</tr>`;
