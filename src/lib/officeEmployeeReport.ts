@@ -56,6 +56,28 @@ function formatTime(iso: string | null): string {
   }
 }
 
+/** All calendar dates from start to end inclusive (YYYY-MM-DD). */
+function enumerateDatesInclusive(startIso: string, endIso: string): string[] {
+  const out: string[] = [];
+  const [sy, sm, sd] = startIso.split('-').map(Number);
+  const [ey, em, ed] = endIso.split('-').map(Number);
+  const cur = new Date(Date.UTC(sy, sm - 1, sd));
+  const end = new Date(Date.UTC(ey, em - 1, ed));
+  while (cur <= end) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export async function sendOfficeEmployeeReportByIdentifier({
   supabaseUrl,
   serviceRoleKey,
@@ -112,53 +134,132 @@ export async function sendOfficeEmployeeReportByIdentifier({
   const reportDate = reportType === 'monthEnd' ? getUaeMonthEndIso() : getUaeDateIso(-1);
   const monthStart = firstDayOfMonth(reportDate);
   const monthEnd = lastDayOfMonth(reportDate);
-
-  const { data: todayRow } = await supabase
-    .from('office_attendance')
-    .select('check_in, check_out, worked_hours')
-    .eq('employee_id', resolvedEmployeeId)
-    .eq('date', reportDate)
-    .maybeSingle();
-
-  const { data: monthRows } = await supabase
-    .from('office_attendance')
-    .select('worked_hours')
-    .eq('employee_id', resolvedEmployeeId)
-    .gte('date', monthStart)
-    .lte('date', monthEnd);
-
-  const todayEntry = (todayRow ?? null) as {
-    check_in: string | null;
-    check_out: string | null;
-    worked_hours: number | null;
-  } | null;
-  const monthHours = (monthRows ?? []).reduce(
-    (sum, r) => sum + (Number((r as { worked_hours: number | null }).worked_hours) || 0),
-    0
-  );
-  const monthlyTotal = Math.round(monthHours * 100) / 100;
+  const monthLabel = monthStart.slice(0, 7);
 
   const name = (employee as { name?: string }).name ?? 'Employee';
   const code = (employee as { employee_code?: string }).employee_code ?? '';
-  const checkIn = todayEntry ? formatTime(todayEntry.check_in) : '—';
-  const checkOut = todayEntry ? formatTime(todayEntry.check_out) : '—';
-  const todayHours = todayEntry ? (Number(todayEntry.worked_hours) || 0).toFixed(2) : '—';
+  const safeName = escapeHtml(name);
 
-  const html = `
+  let html: string;
+  let mailSubject: string;
+
+  if (reportType === 'monthEnd') {
+    const { data: monthAttendanceRows, error: monthAttErr } = await supabase
+      .from('office_attendance')
+      .select('date, check_in, check_out, worked_hours')
+      .eq('employee_id', resolvedEmployeeId)
+      .gte('date', monthStart)
+      .lte('date', monthEnd)
+      .order('date', { ascending: true });
+
+    if (monthAttErr) {
+      return { ok: false, error: monthAttErr.message ?? 'Failed to load attendance' };
+    }
+
+    const byDate = new Map<
+      string,
+      { check_in: string | null; check_out: string | null; worked_hours: number | null }
+    >();
+    for (const r of (monthAttendanceRows ?? []) as {
+      date: string;
+      check_in: string | null;
+      check_out: string | null;
+      worked_hours: number | null;
+    }[]) {
+      if (r?.date) byDate.set(r.date, { check_in: r.check_in, check_out: r.check_out, worked_hours: r.worked_hours });
+    }
+
+    const allDates = enumerateDatesInclusive(monthStart, monthEnd);
+    let monthHours = 0;
+    const tableRows = allDates
+      .map((d) => {
+        const row = byDate.get(d);
+        const wh = Number(row?.worked_hours) || 0;
+        monthHours += wh;
+        const cin = row ? formatTime(row.check_in) : '—';
+        const cout = row ? formatTime(row.check_out) : '—';
+        const hrs = row && row.worked_hours != null ? wh.toFixed(2) : '—';
+        return `<tr><td>${d}</td><td>${cin}</td><td>${cout}</td><td>${hrs}</td></tr>`;
+      })
+      .join('');
+
+    const monthlyTotal = Math.round(monthHours * 100) / 100;
+
+    html = `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>${subjectPrefix} — ${name}</title></head>
+<head><meta charset="utf-8"><title>${escapeHtml(subjectPrefix)} — ${safeName}</title></head>
+<body style="font-family: sans-serif; max-width: 720px; margin: 0 auto; padding: 16px;">
+  <h2>${escapeHtml(subjectPrefix)}</h2>
+  <p>Hi ${safeName},</p>
+  <p><strong>Month (UAE):</strong> ${monthStart} to ${monthEnd}</p>
+  <p style="font-size: 13px; color: #4b5563;">Below is each day in the month with check-in, check-out, and hours. Days with no attendance show —.</p>
+  <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px;">
+    <thead>
+      <tr style="background: #f3f4f6;">
+        <th align="left">Date</th>
+        <th align="left">Check-in</th>
+        <th align="left">Check-out</th>
+        <th align="right">Hours</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRows}
+      <tr style="background: #f9fafb; font-weight: bold;">
+        <td colspan="3" align="right">Monthly total</td>
+        <td align="right">${monthlyTotal.toFixed(2)}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="margin-top: 24px; color: #6b7280; font-size: 12px;">Employee code: ${escapeHtml(code)}</p>
+</body>
+</html>`;
+    mailSubject = `${subjectPrefix} — ${monthLabel}`;
+  } else {
+    const { data: todayRow } = await supabase
+      .from('office_attendance')
+      .select('check_in, check_out, worked_hours')
+      .eq('employee_id', resolvedEmployeeId)
+      .eq('date', reportDate)
+      .maybeSingle();
+
+    const { data: monthRows } = await supabase
+      .from('office_attendance')
+      .select('worked_hours')
+      .eq('employee_id', resolvedEmployeeId)
+      .gte('date', monthStart)
+      .lte('date', monthEnd);
+
+    const todayEntry = (todayRow ?? null) as {
+      check_in: string | null;
+      check_out: string | null;
+      worked_hours: number | null;
+    } | null;
+    const monthHours = (monthRows ?? []).reduce(
+      (sum, r) => sum + (Number((r as { worked_hours: number | null }).worked_hours) || 0),
+      0
+    );
+    const monthlyTotal = Math.round(monthHours * 100) / 100;
+
+    const checkIn = todayEntry ? formatTime(todayEntry.check_in) : '—';
+    const checkOut = todayEntry ? formatTime(todayEntry.check_out) : '—';
+    const todayHours = todayEntry ? (Number(todayEntry.worked_hours) || 0).toFixed(2) : '—';
+
+    html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${escapeHtml(subjectPrefix)} — ${safeName}</title></head>
 <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 16px;">
-  <h2>${subjectPrefix}</h2>
-  <p>Hi ${name},</p>
-  <p><strong>Date:</strong> ${reportDate}</p>
+  <h2>${escapeHtml(subjectPrefix)}</h2>
+  <p>Hi ${safeName},</p>
+  <p><strong>Date (yesterday, UAE):</strong> ${reportDate}</p>
   <p><strong>Monthly period:</strong> ${monthStart} to ${monthEnd}</p>
   <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">
     <thead>
       <tr style="background: #f3f4f6;">
         <th>Check-in</th>
         <th>Check-out</th>
-        <th>Today (h)</th>
+        <th>Day (h)</th>
         <th>Monthly total (h)</th>
       </tr>
     </thead>
@@ -171,13 +272,15 @@ export async function sendOfficeEmployeeReportByIdentifier({
       </tr>
     </tbody>
   </table>
-  <p style="margin-top: 24px; color: #6b7280; font-size: 12px;">Employee code: ${code}</p>
+  <p style="margin-top: 24px; color: #6b7280; font-size: 12px;">Employee code: ${escapeHtml(code)}</p>
 </body>
 </html>`;
+    mailSubject = `${subjectPrefix} — ${reportDate}`;
+  }
 
   const result = await sendMail({
     to: toEmail,
-    subject: `${subjectPrefix} — ${reportDate}`,
+    subject: mailSubject,
     html,
   });
   if (!result.ok) return { ok: false, error: result.error ?? 'Failed to send email' };
