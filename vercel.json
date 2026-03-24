@@ -1,8 +1,2 @@
 {
-  "crons": [
-    {
-      "path": "/api/office/send-employee-reports-due",
-      "schedule": "*/5 * * * *"
-    }
-  ]
 }

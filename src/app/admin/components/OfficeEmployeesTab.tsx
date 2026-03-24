@@ -263,6 +263,8 @@ export function OfficeEmployeesTab() {
   const [editError, setEditError] = useState('');
   const [sendingReportId, setSendingReportId] = useState<string | null>(null);
   const [reportSendStatus, setReportSendStatus] = useState<{ id: string; msg: string } | null>(null);
+  const [sendingDueNow, setSendingDueNow] = useState(false);
+  const [dueNowStatus, setDueNowStatus] = useState('');
 
   const now = useMemo(() => new Date(), []);
   const [reportStart, setReportStart] = useState(getMonthStart(now));
@@ -488,6 +490,36 @@ export function OfficeEmployeesTab() {
     }
   }, []);
 
+  const runDueReportsNow = useCallback(async () => {
+    setSendingDueNow(true);
+    setDueNowStatus('');
+    try {
+      const res = await fetch('/api/office/send-employee-reports-due', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        sentDaily?: number;
+        sentMonthEnd?: number;
+        errors?: string[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setDueNowStatus((data.error ?? data.errors?.join('; ') ?? 'Failed to run due reports').trim());
+        return;
+      }
+      const sentDaily = data.sentDaily ?? 0;
+      const sentMonthEnd = data.sentMonthEnd ?? 0;
+      const errs = data.errors?.length ? ` Errors: ${data.errors.length}` : '';
+      setDueNowStatus(`Done. Daily: ${sentDaily}, Month-end: ${sentMonthEnd}.${errs}`);
+    } catch (err) {
+      setDueNowStatus(err instanceof Error ? err.message : 'Request failed');
+    } finally {
+      setSendingDueNow(false);
+    }
+  }, []);
+
   const saveEdit = useCallback(async () => {
     if (!editEmployee) return;
     setEditSaving(true);
@@ -545,8 +577,12 @@ export function OfficeEmployeesTab() {
           <p className="text-sm text-gray-600">
             Realtime view from <code>office_employees</code> and today&apos;s check-in/check-out.
           </p>
+          <p className="text-xs text-gray-500 mt-1">
+            Auto schedule is manual-trigger only: click <strong>Run due reports now</strong> to send all currently due
+            employee reports.
+          </p>
         </div>
-        <div className="w-full sm:w-80">
+        <div className="w-full sm:w-80 space-y-2">
           <label className="block text-sm text-gray-600 mb-1">Search employees</label>
           <input
             value={query}
@@ -554,6 +590,15 @@ export function OfficeEmployeesTab() {
             placeholder="code, name, email, department..."
             className="w-full border rounded px-3 py-2"
           />
+          <button
+            type="button"
+            onClick={runDueReportsNow}
+            disabled={sendingDueNow}
+            className="w-full text-sm px-3 py-2 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {sendingDueNow ? 'Running due reports…' : 'Run due reports now'}
+          </button>
+          {dueNowStatus && <p className="text-xs text-gray-600">{dueNowStatus}</p>}
         </div>
       </div>
 

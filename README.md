@@ -57,15 +57,12 @@ Configured in **Edit employee** modal:
 - `Enable month-end automatic report`
 - `Month-end report time (UAE)`
 
-Scheduler endpoint:
+Scheduler endpoint (manual trigger mode):
 
 - `GET/POST /api/office/send-employee-reports-due`
 - Sends due reports and writes send markers to prevent duplicates
 - Supports admin session or cron header auth (`CRON_SECRET`)
-
-Vercel cron is configured in `vercel.json`:
-
-- every 5 minutes -> `/api/office/send-employee-reports-due`
+- Office Employees page includes **Run due reports now** button to trigger this manually
 
 ## Database migrations (important)
 
@@ -101,5 +98,5 @@ Apply all migrations in `supabase/migrations`, including:
 
 1. Set env vars in Vercel (Production and Preview if needed).
 2. Deploy latest code.
-3. Verify scheduler route returns JSON and no errors:
+3. Verify due-reports route returns JSON and no errors:
    - `GET /api/office/send-employee-reports-due`
