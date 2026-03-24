@@ -20,7 +20,7 @@ interface OfficeReportSectionProps {
   onClearError: (d: OfficeReportDepartmentKey) => void;
   onAddEmail: (d: OfficeReportDepartmentKey) => void;
   onDeleteEmail: (id: string) => void;
-  onTestSend: (d: OfficeReportDepartmentKey) => void;
+  onTestSend: (d: OfficeReportDepartmentKey, reportType?: 'daily' | 'monthEnd') => void;
 }
 
 export function OfficeReportSection({
@@ -42,9 +42,9 @@ export function OfficeReportSection({
 }: OfficeReportSectionProps) {
   return (
     <section className="mb-8 p-4 bg-white rounded-lg shadow">
-      <h2 className="text-xl font-semibold mb-2">Office Daily Report (10 AM)</h2>
+      <h2 className="text-xl font-semibold mb-2">Office Reports (Daily + Month-end)</h2>
       <p className="text-gray-600 mb-6">
-        Daily email at 10:00 AM with today&apos;s check-in/check-out and monthly total hours for Bait Alshaar and Al Saqia.
+        Daily email uses yesterday&apos;s attendance; month-end email includes full month details for Bait Alshaar and Al Saqia.
       </p>
       <div className="space-y-6">
         {OFFICE_REPORT_DEPARTMENTS.map(({ value, label }) => {
@@ -128,11 +128,19 @@ export function OfficeReportSection({
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => onTestSend(value)}
+                  onClick={() => onTestSend(value, 'daily')}
                   disabled={testingDept === value}
                   className="text-sm px-3 py-1.5 rounded border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                 >
                   {testingDept === value ? 'Sending…' : 'Send test report now'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onTestSend(value, 'monthEnd')}
+                  disabled={testingDept === value}
+                  className="text-sm px-3 py-1.5 rounded border border-indigo-600 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                >
+                  {testingDept === value ? 'Sending…' : 'Send month-end report now'}
                 </button>
                 {testStatusByDept[value] && <p className="text-xs text-gray-600">{testStatusByDept[value]}</p>}
               </div>

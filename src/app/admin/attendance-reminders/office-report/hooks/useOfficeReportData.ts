@@ -111,10 +111,16 @@ export function useOfficeReportData() {
     else await refreshEmails();
   };
 
-  const handleTestSend = async (department: OfficeReportDepartmentKey) => {
+  const handleTestSend = async (
+    department: OfficeReportDepartmentKey,
+    reportType: 'daily' | 'monthEnd' = 'daily'
+  ) => {
     setTestingDept(department);
-    setTestStatusByDept((prev) => ({ ...prev, [department]: 'Sending test report…' }));
-    const result = await sendTestOfficeReport(department);
+    setTestStatusByDept((prev) => ({
+      ...prev,
+      [department]: reportType === 'monthEnd' ? 'Sending month-end report…' : 'Sending test report…',
+    }));
+    const result = await sendTestOfficeReport(department, reportType);
     setTestingDept(null);
     if (result.error) {
       const err = result.error as { message?: string; context?: { body?: string } };
@@ -126,7 +132,12 @@ export function useOfficeReportData() {
     const sent = result.sent;
     const reason = result.reason;
     let msg: string;
-    if (sent && sent > 0) msg = `Sent to ${sent} recipient(s).`;
+    if (sent && sent > 0) {
+      msg =
+        reportType === 'monthEnd'
+          ? `Month-end report sent to ${sent} recipient(s).`
+          : `Sent to ${sent} recipient(s).`;
+    }
     else if (reason) msg = reason;
     else msg = 'Test report sent.';
     setTestStatusByDept((prev) => ({ ...prev, [department]: msg }));
