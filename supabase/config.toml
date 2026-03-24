@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.send-office-employee-report]
 verify_jwt = false
+
+[functions.trigger-office-employee-reports-due]
+verify_jwt = false

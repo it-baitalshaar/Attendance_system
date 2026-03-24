@@ -64,6 +64,17 @@ Scheduler endpoint (manual trigger mode):
 - Supports admin session or cron header auth (`CRON_SECRET`)
 - Office Employees page includes **Run due reports now** button to trigger this manually
 
+Supabase automatic trigger (optional):
+
+- Edge Function: `trigger-office-employee-reports-due`
+- This function calls your app route: `/api/office/send-employee-reports-due`
+- Configure Edge Function secrets in Supabase:
+  - `APP_BASE_URL` (example: `https://baitalshaar.vercel.app`)
+  - `CRON_SECRET` (must match Vercel `CRON_SECRET`)
+- Schedule from Supabase Cron (example every 5 minutes) to call:
+  - `https://<project-ref>.functions.supabase.co/trigger-office-employee-reports-due`
+- Keep `verify_jwt = false` for this trigger function in `supabase/config.toml` when using cron without auth token.
+
 ## Database migrations (important)
 
 Apply all migrations in `supabase/migrations`, including:
@@ -84,6 +95,9 @@ Apply all migrations in `supabase/migrations`, including:
 
 - `src/lib/officeEmployeeReport.ts`  
   Shared employee email generation and sending logic.
+
+- `supabase/functions/trigger-office-employee-reports-due/index.ts`  
+  Supabase Edge trigger that calls the app due-reports endpoint.
 
 - `src/app/admin/components/OfficeEmployeesTab.tsx`  
   Employee table actions + edit modal schedule controls.

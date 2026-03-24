@@ -1166,8 +1166,8 @@ export function OfficeEmployeesTab() {
                   />
                 </div>
                 <p className="text-xs text-gray-500">
-                  Scheduler endpoint: <code>/api/office/send-employee-reports-due</code> (call by cron every 5-10
-                  minutes with <code>X-Cron-Secret</code> if set).
+                  Manual trigger endpoint: <code>/api/office/send-employee-reports-due</code>. Use the{' '}
+                  <strong>Run due reports now</strong> button on this page to send all due employee reports.
                 </p>
               </div>
               {editError && (
