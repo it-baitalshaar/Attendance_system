@@ -42,6 +42,21 @@ function getDaysAgo(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function getUaeTodayIso(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dubai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+  return `${parts.year ?? '1970'}-${parts.month ?? '01'}-${parts.day ?? '01'}`;
+}
+
 type DayEntry = { checkIn: string | null; checkOut: string | null; hours: number };
 type ReportResult = {
   employee: { id: string; employee_code: string; name: string; department: string };
@@ -267,6 +282,7 @@ export function OfficeEmployeesTab() {
   const [dueNowStatus, setDueNowStatus] = useState('');
 
   const now = useMemo(() => new Date(), []);
+  const uaeTodayIso = useMemo(() => getUaeTodayIso(), []);
   const [reportStart, setReportStart] = useState(getMonthStart(now));
   const [reportEnd, setReportEnd] = useState(getMonthEnd(now));
   const [reportData, setReportData] = useState<{ results: ReportResult[]; grandTotal: number } | null>(null);
@@ -952,6 +968,7 @@ export function OfficeEmployeesTab() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Daily email</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Code</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Name</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Email (BioTime)</th>
@@ -999,6 +1016,22 @@ export function OfficeEmployeesTab() {
                           <span className="text-xs text-gray-600">{reportSendStatus.msg}</span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {!e.auto_daily_report_enabled ? (
+                        <span className="text-xs text-gray-400">Disabled</span>
+                      ) : e.last_daily_report_sent_on === uaeTodayIso ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-green-50 px-2 py-0.5 text-xs text-green-700 border border-green-200">
+                          ✓ Sent today
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700 border border-amber-200">
+                          ○ Pending
+                        </span>
+                      )}
+                      {e.last_daily_report_sent_on && (
+                        <div className="text-[11px] text-gray-500 mt-1">Last: {e.last_daily_report_sent_on}</div>
+                      )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap font-medium">{e.employee_code}</td>
                     <td className="px-4 py-3 whitespace-nowrap">{e.name}</td>
