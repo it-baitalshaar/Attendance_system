@@ -90,19 +90,54 @@ export function useEmployeeManagement() {
       )
     : undefined;
 
+  const formatSalaryValue = (value?: number | null) =>
+    value == null ? 'empty' : String(value);
+
   const handleUpdateEmployee = useCallback(
     async (id: string, payload: EmployeeUpdatePayload) => {
       setUpdateLoading(true);
       setUpdateMessage('');
       try {
+        const previous = employees.find(
+          (e) => e.id === id || e.employee_id === id
+        );
         const details: string[] = [];
-        if (payload.name != null) details.push(`Name: ${payload.name}`);
-        if (payload.position != null) details.push(`Position: ${payload.position}`);
-        if (payload.department != null) details.push(`Department: ${payload.department}`);
-        if (payload.status != null) details.push(`Status: ${payload.status}`);
-        if (payload.salary != null) details.push(`Salary: ${payload.salary}`);
-        if (payload.overtime_enabled != null) {
-          details.push(`Overtime: ${payload.overtime_enabled ? 'enabled' : 'disabled'}`);
+
+        if (previous) {
+          if (payload.name != null && payload.name !== previous.name) {
+            details.push(`Name: ${previous.name} -> ${payload.name}`);
+          }
+          if (payload.position != null && payload.position !== previous.position) {
+            details.push(`Position: ${previous.position} -> ${payload.position}`);
+          }
+          if (payload.department != null && payload.department !== previous.department) {
+            details.push(`Department: ${previous.department} -> ${payload.department}`);
+          }
+          if (payload.status != null && payload.status !== previous.status) {
+            details.push(`Status: ${previous.status} -> ${payload.status}`);
+          }
+          if (payload.salary != null && payload.salary !== previous.salary) {
+            details.push(
+              `Salary: ${formatSalaryValue(previous.salary)} -> ${formatSalaryValue(payload.salary)}`
+            );
+          }
+          if (
+            payload.overtime_enabled != null &&
+            payload.overtime_enabled !== (previous.overtime_enabled !== false)
+          ) {
+            details.push(
+              `Overtime: ${(previous.overtime_enabled !== false) ? 'enabled' : 'disabled'} -> ${payload.overtime_enabled ? 'enabled' : 'disabled'}`
+            );
+          }
+        } else {
+          if (payload.name != null) details.push(`Name: ${payload.name}`);
+          if (payload.position != null) details.push(`Position: ${payload.position}`);
+          if (payload.department != null) details.push(`Department: ${payload.department}`);
+          if (payload.status != null) details.push(`Status: ${payload.status}`);
+          if (payload.salary != null) details.push(`Salary: ${payload.salary}`);
+          if (payload.overtime_enabled != null) {
+            details.push(`Overtime: ${payload.overtime_enabled ? 'enabled' : 'disabled'}`);
+          }
         }
         await updateEmployeeService(id, payload);
         setUpdateMessage('Employee updated successfully.');
@@ -129,7 +164,7 @@ export function useEmployeeManagement() {
         setUpdateLoading(false);
       }
     },
-    [manageEmployeeId, loadEmployees, loadEmployeeHistory]
+    [employees, manageEmployeeId, loadEmployees, loadEmployeeHistory]
   );
 
   const handleInputChange = (
