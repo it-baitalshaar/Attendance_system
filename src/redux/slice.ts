@@ -31,6 +31,8 @@ export interface Employee {
   name: string;
   position?: string;
   department?: string;
+  /** From Employee.overtime_enabled; default true when absent. */
+  overtime_enabled?: boolean | null;
   project?: string;
   projects?: ProjectData;
   employee_status?: Status[]

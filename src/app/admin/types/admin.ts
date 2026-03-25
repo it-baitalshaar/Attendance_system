@@ -6,6 +6,8 @@ export interface Employee {
   department: string;
   status: string;
   salary?: number | null;
+  /** When false, overtime is disabled for this employee (Construction / Maintenance). */
+  overtime_enabled?: boolean | null;
 }
 
 export interface EmployeeUpdatePayload {
@@ -14,6 +16,7 @@ export interface EmployeeUpdatePayload {
   department?: string;
   status?: string;
   salary?: number | null;
+  overtime_enabled?: boolean | null;
 }
 
 export interface EmployeeHistoryRecord {

@@ -7,7 +7,7 @@ export async function fetchEmployeesByDepartment(
   const supabase = createSupabbaseFrontendClient();
   const { data, error } = await supabase
     .from('Employee')
-    .select('employee_id, name, position, department')
+    .select('employee_id, name, position, department, overtime_enabled')
     .eq('department', department)
     .eq('status', 'active');
   if (error) {

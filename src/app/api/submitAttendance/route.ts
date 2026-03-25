@@ -498,6 +498,26 @@ export async function POST(request: Request) {
       .maybeSingle();
     const isEditTrack = !!existingTrackRow;
 
+    const distinctEmployeeIds = Array.from(
+      new Set(
+        employees
+          .map((e: { employee_id?: string }) => e.employee_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+    const { data: overtimeRows } = await supabase
+      .from('Employee')
+      .select('employee_id, overtime_enabled')
+      .in('employee_id', distinctEmployeeIds);
+    const overtimeAllowedByEmployeeId = new Map<string, boolean>(
+      (overtimeRows ?? []).map(
+        (r: { employee_id: string; overtime_enabled: boolean | null | undefined }) => [
+          r.employee_id,
+          r.overtime_enabled !== false,
+        ]
+      )
+    );
+
     console.log("legacy submit: length ", employees.length, " department ", department, " date ", targetDate, " isEditTrack ", isEditTrack)
     if (employees.length > 0)
     {
@@ -577,7 +597,14 @@ export async function POST(request: Request) {
                 attendance_id: attendanceId,
                 project_id: projData.project_id,
                 working_hours: employees[i].projects.projectId[projectIdx].hours || 0,
-                overtime_hours: employees[i].projects.projectId[projectIdx].overtime || 0,
+                overtime_hours: (() => {
+                  const id = employees[i].employee_id;
+                  const fromDb = overtimeAllowedByEmployeeId.get(id);
+                  const allow =
+                    fromDb !== false &&
+                    employees[i].overtime_enabled !== false;
+                  return allow ? employees[i].projects.projectId[projectIdx].overtime || 0 : 0;
+                })(),
               });
             }
           }

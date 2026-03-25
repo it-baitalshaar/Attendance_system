@@ -63,6 +63,7 @@ export function useHomeSubmit(state: HomeSubmitState) {
             name: e.name,
             position: e.position,
             department: e.department,
+            overtime_enabled: reduxEmp?.overtime_enabled !== false,
             projects: reduxEmp?.projects ?? { projectId: [], tthour: 0 },
           };
         });

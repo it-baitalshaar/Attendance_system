@@ -101,6 +101,9 @@ export function useEmployeeManagement() {
         if (payload.department != null) details.push(`Department: ${payload.department}`);
         if (payload.status != null) details.push(`Status: ${payload.status}`);
         if (payload.salary != null) details.push(`Salary: ${payload.salary}`);
+        if (payload.overtime_enabled != null) {
+          details.push(`Overtime: ${payload.overtime_enabled ? 'enabled' : 'disabled'}`);
+        }
         await updateEmployeeService(id, payload);
         setUpdateMessage('Employee updated successfully.');
         await loadEmployees();

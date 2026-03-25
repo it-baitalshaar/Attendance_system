@@ -3,6 +3,7 @@ export interface HomeEmployee {
   name: string;
   position?: string;
   department?: string;
+  overtime_enabled?: boolean | null;
 }
 
 export interface ReportData {

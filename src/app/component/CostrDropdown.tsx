@@ -58,6 +58,15 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
     state.project.employees.find(emp => emp.employee_id === employee_id)
   );
 
+  const overtimeAllowed = employee1?.overtime_enabled !== false;
+
+  useEffect(() => {
+    if (!overtimeAllowed) {
+      dispatch(overtime_hours({ overtime_Hours: 0, employee_id, project_index: input_index }));
+      setSelectedOvertime(null);
+    }
+  }, [overtimeAllowed, dispatch, employee_id, input_index]);
+
   const totalProjects = useSelector((state: RootState) =>
     state.project.totalProjects
   );
@@ -318,7 +327,9 @@ const handleOvertTimeHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => 
           </select>
         </div>
       } */}
-      {(overtime_input && employee1?.employee_status![0].status_employee !== 'Sick Leave') && (
+      {(overtime_input &&
+        overtimeAllowed &&
+        employee1?.employee_status![0].status_employee !== 'Sick Leave') && (
         <div>
           <select 
             value={selectedOvertime ?? ''}

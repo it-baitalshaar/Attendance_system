@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Employee, EmployeeHistoryRecord, EmployeeUpdatePayload } from '../../types/admin';
 
+/** Departments that use project + overtime entry on the attendance home page. */
+const OVERTIME_MANAGED_DEPARTMENTS = new Set(['Construction', 'Maintenance']);
+
 export interface ManageEmployeePanelProps {
   employee: Employee;
   departments: string[];
@@ -31,6 +34,9 @@ export function ManageEmployeePanel({
   const [salary, setSalary] = useState<string>(
     employee.salary != null ? String(employee.salary) : ''
   );
+  const [overtimeEnabled, setOvertimeEnabled] = useState(
+    employee.overtime_enabled !== false
+  );
 
   useEffect(() => {
     setName(employee.name);
@@ -38,20 +44,27 @@ export function ManageEmployeePanel({
     setDepartment(employee.department);
     setStatus(employee.status || 'active');
     setSalary(employee.salary != null ? String(employee.salary) : '');
+    setOvertimeEnabled(employee.overtime_enabled !== false);
   }, [employee]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const deptTrim = department.trim();
     const payload: EmployeeUpdatePayload = {
       name: name.trim(),
       position: position.trim(),
-      department: department.trim(),
+      department: deptTrim,
       status,
       salary: salary.trim() === '' ? null : Number(salary),
     };
+    if (OVERTIME_MANAGED_DEPARTMENTS.has(deptTrim)) {
+      payload.overtime_enabled = overtimeEnabled;
+    }
     // Use employee_id (e.g. BS0021) for update — your Employee table has no id/uuid column.
     onUpdate(employee.employee_id, payload);
   };
+
+  const showOvertimeToggle = OVERTIME_MANAGED_DEPARTMENTS.has(department.trim());
 
   const formatDate = (iso: string) => {
     try {
@@ -148,6 +161,20 @@ export function ManageEmployeePanel({
                   placeholder="Optional"
                 />
               </div>
+              {showOvertimeToggle && (
+                <div className="md:col-span-2 flex items-center gap-2">
+                  <input
+                    id="manage-employee-overtime"
+                    type="checkbox"
+                    checked={overtimeEnabled}
+                    onChange={(e) => setOvertimeEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <label htmlFor="manage-employee-overtime" className="text-sm font-medium">
+                    Allow overtime (Construction / Maintenance attendance)
+                  </label>
+                </div>
+              )}
             </div>
 
             {updateMessage && (
