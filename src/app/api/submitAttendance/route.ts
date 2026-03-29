@@ -223,6 +223,7 @@
 
 import { NextResponse } from 'next/server';
 import { createSupabaseServerComponentClient } from '@/lib/supabaseAppRouterClient';
+import { getOvertimeRate, normalizeOvertimeType } from '@/app/constants/overtime';
 
 type SimpleStatus = 'present' | 'absent' | 'vacation';
 
@@ -593,18 +594,20 @@ export async function POST(request: Request) {
             if (!projectName) continue;
             const { data: projData } = await supabase.from('projects').select('project_id').eq('project_name', projectName).maybeSingle();
             if (projData) {
+              const id = employees[i].employee_id;
+              const fromDb = overtimeAllowedByEmployeeId.get(id);
+              const allow =
+                fromDb !== false && employees[i].overtime_enabled !== false;
+              const projRow = employees[i].projects.projectId[projectIdx];
+              const otType = normalizeOvertimeType(projRow.overtime_type);
+              const otHours = allow ? projRow.overtime || 0 : 0;
               await supabase.from('Attendance_projects').insert({
                 attendance_id: attendanceId,
                 project_id: projData.project_id,
-                working_hours: employees[i].projects.projectId[projectIdx].hours || 0,
-                overtime_hours: (() => {
-                  const id = employees[i].employee_id;
-                  const fromDb = overtimeAllowedByEmployeeId.get(id);
-                  const allow =
-                    fromDb !== false &&
-                    employees[i].overtime_enabled !== false;
-                  return allow ? employees[i].projects.projectId[projectIdx].overtime || 0 : 0;
-                })(),
+                working_hours: projRow.hours || 0,
+                overtime_hours: otHours,
+                overtime_type: otType,
+                overtime_rate: getOvertimeRate(otType),
               });
             }
           }

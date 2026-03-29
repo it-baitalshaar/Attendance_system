@@ -1,5 +1,6 @@
 import { createSupabaseServerComponentClient } from "@/lib/supabaseAppRouterClient";
 import { Employee } from '@/redux/slice';
+import { getOvertimeRate, normalizeOvertimeType } from '@/app/constants/overtime';
 
 interface AttendanceProject {
   attendance_id: string;
@@ -35,13 +36,16 @@ export async function submitAttendance(employees: Employee[]) {
         const attendance_id = attendance[0].id; // Get the inserted attendance_id
 
         // 2. Insert each project associated with the attendance
-        const projectEntries: AttendanceProject[] = employee.projects.projectId.map((proj) => ({
-          attendance_id: attendance_id,
-          project_id: proj.projectName[0], // Assuming projectName contains the actual ID
-          working_hours: proj.hours,
-          overtime_hours: proj.overtime,
-          overtime_rate: 1.5, // Adjust as needed based on your logic
-        }));
+        const projectEntries: AttendanceProject[] = employee.projects.projectId.map((proj) => {
+          const otType = normalizeOvertimeType(proj.overtime_type);
+          return {
+            attendance_id: attendance_id,
+            project_id: proj.projectName[0], // Assuming projectName contains the actual ID
+            working_hours: proj.hours,
+            overtime_hours: proj.overtime,
+            overtime_rate: getOvertimeRate(otType),
+          };
+        });
 
         const { error: projectsError } = await supbase
           .from('attendance_projects')

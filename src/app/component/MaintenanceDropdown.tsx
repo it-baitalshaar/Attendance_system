@@ -33,6 +33,7 @@ import { createSupabbaseFrontendClient } from '@/lib/supabase';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/redux/store';
 import { addProjectToEmployee, addHours, setRemainingHours, setLeftHours, sum_hours, overtime_hours } from '@/redux/slice';
+import { OvertimeHoursFields } from '@/app/component/OvertimeHoursFields';
 import { cpSync } from 'fs';
 
 async function fetchProjects(department: string) {
@@ -69,7 +70,6 @@ const MaintenanceDropdown = ({employee_id, input_index, departments}:Maintenance
   const [project, setProject] = useState('');
   const [selectedHours, setSelectedHours] = useState<number | null>(null);
   const [show_H, showHours] = useState<string | null>(null);
-  const [selectedOvertime, setSelectedOvertime] = useState<number | null>(null);
   // const [remainingHours, setRemainingHours] = useState<number>(8);
   const [projectIndex, indexProject] = useState<number | null>(null);
   const [overtime_input, setOvertimeInput] = useState<Boolean>(false)
@@ -89,8 +89,14 @@ const MaintenanceDropdown = ({employee_id, input_index, departments}:Maintenance
 
   useEffect(() => {
     if (!overtimeAllowed) {
-      dispatch(overtime_hours({ overtime_Hours: 0, employee_id, project_index: input_index }));
-      setSelectedOvertime(null);
+      dispatch(
+        overtime_hours({
+          overtime_Hours: 0,
+          employee_id,
+          project_index: input_index,
+          overtime_type: 'normal',
+        })
+      );
     }
   }, [overtimeAllowed, dispatch, employee_id, input_index]);
 
@@ -316,15 +322,6 @@ const handleHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
   setSelectedHours(hours);
 };
 
-const handleOvertTimeHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-
-  const hours = parseInt(e.target.value, 10);
-  
-  dispatch(overtime_hours({overtime_Hours:hours, employee_id, project_index:input_index}))
-
-  setSelectedOvertime(hours);
-};
-
   const renderHours = () => {
     // If it's an array, map through it
     // // // // console.log(Array.isArray(hours))
@@ -379,20 +376,19 @@ const handleOvertTimeHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => 
         </select>
       </div>
       }
-      {(overtime_input &&
-        overtimeAllowed &&
-        employee1?.employee_status![0].status_employee !== 'Sick Leave')  && (
-        <div>
-          <select 
-            value={selectedOvertime ?? ''}
-            onChange={handleOvertTimeHoursChange}
-            className='text-black p-2 border rounded-lg focus:ring focus:ring-blue-200 w-full mt-5'
-            >
-            <option value="" disabled>الساعات الاضافية</option>
-            {renderOvertime()}
-          </select>
-        </div>
-      )}
+      <OvertimeHoursFields
+        employee_id={employee_id}
+        project_index={input_index}
+        show={
+          Boolean(
+            overtime_input &&
+              overtimeAllowed &&
+              employee1?.employee_status![0].status_employee !== 'Sick Leave'
+          )
+        }
+        hoursPlaceholder="الساعات الاضافية"
+        hoursSelectChildren={renderOvertime()}
+      />
     </div>
   );
 };

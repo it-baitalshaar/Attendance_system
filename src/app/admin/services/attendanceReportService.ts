@@ -6,9 +6,10 @@
 import type {
   AttendanceReportEmployeeReport,
   AttendanceReportDay,
-  AttendanceReportDayOvertime,
 } from '../types/attendanceReport';
 import { statusToCode } from '../types/attendanceReport';
+import { normalizeOvertimeType } from '@/app/constants/overtime';
+import { resolveProjectDisplayName } from '@/lib/projectDisplayName';
 
 export interface RawAttendanceRow {
   id: string;
@@ -24,6 +25,8 @@ export interface RawAttendanceProjectRow {
   project_id: string;
   working_hours: number;
   overtime_hours: number;
+  /** When set, drives payroll OT columns (normal / holiday / public_holiday). */
+  overtime_type?: string | null;
 }
 
 export interface RawEmployeeRow {
@@ -45,7 +48,7 @@ export interface BuildReportInput {
  * - One row per employee per calendar day
  * - Sum hours and overtime per day
  * - 8hr default for Weekend/Holiday-Work when working_hours=0
- * - Overtime by type: normal (Present), weekend (Weekend), holiday (Holiday-Work)
+ * - Overtime by payroll type from each project row (overtime_type), with legacy fallback from day status when type is missing
  * - Project text: "Name Xhrs + Name Yhrs", NULL → "Unknown"
  * - Sort by employee_id, date asc
  */
@@ -78,42 +81,70 @@ export function buildAttendanceReport(
       notes: string | null;
       working_hours: number;
       overtime_normal: number;
-      overtime_weekend: number;
       overtime_holiday: number;
+      overtime_public_holiday: number;
       projectParts: { name: string; hours: number }[];
     }
   >();
+
+  const addOvertimeToBuckets = (
+    projRows: RawAttendanceProjectRow[],
+    sa: string
+  ) => {
+    let overtime_normal = 0;
+    let overtime_holiday = 0;
+    let overtime_public_holiday = 0;
+    for (const p of projRows) {
+      const ot = Number(p.overtime_hours ?? 0);
+      if (ot === 0) continue;
+      const typeRaw = p.overtime_type;
+      const t =
+        typeRaw != null && String(typeRaw).trim() !== ''
+          ? normalizeOvertimeType(typeRaw)
+          : null;
+
+      // Explicit payroll types from the app (holiday / public holiday) always win.
+      if (t === 'holiday') {
+        overtime_holiday += ot;
+      } else if (t === 'public_holiday') {
+        overtime_public_holiday += ot;
+      } else {
+        // `normal`, missing type, or legacy backfill: bucket by day status so migrated
+        // rows (all defaulted to 'normal') still match weekend/holiday OT columns.
+        if (sa === 'Present') overtime_normal += ot;
+        else if (sa === 'Weekend') overtime_holiday += ot;
+        else if (sa === 'Holiday-Work') overtime_public_holiday += ot;
+        else overtime_normal += ot;
+      }
+    }
+    return { overtime_normal, overtime_holiday, overtime_public_holiday };
+  };
 
   for (const att of attRows) {
     const k = key(att.employee_id, att.date);
     const projRows = projectsByAttendanceId.get(att.id) ?? [];
     let working_hours = 0;
-    let overtime_hours = 0;
     const projectParts: { name: string; hours: number }[] = [];
 
     for (const p of projRows) {
       const hrs = Number(p.working_hours ?? 0);
-      const ot = Number(p.overtime_hours ?? 0);
       working_hours += hrs;
-      overtime_hours += ot;
-      const name = projectNameById.get(p.project_id) ?? 'Unknown';
+      const name = resolveProjectDisplayName(p.project_id, projectNameById);
       projectParts.push({ name, hours: hrs });
     }
 
     const sa = att.status_attendance ?? '';
-    let overtime_normal = 0;
-    let overtime_weekend = 0;
-    let overtime_holiday = 0;
-    if (sa === 'Present') overtime_normal = overtime_hours;
-    else if (sa === 'Weekend') overtime_weekend = overtime_hours;
-    else if (sa === 'Holiday-Work') overtime_holiday = overtime_hours;
+    const { overtime_normal, overtime_holiday, overtime_public_holiday } = addOvertimeToBuckets(
+      projRows,
+      sa
+    );
 
     const existing = dayDataByKey.get(k);
     if (existing) {
       existing.working_hours += working_hours;
       existing.overtime_normal += overtime_normal;
-      existing.overtime_weekend += overtime_weekend;
       existing.overtime_holiday += overtime_holiday;
+      existing.overtime_public_holiday += overtime_public_holiday;
       existing.projectParts.push(...projectParts);
       if (!existing.notes && att.notes) existing.notes = att.notes;
     } else {
@@ -123,8 +154,8 @@ export function buildAttendanceReport(
         notes: att.notes,
         working_hours,
         overtime_normal,
-        overtime_weekend,
         overtime_holiday,
+        overtime_public_holiday,
         projectParts,
       });
     }
@@ -177,8 +208,8 @@ export function buildAttendanceReport(
         working_hours: d.working_hours,
         overtime: {
           normal: d.overtime_normal,
-          weekend: d.overtime_weekend,
           holiday: d.overtime_holiday,
+          public_holiday: d.overtime_public_holiday,
         },
         projects: projectsText || '—',
         notes: d.notes,

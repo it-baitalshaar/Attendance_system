@@ -14,6 +14,8 @@ interface ProjectAndHours{
   projectName:string[]
   hours: number | 0;
   overtime:number;
+  /** Payroll overtime category: normal | holiday | public_holiday */
+  overtime_type?: string;
   note:string | null
 }
 interface ProjectData {
@@ -169,7 +171,31 @@ const projectSlice = createSlice({
     state.leftHours = action.payload
   },
 
-  addProjectToEmployee: (state, action: PayloadAction<{ employee_id: string; selected_project: string, project_index: number }>) => {
+    /**
+     * Remove one project row by index (edit flow). Recalculates tthour from remaining rows so totals stay consistent.
+     * Does not change addHours / sum_hours logic.
+     */
+    removeProjectFromEmployee: (
+      state,
+      action: PayloadAction<{ employee_id: string; project_index: number }>
+    ) => {
+      const { employee_id, project_index } = action.payload;
+      const employee = state.employees.find((emp) => emp.employee_id === employee_id);
+      const list = employee?.projects?.projectId;
+      if (!employee?.projects || !list || project_index < 0 || project_index >= list.length) return;
+
+      list.splice(project_index, 1);
+      if (list.length === 0) {
+        employee.projects.tthour = 0;
+      } else {
+        employee.projects.tthour = list.reduce(
+          (sum, p) => sum + (typeof p.hours === 'number' && p.hours > 0 ? p.hours : 0),
+          0
+        );
+      }
+    },
+
+    addProjectToEmployee: (state, action: PayloadAction<{ employee_id: string; selected_project: string, project_index: number }>) => {
     const { employee_id, selected_project ,project_index } = action.payload;
     const employee = state.employees.find(emp => emp.employee_id === employee_id);
     if (employee) 
@@ -188,6 +214,7 @@ const projectSlice = createSlice({
               projectName: [],  // Create a new project array with the selected project
               hours: 0,  // You can set hours later
               overtime:0,
+              overtime_type: 'normal',
               note:null,
             };
             employee.projects!.projectId[project_index].projectName[project_index] = selected_project
@@ -247,15 +274,27 @@ const projectSlice = createSlice({
         employee.projects.tthour += employee.projects.projectId[project_index].hours
     },
 
-    overtime_hours: (state, action: PayloadAction<{overtime_Hours: number, employee_id: string, project_index:number }>) => {
+    overtime_hours: (
+      state,
+      action: PayloadAction<{
+        overtime_Hours: number;
+        employee_id: string;
+        project_index: number;
+        overtime_type?: string;
+      }>
+    ) => {
+      const { employee_id, project_index, overtime_Hours, overtime_type } = action.payload;
 
-      const { employee_id, project_index, overtime_Hours } = action.payload
+      const employee = state.employees.find((emp) => emp.employee_id === employee_id);
+      const proj = employee?.projects?.projectId[project_index];
+      if (!employee || proj === undefined) return;
 
-      const employee = state.employees.find(emp => emp.employee_id === employee_id);
-
-      // console.log("this is the employee ", employee, " and this is the projects ", employee.projects?.projectId[project_index])
-      if ((employee && employee.projects?.projectId[project_index] !== undefined))
-        employee.projects.projectId[project_index].overtime = overtime_Hours
+      proj.overtime = overtime_Hours;
+      if (overtime_type !== undefined) {
+        proj.overtime_type = overtime_type;
+      } else if (proj.overtime_type === undefined) {
+        proj.overtime_type = 'normal';
+      }
     },
 
     add_notes: (state, action: PayloadAction<{employee_id: string, project_index:number,  notes: string}>) => {
@@ -298,6 +337,7 @@ export const {
   setAttendanceFromServer,
   clearAttendanceEntries,
   setEmployeeProjectsFromServer,
+  removeProjectFromEmployee,
   addProjectToEmployee,
   addHours,
   setTotalProject,

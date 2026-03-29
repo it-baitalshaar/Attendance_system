@@ -10,6 +10,8 @@ import {
   type AttendanceStatus,
 } from '@/redux/slice';
 import { HomeEmployee } from '../types/home';
+import { buildProjectNameLookup, resolveProjectDisplayName } from '@/lib/projectDisplayName';
+import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
 
 export interface LoadAttendanceParams {
   date: string;
@@ -112,16 +114,43 @@ export async function loadAttendanceForDateAndDepartment(
       }
     });
     if (attendanceIds.length > 0) {
-      const { data: attProjRows, error: attProjErr } = await supabase
+      let attProjRows: {
+        attendance_id: string;
+        project_id: string;
+        working_hours: number | null;
+        overtime_hours: number | null;
+        overtime_type?: string | null;
+      }[] | null = null;
+      let attProjErr = null as { message?: string; code?: string } | null;
+
+      const withType = await supabase
         .from('Attendance_projects')
-        .select('attendance_id, project_id, working_hours, overtime_hours')
+        .select('attendance_id, project_id, working_hours, overtime_hours, overtime_type')
         .in('attendance_id', attendanceIds);
+
+      if (withType.error && isUndefinedColumnError(withType.error)) {
+        const minimal = await supabase
+          .from('Attendance_projects')
+          .select('attendance_id, project_id, working_hours, overtime_hours')
+          .in('attendance_id', attendanceIds);
+        attProjRows = minimal.data ?? null;
+        attProjErr = minimal.error;
+      } else {
+        attProjRows = withType.data ?? null;
+        attProjErr = withType.error;
+      }
+
       if (!attProjErr && attProjRows) {
         const projectIds = Array.from(new Set(attProjRows.map((r) => r.project_id).filter(Boolean)));
-        const projectNameById = new Map<string, string>();
+        let projectNameById = new Map<string, string>();
         if (projectIds.length > 0) {
-          const { data: projRows } = await supabase.from('projects').select('project_id, project_name').in('project_id', projectIds);
-          (projRows ?? []).forEach((p: { project_id: string; project_name: string }) => projectNameById.set(p.project_id, p.project_name));
+          const { data: projRows } = await supabase
+            .from('projects')
+            .select('project_id, project_name')
+            .in('project_id', projectIds);
+          projectNameById = buildProjectNameLookup(
+            (projRows ?? []) as { project_id: string; project_name: string }[]
+          );
         }
         const rowsByAttendanceId = new Map<string, typeof attProjRows>();
         attProjRows.forEach((r) => {
@@ -135,13 +164,17 @@ export async function loadAttendanceForDateAndDepartment(
             dispatch(setEmployeeProjectsFromServer({ employee_id, projects: { projectId: [], tthour: 0 } }));
             return;
           }
-          const projectId = rows.map((row: any) => ({
-            projectName: projectNameById.get(row.project_id) ? [projectNameById.get(row.project_id)!] : [],
-            hours: Number(row.working_hours ?? 0),
-            overtime: Number(row.overtime_hours ?? 0),
-            note: null,
-          }));
-          const tthour = projectId.reduce((sum: number, p: any) => sum + (Number(p.hours) || 0), 0);
+          const projectId = rows.map((row) => {
+            const label = resolveProjectDisplayName(row.project_id, projectNameById);
+            return {
+              projectName: [label],
+              hours: Number(row.working_hours ?? 0),
+              overtime: Number(row.overtime_hours ?? 0),
+              overtime_type: row.overtime_type ?? 'normal',
+              note: null,
+            };
+          });
+          const tthour = projectId.reduce((sum: number, p: (typeof projectId)[0]) => sum + (Number(p.hours) || 0), 0);
           dispatch(setEmployeeProjectsFromServer({ employee_id, projects: { projectId, tthour } }));
         });
       }

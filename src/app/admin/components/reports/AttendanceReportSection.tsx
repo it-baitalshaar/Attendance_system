@@ -5,6 +5,7 @@ import { useAttendanceReport } from '../../hooks/useAttendanceReport';
 import { fetchDepartmentsService } from '../../services/departmentService';
 import { fetchEmployeesService } from '../../services/employeeService';
 import type { AttendanceReportEmployeeReport } from '../../types/attendanceReport';
+import { WORKER_CARD_AR } from '@/app/constants/workerCardReportAr';
 
 function formatDate(dateStr: string) {
   try {
@@ -97,14 +98,14 @@ export function AttendanceReportSection() {
       'Employee Name',
       'Department',
       'Salary',
-      'Date',
+      WORKER_CARD_AR.date,
       'Status Code',
-      'Working Hours',
-      'Overtime Normal',
-      'Overtime Weekend',
-      'Overtime Holiday',
-      'Projects',
-      'Notes',
+      WORKER_CARD_AR.workHours,
+      WORKER_CARD_AR.overtimeNormal,
+      WORKER_CARD_AR.overtimeHoliday,
+      WORKER_CARD_AR.overtimePublicHoliday,
+      WORKER_CARD_AR.project,
+      WORKER_CARD_AR.notes,
     ];
 
     const rows: string[] = [];
@@ -122,8 +123,8 @@ export function AttendanceReportSection() {
             csvEscape(day.status_code),
             csvEscape(day.working_hours),
             csvEscape(day.overtime.normal),
-            csvEscape(day.overtime.weekend),
             csvEscape(day.overtime.holiday),
+            csvEscape(day.overtime.public_holiday),
             csvEscape(day.projects),
             csvEscape(day.notes ?? ''),
           ].join(',')
@@ -131,7 +132,7 @@ export function AttendanceReportSection() {
       });
     });
 
-    const csv = rows.join('\r\n');
+    const csv = '\uFEFF' + rows.join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -157,6 +158,19 @@ export function AttendanceReportSection() {
         <h2 className="text-xl font-semibold mb-4">Attendance Report (Monthly / History)</h2>
         <p className="text-sm text-gray-600 mb-4">
           Select department and/or employee, then date range, then generate. Sorted by <strong>department</strong>, then name. Status: P=Present, W=Weekend, H=Holiday-Work, AWO=Absence without excuse, SL=Sick Leave, A=Absence with excuse, V=Vacation.
+          Overtime columns match the worker card (بطاقة عامل):{' '}
+          <span className="font-medium" dir="rtl">
+            {WORKER_CARD_AR.overtimeNormal}
+          </span>
+          ,{' '}
+          <span className="font-medium" dir="rtl">
+            {WORKER_CARD_AR.overtimeHoliday}
+          </span>
+          ,{' '}
+          <span className="font-medium" dir="rtl">
+            {WORKER_CARD_AR.overtimePublicHoliday}
+          </span>{' '}
+          — filled from each project&apos;s overtime type; older rows without a type use the day status (Present / Weekend / Holiday-Work) as before.
         </p>
         {!filtersLoading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -271,23 +285,29 @@ export function AttendanceReportSection() {
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                        Date
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
+                        {WORKER_CARD_AR.date}
                       </th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                         Code
                       </th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
-                        Hrs
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">
+                        {WORKER_CARD_AR.workHours}
                       </th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
-                        OT (N/W/H)
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 max-w-[7rem] whitespace-normal leading-tight">
+                        {WORKER_CARD_AR.overtimeNormal}
                       </th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                        Projects
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 max-w-[7rem] whitespace-normal leading-tight">
+                        {WORKER_CARD_AR.overtimeHoliday}
                       </th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                        Notes
+                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 max-w-[7rem] whitespace-normal leading-tight">
+                        {WORKER_CARD_AR.overtimePublicHoliday}
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
+                        {WORKER_CARD_AR.project}
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
+                        {WORKER_CARD_AR.notes}
                       </th>
                     </tr>
                   </thead>
@@ -304,7 +324,13 @@ export function AttendanceReportSection() {
                           {day.working_hours}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-right text-gray-600">
-                          {day.overtime.normal}/{day.overtime.weekend}/{day.overtime.holiday}
+                          {day.overtime.normal}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-right text-gray-600">
+                          {day.overtime.holiday}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-right text-gray-600">
+                          {day.overtime.public_holiday}
                         </td>
                         <td className="px-3 py-2 max-w-xs truncate">
                           {day.projects || '—'}

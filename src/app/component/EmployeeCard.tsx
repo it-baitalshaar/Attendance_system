@@ -5,9 +5,10 @@ import ConstrDropdown from './CostrDropdown';
 import MaintenanceDropdown from './MaintenanceDropdown';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '@/redux/store';
-import { setTotalProject, setLeftHours, setAttendanceStatus, setEmployeesStatus, add_notes, Add_notes_to_cases_without_projects, setAttendanceEntry, setAttendanceNotes } from '@/redux/slice';
+import { setTotalProject, setLeftHours, setAttendanceStatus, setEmployeesStatus, add_notes, Add_notes_to_cases_without_projects, setAttendanceEntry, setAttendanceNotes, removeProjectFromEmployee } from '@/redux/slice';
 import OthersComponents from './OthersComponent';
 import debounce from 'lodash/debounce';
+import { OVERTIME_TYPE_LABELS, normalizeOvertimeType } from '@/app/constants/overtime';
 
 interface Employee {
   id: string;
@@ -380,17 +381,6 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     setVisibleProjects((prev) => prev + 1);
   };
 
-  const removeLastProject = () => {
-    setArryProjects((prev) => {
-      if (prev.length <= 0) return prev;
-      const next = prev.slice(0, -1);
-      dispatch(setTotalProject(next.length));
-      if (next.length === 0) setProject(false);
-      return next;
-    });
-    setVisibleProjects((prev) => Math.max(1, prev - 1));
-  };
-
   const handleAbsentReason = (e: string) => {
     if (e !== "")
     {
@@ -420,6 +410,34 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   const employee1 = useSelector((state: RootState) =>
     state.project.employees.find(emp => emp.employee_id === employee.employee_id)
   );
+
+  const removeProjectAt = (index: number) => {
+    const lenBefore = employee1?.projects?.projectId?.length ?? 0;
+    if (index < 0 || index >= lenBefore) return;
+    const afterLen = lenBefore - 1;
+
+    dispatch(removeProjectFromEmployee({ employee_id: employee.employee_id, project_index: index }));
+
+    setArryProjects((prev) => {
+      let next: Project[];
+      if (prev.length > index) {
+        next = prev.filter((_, i) => i !== index);
+      } else {
+        next = Array.from({ length: afterLen }, () => ({ type: null }));
+      }
+      dispatch(setTotalProject(next.length));
+      if (next.length === 0) setProject(false);
+      setVisibleProjects((vp) => Math.max(1, Math.min(vp, Math.max(1, next.length))));
+      return next;
+    });
+  };
+
+  const removeLastProject = () => {
+    const lenBefore = employee1?.projects?.projectId?.length ?? 0;
+    if (lenBefore <= 0) return;
+    removeProjectAt(lenBefore - 1);
+  };
+
   const reduxAbsenceReason = employee1?.employee_status?.[0]?.status_employee;
   useEffect(() => {
     if (initialStatus === 'absent' && reduxAbsenceReason && ['Sick Leave', 'Absence with excuse', 'Absence without excuse'].includes(reduxAbsenceReason)) {
@@ -773,11 +791,17 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       {(isAttend || isAbsent) && (
           <div className='mt-10'>
             <h3>Selected Projects:</h3>
-            {employee1?.projects?.projectId.map((projectId, index) => (
-              <ul key={ index}> {/* Ensure key is unique */}
-                <div className="bg-white my-[18px] py-[10px] rounded-[21px]">
+            {employee1?.projects?.projectId.map((projectId, index) => {
+              const pn = projectId.projectName;
+              const projectLabel = Array.isArray(pn)
+                ? (pn[index] ?? pn[0] ?? '')
+                : String(pn ?? '');
+              return (
+              <ul key={index}>
+                <div className="bg-white my-[18px] py-[10px] px-3 rounded-[21px] flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                  <div className="flex-1 min-w-0">
                   <li className='text-black'>
-                    <span className="text-blue-700 text-bold-800">Project {index + 1}:</span> {projectId.projectName}
+                    <span className="text-blue-700 text-bold-800">Project {index + 1}:</span> {projectLabel}
                   </li>
                   <li className='text-black'>
                     <span className="text-blue-700 text-bold-800">Hours:</span> {projectId.hours}
@@ -785,9 +809,24 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
                   <li className='text-black'>
                     <span className="text-blue-700 text-bold-800">Overtime:</span> {projectId.overtime}
                   </li>
+                  <li className='text-black text-sm text-gray-700'>
+                    <span className="text-blue-700 font-semibold">Overtime type:</span>{' '}
+                    {OVERTIME_TYPE_LABELS[normalizeOvertimeType(projectId.overtime_type)]}
+                  </li>
+                  </div>
+                  {!disabled && (
+                    <button
+                      type="button"
+                      onClick={() => removeProjectAt(index)}
+                      className="shrink-0 self-end sm:self-center min-h-[40px] px-3 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
               </ul>
-            ))}
+              );
+            })}
             {/* {`this total hours ${employee1?.projects?.tthour}`} */}
           </div>
         )}

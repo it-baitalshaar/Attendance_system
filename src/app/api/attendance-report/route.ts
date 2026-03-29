@@ -8,6 +8,42 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerComponentClient } from '@/lib/supabaseAppRouterClient';
 import { buildAttendanceReport } from '@/app/admin/services/attendanceReportService';
 import type { RawAttendanceRow, RawAttendanceProjectRow, RawEmployeeRow } from '@/app/admin/services/attendanceReportService';
+import { buildProjectNameLookup } from '@/lib/projectDisplayName';
+import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
+
+async function fetchAttendanceProjectRows(
+  supabase: SupabaseClient,
+  tableName: string,
+  attendanceIds: string[],
+  batchSize: number
+): Promise<{ rows: RawAttendanceProjectRow[]; error: PostgrestError | null }> {
+  const out: RawAttendanceProjectRow[] = [];
+  let useOvertimeType = true;
+
+  const fullCols =
+    'attendance_id, project_id, working_hours, overtime_hours, overtime_type';
+  const minimalCols = 'attendance_id, project_id, working_hours, overtime_hours';
+
+  for (let i = 0; i < attendanceIds.length; i += batchSize) {
+    const batch = attendanceIds.slice(i, i + batchSize);
+    let sel = useOvertimeType ? fullCols : minimalCols;
+    let { data, error } = await supabase.from(tableName).select(sel).in('attendance_id', batch);
+
+    if (error && useOvertimeType && isUndefinedColumnError(error)) {
+      useOvertimeType = false;
+      sel = minimalCols;
+      ({ data, error } = await supabase.from(tableName).select(sel).in('attendance_id', batch));
+    }
+
+    if (error) {
+      return { rows: out, error };
+    }
+    out.push(...((data ?? []) as unknown as RawAttendanceProjectRow[]));
+  }
+
+  return { rows: out, error: null };
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -89,40 +125,32 @@ export async function GET(request: Request) {
 
     if (attendanceIds.length > 0) {
       for (const tableName of tableNames) {
-        attProj = [];
         projectsError = null;
-        let batchSucceeded = true;
+        const { rows, error: fetchErr } = await fetchAttendanceProjectRows(
+          supabase,
+          tableName,
+          attendanceIds,
+          BATCH_SIZE
+        );
 
-        for (let i = 0; i < attendanceIds.length; i += BATCH_SIZE) {
-          const batch = attendanceIds.slice(i, i + BATCH_SIZE);
-          const { data: attProjRows, error: err } = await supabase
-            .from(tableName)
-            .select('attendance_id, project_id, working_hours, overtime_hours')
-            .in('attendance_id', batch);
-
-          if (err) {
-            projectsError = err.message ?? String(err);
-            batchSucceeded = false;
-            const msg = String(err.message || '').toLowerCase();
-            const code = (err as { code?: string }).code;
-            if (msg.includes('does not exist') || msg.includes('not exist') || code === '42P01') {
-              break;
-            }
-            break;
-          }
-          attProj.push(...((attProjRows ?? []) as RawAttendanceProjectRow[]));
-        }
-
-        if (batchSucceeded && attProj.length >= 0) {
+        if (!fetchErr) {
+          attProj = rows;
           projectsError = null;
           break;
         }
-        if (projectsError) {
-          const msg = String(projectsError).toLowerCase();
-          if (!msg.includes('does not exist') && !msg.includes('not exist')) {
-            break;
-          }
+
+        projectsError = fetchErr.message;
+        const msg = String(fetchErr.message || '').toLowerCase();
+        const code = String(fetchErr.code || '').toUpperCase();
+        const missingTable =
+          code === '42P01' ||
+          msg.includes('does not exist') ||
+          msg.includes('not exist');
+        if (!missingTable) {
+          attProj = [];
+          break;
         }
+        attProj = [];
       }
 
       if (projectsError && attProj.length === 0) {
@@ -133,15 +161,14 @@ export async function GET(request: Request) {
       new Set(attProj.map((r) => r.project_id).filter(Boolean))
     );
 
-    const projectNameById = new Map<string, string>();
+    let projectNameById = new Map<string, string>();
     if (projectIds.length > 0) {
       const { data: projRows } = await supabase
         .from('projects')
         .select('project_id, project_name')
         .in('project_id', projectIds);
-      (projRows ?? []).forEach(
-        (p: { project_id: string; project_name: string }) =>
-          projectNameById.set(p.project_id, p.project_name ?? 'Unknown')
+      projectNameById = buildProjectNameLookup(
+        (projRows ?? []) as { project_id: string; project_name: string }[]
       );
     }
 

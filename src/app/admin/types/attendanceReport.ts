@@ -10,10 +10,17 @@ export interface AttendanceReportEmployee {
   salary?: number | null;
 }
 
+/**
+ * Payroll overtime hours per day (from Attendance_projects.overtime_type).
+ * Arabic column titles: see `WORKER_CARD_AR` in `@/app/constants/workerCardReportAr`.
+ */
 export interface AttendanceReportDayOvertime {
+  /** ساعات العمل الإضافية — normal OT (×1.25) */
   normal: number;
-  weekend: number;
+  /** ساعات العمل خلال الإجازة — holiday OT (×1.5) */
   holiday: number;
+  /** ساعات العمل بالمناسبات الرسمية — public holiday OT (×2.5) */
+  public_holiday: number;
 }
 
 export interface AttendanceReportDay {
