@@ -237,7 +237,8 @@ console.log("this is the employee _id" , employee_id)
     // // // // console.log("call the useEffect total hours ", employee1?.projects?.tthour)
     // setOvertime(3)
     if (totalProjects === 1) {
-      setHours(8)
+      const newHours = Array.from({ length: 8 }, (_, i) => i + 1);
+      setHours(newHours);
       return ;
     }
     if (input_index === 0)
@@ -333,7 +334,7 @@ const handleHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     }
 
     // If it's a single number, handle it as such
-    return <option>{hours} hours</option>;
+    return <option value={hours}>{hours} hours</option>;
   };
 
   const renderOvertime = () => {
