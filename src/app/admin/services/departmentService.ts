@@ -6,6 +6,8 @@ export interface Department {
   name: string;
   theme_id?: string | null;
   allow_future_attendance?: boolean | null;
+  allow_holiday_overtime?: boolean | null;
+  allow_public_holiday_overtime?: boolean | null;
   created_at?: string;
 }
 
@@ -14,7 +16,9 @@ export async function fetchDepartmentsService(): Promise<Department[]> {
 
   const { data: dataWithTheme, error: errorWithTheme } = await supabase
     .from('departments')
-    .select('id, name, theme_id, allow_future_attendance, created_at')
+    .select(
+      'id, name, theme_id, allow_future_attendance, allow_holiday_overtime, allow_public_holiday_overtime, created_at'
+    )
     .order('name');
 
   if (!errorWithTheme) {
@@ -32,7 +36,9 @@ export async function fetchDepartmentsService(): Promise<Department[]> {
 export async function createDepartmentService(
   name: string,
   themeId: DepartmentThemeId = 'default',
-  allowFutureAttendance: boolean = false
+  allowFutureAttendance: boolean = false,
+  allowHolidayOvertime: boolean = true,
+  allowPublicHolidayOvertime: boolean = true
 ): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = name.trim();
@@ -40,7 +46,13 @@ export async function createDepartmentService(
 
   const { error } = await supabase
     .from('departments')
-    .insert({ name: trimmed, theme_id: themeId, allow_future_attendance: allowFutureAttendance });
+    .insert({
+      name: trimmed,
+      theme_id: themeId,
+      allow_future_attendance: allowFutureAttendance,
+      allow_holiday_overtime: allowHolidayOvertime,
+      allow_public_holiday_overtime: allowPublicHolidayOvertime,
+    });
   if (!error) return;
 
   const msg = error.message || '';
@@ -48,6 +60,11 @@ export async function createDepartmentService(
   if (msg.includes('allow_future_attendance')) {
     throw new Error(
       'Future attendance setting could not be saved. Add the allow_future_attendance column: run the migration in supabase/migrations/add_department_allow_future_attendance.sql in the Supabase SQL editor.'
+    );
+  }
+  if (msg.includes('allow_holiday_overtime') || msg.includes('allow_public_holiday_overtime')) {
+    throw new Error(
+      'Overtime type settings could not be saved. Add columns by running migration: supabase/migrations/add_department_overtime_type_toggles.sql in Supabase SQL editor.'
     );
   }
 
@@ -65,7 +82,9 @@ export async function updateDepartmentService(
   oldName: string,
   newName: string,
   themeId?: DepartmentThemeId,
-  allowFutureAttendance?: boolean
+  allowFutureAttendance?: boolean,
+  allowHolidayOvertime?: boolean,
+  allowPublicHolidayOvertime?: boolean
 ): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = newName.trim();
@@ -88,6 +107,12 @@ export async function updateDepartmentService(
   if (allowFutureAttendance !== undefined) {
     updates.allow_future_attendance = allowFutureAttendance;
   }
+  if (allowHolidayOvertime !== undefined) {
+    updates.allow_holiday_overtime = allowHolidayOvertime;
+  }
+  if (allowPublicHolidayOvertime !== undefined) {
+    updates.allow_public_holiday_overtime = allowPublicHolidayOvertime;
+  }
 
   if (Object.keys(updates).length > 0) {
     const { error: updateError } = await supabase
@@ -99,6 +124,11 @@ export async function updateDepartmentService(
       if (msg.includes('allow_future_attendance')) {
         throw new Error(
           'Future attendance setting could not be saved. Add the allow_future_attendance column: run the migration in supabase/migrations/add_department_allow_future_attendance.sql in the Supabase SQL editor.'
+        );
+      }
+      if (msg.includes('allow_holiday_overtime') || msg.includes('allow_public_holiday_overtime')) {
+        throw new Error(
+          'Overtime type settings could not be saved. Add columns by running migration: supabase/migrations/add_department_overtime_type_toggles.sql in Supabase SQL editor.'
         );
       }
       if (msg.includes('theme_id') || updateError.code === '42703') {

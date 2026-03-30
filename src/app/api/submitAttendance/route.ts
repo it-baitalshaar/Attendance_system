@@ -340,6 +340,37 @@ interface AttendanceProject {
 
 const MAX_FUTURE_DAYS = 10;
 
+async function getDepartmentOvertimeTypeSettings(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
+  department: string
+): Promise<{ allowHoliday: boolean; allowPublicHoliday: boolean }> {
+  const fallback = { allowHoliday: true, allowPublicHoliday: true };
+  const { data, error } = await supabase
+    .from('departments')
+    .select('allow_holiday_overtime, allow_public_holiday_overtime')
+    .ilike('name', department.trim())
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('allow_holiday_overtime') || msg.includes('allow_public_holiday_overtime')) {
+      return fallback;
+    }
+    console.error('Error checking overtime type settings', error);
+    return fallback;
+  }
+
+  const rowArray =
+    (data as { allow_holiday_overtime?: boolean; allow_public_holiday_overtime?: boolean }[] | null) ?? [];
+  const row = rowArray[0];
+  if (!row) return fallback;
+  return {
+    allowHoliday: row.allow_holiday_overtime !== false,
+    allowPublicHoliday: row.allow_public_holiday_overtime !== false,
+  };
+}
+
 export async function POST(request: Request) {
   const body = await request.json();
 
@@ -518,6 +549,7 @@ export async function POST(request: Request) {
         ]
       )
     );
+    const overtimeTypeSettings = await getDepartmentOvertimeTypeSettings(supabase, department);
 
     console.log("legacy submit: length ", employees.length, " department ", department, " date ", targetDate, " isEditTrack ", isEditTrack)
     if (employees.length > 0)
@@ -599,7 +631,13 @@ export async function POST(request: Request) {
               const allow =
                 fromDb !== false && employees[i].overtime_enabled !== false;
               const projRow = employees[i].projects.projectId[projectIdx];
-              const otType = normalizeOvertimeType(projRow.overtime_type);
+              let otType = normalizeOvertimeType(projRow.overtime_type);
+              if (
+                (otType === 'holiday' && !overtimeTypeSettings.allowHoliday) ||
+                (otType === 'public_holiday' && !overtimeTypeSettings.allowPublicHoliday)
+              ) {
+                otType = 'normal';
+              }
               const otHours = allow ? projRow.overtime || 0 : 0;
               await supabase.from('Attendance_projects').insert({
                 attendance_id: attendanceId,

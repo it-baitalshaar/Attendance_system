@@ -35,11 +35,19 @@ export function useDepartmentManagement() {
   const addDepartment = async (
     name: string,
     themeId: DepartmentThemeId = 'default',
-    allowFutureAttendance: boolean = false
+    allowFutureAttendance: boolean = false,
+    allowHolidayOvertime: boolean = true,
+    allowPublicHolidayOvertime: boolean = true
   ) => {
     setMessage('');
     try {
-      await createDepartmentService(name, themeId, allowFutureAttendance);
+      await createDepartmentService(
+        name,
+        themeId,
+        allowFutureAttendance,
+        allowHolidayOvertime,
+        allowPublicHolidayOvertime
+      );
       setMessage('Department created successfully');
       setMessageType('success');
       await loadDepartments();
@@ -54,11 +62,21 @@ export function useDepartmentManagement() {
     oldName: string,
     newName: string,
     themeId?: DepartmentThemeId,
-    allowFutureAttendance?: boolean
+    allowFutureAttendance?: boolean,
+    allowHolidayOvertime?: boolean,
+    allowPublicHolidayOvertime?: boolean
   ) => {
     setMessage('');
     try {
-      await updateDepartmentService(id, oldName, newName, themeId, allowFutureAttendance);
+      await updateDepartmentService(
+        id,
+        oldName,
+        newName,
+        themeId,
+        allowFutureAttendance,
+        allowHolidayOvertime,
+        allowPublicHolidayOvertime
+      );
       setMessage('Department updated successfully');
       setMessageType('success');
       await loadDepartments();

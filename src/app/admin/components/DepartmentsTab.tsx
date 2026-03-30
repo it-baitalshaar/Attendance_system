@@ -11,13 +11,21 @@ interface DepartmentsTabProps {
   loading: boolean;
   message: string;
   messageType: 'success' | 'error';
-  onAddDepartment: (name: string, themeId: DepartmentThemeId, allowFutureAttendance: boolean) => Promise<void>;
+  onAddDepartment: (
+    name: string,
+    themeId: DepartmentThemeId,
+    allowFutureAttendance: boolean,
+    allowHolidayOvertime: boolean,
+    allowPublicHolidayOvertime: boolean
+  ) => Promise<void>;
   onUpdateDepartment: (
     id: string,
     oldName: string,
     newName: string,
     themeId?: DepartmentThemeId,
-    allowFutureAttendance?: boolean
+    allowFutureAttendance?: boolean,
+    allowHolidayOvertime?: boolean,
+    allowPublicHolidayOvertime?: boolean
   ) => Promise<void>;
   onDeleteDepartment: (id: string, name: string, confirmName: string) => Promise<void>;
   onClearMessage: () => void;
@@ -36,10 +44,14 @@ export function DepartmentsTab({
   const [newName, setNewName] = useState('');
   const [newThemeId, setNewThemeId] = useState<DepartmentThemeId>('default');
   const [newAllowFutureAttendance, setNewAllowFutureAttendance] = useState(false);
+  const [newAllowHolidayOvertime, setNewAllowHolidayOvertime] = useState(true);
+  const [newAllowPublicHolidayOvertime, setNewAllowPublicHolidayOvertime] = useState(true);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [editName, setEditName] = useState('');
   const [editThemeId, setEditThemeId] = useState<DepartmentThemeId>('default');
   const [editAllowFutureAttendance, setEditAllowFutureAttendance] = useState(false);
+  const [editAllowHolidayOvertime, setEditAllowHolidayOvertime] = useState(true);
+  const [editAllowPublicHolidayOvertime, setEditAllowPublicHolidayOvertime] = useState(true);
   const [deletingDept, setDeletingDept] = useState<Department | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
   const [employeeCounts, setEmployeeCounts] = useState<Record<string, number>>({});
@@ -62,6 +74,8 @@ export function DepartmentsTab({
     setEditName(d.name);
     setEditThemeId((d.theme_id as DepartmentThemeId) || 'default');
     setEditAllowFutureAttendance(Boolean(d.allow_future_attendance));
+    setEditAllowHolidayOvertime(d.allow_holiday_overtime !== false);
+    setEditAllowPublicHolidayOvertime(d.allow_public_holiday_overtime !== false);
     onClearMessage();
   };
 
@@ -76,10 +90,18 @@ export function DepartmentsTab({
     if (!newName.trim()) return;
     setSubmitting(true);
     try {
-      await onAddDepartment(newName.trim(), newThemeId, newAllowFutureAttendance);
+      await onAddDepartment(
+        newName.trim(),
+        newThemeId,
+        newAllowFutureAttendance,
+        newAllowHolidayOvertime,
+        newAllowPublicHolidayOvertime
+      );
       setNewName('');
       setNewThemeId('default');
       setNewAllowFutureAttendance(false);
+      setNewAllowHolidayOvertime(true);
+      setNewAllowPublicHolidayOvertime(true);
     } finally {
       setSubmitting(false);
     }
@@ -92,7 +114,12 @@ export function DepartmentsTab({
     const themeUnchanged = (editThemeId || 'default') === (editingDept.theme_id || 'default');
     const futureUnchanged =
       Boolean(editAllowFutureAttendance) === Boolean(editingDept.allow_future_attendance);
-    if (nameUnchanged && themeUnchanged && futureUnchanged) {
+    const holidayOvertimeUnchanged =
+      Boolean(editAllowHolidayOvertime) === (editingDept.allow_holiday_overtime !== false);
+    const publicHolidayOvertimeUnchanged =
+      Boolean(editAllowPublicHolidayOvertime) ===
+      (editingDept.allow_public_holiday_overtime !== false);
+    if (nameUnchanged && themeUnchanged && futureUnchanged && holidayOvertimeUnchanged && publicHolidayOvertimeUnchanged) {
       setEditingDept(null);
       return;
     }
@@ -103,7 +130,9 @@ export function DepartmentsTab({
         editingDept.name,
         editName.trim(),
         editThemeId,
-        editAllowFutureAttendance
+        editAllowFutureAttendance,
+        editAllowHolidayOvertime,
+        editAllowPublicHolidayOvertime
       );
       setEditingDept(null);
     } finally {
@@ -164,6 +193,28 @@ export function DepartmentsTab({
                 className="rounded"
               />
               <span>Allow future attendance (up to 10 days)</span>
+            </label>
+          </div>
+          <div className="flex items-center gap-2 min-w-[220px]">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={newAllowHolidayOvertime}
+                onChange={(e) => setNewAllowHolidayOvertime(e.target.checked)}
+                className="rounded"
+              />
+              <span>Enable holiday overtime type (x1.5)</span>
+            </label>
+          </div>
+          <div className="flex items-center gap-2 min-w-[260px]">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={newAllowPublicHolidayOvertime}
+                onChange={(e) => setNewAllowPublicHolidayOvertime(e.target.checked)}
+                className="rounded"
+              />
+              <span>Enable public holiday overtime type (x2.5)</span>
             </label>
           </div>
           <button
@@ -301,6 +352,28 @@ export function DepartmentsTab({
                   <p className="text-xs text-gray-500 mt-1">
                     When enabled, supervisors can submit attendance up to 10 days in advance for this department.
                   </p>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={editAllowHolidayOvertime}
+                      onChange={(e) => setEditAllowHolidayOvertime(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span>Enable holiday overtime type (x1.5)</span>
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={editAllowPublicHolidayOvertime}
+                      onChange={(e) => setEditAllowPublicHolidayOvertime(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span>Enable public holiday overtime type (x2.5)</span>
+                  </label>
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-2">
