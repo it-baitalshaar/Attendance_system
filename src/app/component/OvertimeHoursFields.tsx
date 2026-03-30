@@ -49,6 +49,8 @@ export function OvertimeHoursFields({
     if (type === 'public_holiday') return allowPublicHoliday;
     return true;
   });
+  const showTypeSelector =
+    allowedTypes.length > 1 || !allowedTypes.includes(DEFAULT_OVERTIME_TYPE);
 
   const persistedType = normalizeOvertimeType(proj?.overtime_type);
   const typeVal = allowedTypes.includes(persistedType)
@@ -124,20 +126,24 @@ export function OvertimeHoursFields({
 
   return (
     <div className="w-full mt-5 space-y-2">
-      <label className="block text-sm font-medium text-gray-800 w-full text-left">
-        Overtime type
-      </label>
-      <select
-        value={typeVal}
-        onChange={handleTypeChange}
-        className="text-black p-2 border rounded-lg focus:ring focus:ring-blue-200 w-full"
-      >
-        {allowedTypes.map((k) => (
-          <option key={k} value={k}>
-            {OVERTIME_TYPE_LABELS[k]}
-          </option>
-        ))}
-      </select>
+      {showTypeSelector && (
+        <>
+          <label className="block text-sm font-medium text-gray-800 w-full text-left">
+            Overtime type
+          </label>
+          <select
+            value={typeVal}
+            onChange={handleTypeChange}
+            className="text-black p-2 border rounded-lg focus:ring focus:ring-blue-200 w-full"
+          >
+            {allowedTypes.map((k) => (
+              <option key={k} value={k}>
+                {OVERTIME_TYPE_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
       <select
         value={hoursSelectValue}
         onChange={handleHoursChange}
