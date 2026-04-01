@@ -21,6 +21,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const MIN_CHECKOUT_GAP_MINUTES = Number(process.env.BIOTIME_MIN_CHECKOUT_GAP_MINUTES || 3);
 
 function mustGetEnv(key) {
   const v = process.env[key];
@@ -205,10 +206,34 @@ async function main() {
       continue;
     }
 
-    if (action === 'checkin') {
-      if (existingCheckIn == null || punchMs < existingCheckIn) next.check_in = punchTime;
-    } else {
-      if (existingCheckOut == null || punchMs > existingCheckOut) next.check_out = punchTime;
+    // Fault-tolerant punch merge:
+    // - first punch of day -> check_in
+    // - any later punch after check_in -> check_out (latest wins)
+    // This handles devices that incorrectly mark evening punches as check-in.
+    if (existingCheckIn == null && existingCheckOut == null) {
+      next.check_in = punchTime;
+    } else if (existingCheckIn == null && existingCheckOut != null) {
+      // Repair inconsistent row by splitting earliest/latest.
+      if (punchMs <= existingCheckOut) {
+        next.check_in = punchTime;
+      } else {
+        next.check_in = existing.check_out;
+        next.check_out = punchTime;
+      }
+    } else if (existingCheckIn != null) {
+      if (punchMs < existingCheckIn) {
+        next.check_in = punchTime; // earlier than current check-in
+      } else if (existingCheckOut == null || punchMs > existingCheckOut) {
+        const minGapMs = Math.max(0, MIN_CHECKOUT_GAP_MINUTES) * 60 * 1000;
+        const gapFromCheckIn = punchMs - existingCheckIn;
+        if (gapFromCheckIn >= minGapMs) {
+          next.check_out = punchTime; // later punch becomes checkout
+        } else {
+          // Ignore likely accidental quick re-punch (e.g. within 2-3 min of check-in).
+          skipped++;
+          continue;
+        }
+      }
     }
 
     // Don't override manual edits

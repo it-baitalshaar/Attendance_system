@@ -7,6 +7,7 @@ import { sendMail } from '@/lib/email';
 const OFFICE_DEPARTMENTS = ['Bait Alshaar', 'Al Saqia'] as const;
 type OfficeDept = (typeof OFFICE_DEPARTMENTS)[number];
 const UAE_TIMEZONE = 'Asia/Dubai';
+const MIN_CHECKOUT_GAP_MS = 3 * 60 * 1000;
 
 function isOfficeDept(s: string): s is OfficeDept {
   return OFFICE_DEPARTMENTS.includes(s as OfficeDept);
@@ -73,6 +74,33 @@ function formatTime(iso: string | null): string {
   } catch {
     return '—';
   }
+}
+
+function dateKeyFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  return String(iso).slice(0, 10);
+}
+
+function inferCheckoutFromLogs(
+  checkInIso: string | null,
+  existingCheckoutIso: string | null,
+  logs: string[]
+): string | null {
+  if (existingCheckoutIso) return existingCheckoutIso;
+  if (!checkInIso) return null;
+  const checkInMs = new Date(checkInIso).getTime();
+  if (!Number.isFinite(checkInMs)) return null;
+  let best: string | null = null;
+  let bestMs = -1;
+  for (const ts of logs) {
+    const ms = new Date(ts).getTime();
+    if (!Number.isFinite(ms)) continue;
+    if (ms >= checkInMs + MIN_CHECKOUT_GAP_MS && ms > bestMs) {
+      bestMs = ms;
+      best = ts;
+    }
+  }
+  return best;
 }
 
 async function ensureAdminOrCron(request: Request): Promise<{ ok: true } | { error: string; status: number }> {
@@ -171,6 +199,23 @@ export async function POST(request: Request) {
       `;
     } else {
       if (reportType === 'monthEnd') {
+        const { data: monthLogs } = await supabase
+          .from('office_attendance_logs')
+          .select('employee_id, timestamp')
+          .in('employee_id', empIds)
+          .gte('timestamp', `${monthStart}T00:00:00.000Z`)
+          .lte('timestamp', `${monthEnd}T23:59:59.999Z`)
+          .order('timestamp', { ascending: true });
+        const logsByDateEmp = new Map<string, string[]>();
+        for (const l of (monthLogs ?? []) as { employee_id: string; timestamp: string }[]) {
+          const dk = dateKeyFromIso(l.timestamp);
+          if (!dk) continue;
+          const k = `${l.employee_id}|${dk}`;
+          const arr = logsByDateEmp.get(k) ?? [];
+          arr.push(l.timestamp);
+          logsByDateEmp.set(k, arr);
+        }
+
         const { data: monthAttendance } = await supabase
           .from('office_attendance')
           .select('employee_id, date, check_in, check_out, worked_hours')
@@ -191,15 +236,24 @@ export async function POST(request: Request) {
           check_out: string | null;
           worked_hours: number | null;
         }[]) {
+          const inferredCheckout = inferCheckoutFromLogs(
+            row.check_in,
+            row.check_out,
+            logsByDateEmp.get(`${row.employee_id}|${row.date}`) ?? []
+          );
+          let h = Number(row.worked_hours) || 0;
+          if (h <= 0 && row.check_in && inferredCheckout) {
+            const ms = new Date(inferredCheckout).getTime() - new Date(row.check_in).getTime();
+            if (Number.isFinite(ms) && ms > 0) h = Math.round((ms / 36e5) * 100) / 100;
+          }
           const t = totals.get(row.employee_id) ?? { hours: 0, days: new Set<string>() };
-          const h = Number(row.worked_hours) || 0;
           t.hours += h;
           if (row.date) t.days.add(row.date);
           totals.set(row.employee_id, t);
           if (row.date > maxDateSeen) maxDateSeen = row.date;
 
           const dateMap = byDateEmp.get(row.date) ?? new Map<string, { check_in: string | null; check_out: string | null; h: number }>();
-          dateMap.set(row.employee_id, { check_in: row.check_in, check_out: row.check_out, h });
+          dateMap.set(row.employee_id, { check_in: row.check_in, check_out: inferredCheckout, h });
           byDateEmp.set(row.date, dateMap);
         }
 
@@ -277,6 +331,20 @@ export async function POST(request: Request) {
 </body>
 </html>`;
       } else {
+        const { data: dayLogs } = await supabase
+          .from('office_attendance_logs')
+          .select('employee_id, timestamp')
+          .in('employee_id', empIds)
+          .gte('timestamp', `${reportDate}T00:00:00.000Z`)
+          .lte('timestamp', `${reportDate}T23:59:59.999Z`)
+          .order('timestamp', { ascending: true });
+        const logsByEmp = new Map<string, string[]>();
+        for (const l of (dayLogs ?? []) as { employee_id: string; timestamp: string }[]) {
+          const arr = logsByEmp.get(l.employee_id) ?? [];
+          arr.push(l.timestamp);
+          logsByEmp.set(l.employee_id, arr);
+        }
+
         const { data: todayAttendance } = await supabase
           .from('office_attendance')
           .select('employee_id, check_in, check_out, worked_hours')
@@ -297,10 +365,20 @@ export async function POST(request: Request) {
           check_out: string | null;
           worked_hours: number | null;
         }[]) {
+          const inferredCheckout = inferCheckoutFromLogs(
+            row.check_in,
+            row.check_out,
+            logsByEmp.get(row.employee_id) ?? []
+          );
+          let h = Number(row.worked_hours) || 0;
+          if (h <= 0 && row.check_in && inferredCheckout) {
+            const ms = new Date(inferredCheckout).getTime() - new Date(row.check_in).getTime();
+            if (Number.isFinite(ms) && ms > 0) h = Math.round((ms / 36e5) * 100) / 100;
+          }
           todayByEmp.set(row.employee_id, {
             check_in: row.check_in,
-            check_out: row.check_out,
-            hours: Number(row.worked_hours) || 0,
+            check_out: inferredCheckout,
+            hours: h,
           });
         }
 

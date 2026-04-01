@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { sendMail } from '@/lib/email';
 
 const UAE_TIMEZONE = 'Asia/Dubai';
+const MIN_CHECKOUT_GAP_MS = 3 * 60 * 1000;
 
 function getUaeDateIso(offsetDays = 0): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -54,6 +55,33 @@ function formatTime(iso: string | null): string {
   } catch {
     return '—';
   }
+}
+
+function dateKeyFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  return String(iso).slice(0, 10);
+}
+
+function inferCheckoutFromLogs(
+  checkInIso: string | null,
+  existingCheckoutIso: string | null,
+  logs: string[]
+): string | null {
+  if (existingCheckoutIso) return existingCheckoutIso;
+  if (!checkInIso) return null;
+  const checkInMs = new Date(checkInIso).getTime();
+  if (!Number.isFinite(checkInMs)) return null;
+  let best: string | null = null;
+  let bestMs = -1;
+  for (const ts of logs) {
+    const ms = new Date(ts).getTime();
+    if (!Number.isFinite(ms)) continue;
+    if (ms >= checkInMs + MIN_CHECKOUT_GAP_MS && ms > bestMs) {
+      bestMs = ms;
+      best = ts;
+    }
+  }
+  return best;
 }
 
 /** All calendar dates from start to end inclusive (YYYY-MM-DD). */
@@ -144,6 +172,22 @@ export async function sendOfficeEmployeeReportByIdentifier({
   let mailSubject: string;
 
   if (reportType === 'monthEnd') {
+    const { data: logRows } = await supabase
+      .from('office_attendance_logs')
+      .select('timestamp')
+      .eq('employee_id', resolvedEmployeeId)
+      .gte('timestamp', `${monthStart}T00:00:00.000Z`)
+      .lte('timestamp', `${monthEnd}T23:59:59.999Z`)
+      .order('timestamp', { ascending: true });
+    const logsByDate = new Map<string, string[]>();
+    for (const r of (logRows ?? []) as { timestamp: string }[]) {
+      const key = dateKeyFromIso(r.timestamp);
+      if (!key) continue;
+      const arr = logsByDate.get(key) ?? [];
+      arr.push(r.timestamp);
+      logsByDate.set(key, arr);
+    }
+
     const { data: monthAttendanceRows, error: monthAttErr } = await supabase
       .from('office_attendance')
       .select('date, check_in, check_out, worked_hours')
@@ -166,7 +210,18 @@ export async function sendOfficeEmployeeReportByIdentifier({
       check_out: string | null;
       worked_hours: number | null;
     }[]) {
-      if (r?.date) byDate.set(r.date, { check_in: r.check_in, check_out: r.check_out, worked_hours: r.worked_hours });
+      if (!r?.date) continue;
+      const inferredCheckout = inferCheckoutFromLogs(
+        r.check_in,
+        r.check_out,
+        logsByDate.get(r.date) ?? []
+      );
+      let worked = r.worked_hours;
+      if ((worked == null || Number(worked) <= 0) && r.check_in && inferredCheckout) {
+        const ms = new Date(inferredCheckout).getTime() - new Date(r.check_in).getTime();
+        if (Number.isFinite(ms) && ms > 0) worked = Math.round((ms / 36e5) * 100) / 100;
+      }
+      byDate.set(r.date, { check_in: r.check_in, check_out: inferredCheckout, worked_hours: worked });
     }
 
     const allDates = enumerateDatesInclusive(monthStart, monthEnd);
@@ -222,6 +277,13 @@ export async function sendOfficeEmployeeReportByIdentifier({
       .eq('employee_id', resolvedEmployeeId)
       .eq('date', reportDate)
       .maybeSingle();
+    const { data: dayLogs } = await supabase
+      .from('office_attendance_logs')
+      .select('timestamp')
+      .eq('employee_id', resolvedEmployeeId)
+      .gte('timestamp', `${reportDate}T00:00:00.000Z`)
+      .lte('timestamp', `${reportDate}T23:59:59.999Z`)
+      .order('timestamp', { ascending: true });
 
     const { data: monthRows } = await supabase
       .from('office_attendance')
@@ -235,6 +297,17 @@ export async function sendOfficeEmployeeReportByIdentifier({
       check_out: string | null;
       worked_hours: number | null;
     } | null;
+    const inferredCheckout = todayEntry
+      ? inferCheckoutFromLogs(
+          todayEntry.check_in,
+          todayEntry.check_out,
+          ((dayLogs ?? []) as { timestamp: string }[]).map((x) => x.timestamp)
+        )
+      : null;
+    const inferredDayHours =
+      todayEntry?.check_in && inferredCheckout
+        ? Math.round(((new Date(inferredCheckout).getTime() - new Date(todayEntry.check_in).getTime()) / 36e5) * 100) / 100
+        : null;
     const monthHours = (monthRows ?? []).reduce(
       (sum, r) => sum + (Number((r as { worked_hours: number | null }).worked_hours) || 0),
       0
@@ -242,8 +315,13 @@ export async function sendOfficeEmployeeReportByIdentifier({
     const monthlyTotal = Math.round(monthHours * 100) / 100;
 
     const checkIn = todayEntry ? formatTime(todayEntry.check_in) : '—';
-    const checkOut = todayEntry ? formatTime(todayEntry.check_out) : '—';
-    const todayHours = todayEntry ? (Number(todayEntry.worked_hours) || 0).toFixed(2) : '—';
+    const checkOut = todayEntry ? formatTime(inferredCheckout) : '—';
+    const todayHours = todayEntry
+      ? (todayEntry.worked_hours != null && Number(todayEntry.worked_hours) > 0
+          ? Number(todayEntry.worked_hours)
+          : inferredDayHours ?? 0
+        ).toFixed(2)
+      : '—';
 
     html = `
 <!DOCTYPE html>
