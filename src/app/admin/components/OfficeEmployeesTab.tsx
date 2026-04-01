@@ -837,6 +837,7 @@ export function OfficeEmployeesTab() {
         <h3 className="text-lg font-medium mb-2">Recent check-in & check-out (selected dates)</h3>
         <p className="text-sm text-gray-600 mb-3">
           Punch log from <code>office_attendance_logs</code> for the selected range. Sorted newest first.
+          Log type can stay as check-in on some devices; final check-out status comes from the daily summary in <code>office_attendance</code>.
         </p>
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>

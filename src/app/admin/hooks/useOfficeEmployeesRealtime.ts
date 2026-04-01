@@ -54,7 +54,19 @@ function upsertAttendanceById(list: OfficeAttendanceRow[], row: OfficeAttendance
 }
 
 function getTodayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const officeTz = process.env.NEXT_PUBLIC_BIOTIME_OFFICE_TZ || 'Asia/Dubai';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: officeTz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+  return `${parts.year ?? '1970'}-${parts.month ?? '01'}-${parts.day ?? '01'}`;
 }
 
 export function useOfficeEmployeesRealtime() {
