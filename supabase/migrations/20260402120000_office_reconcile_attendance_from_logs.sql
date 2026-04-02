@@ -29,6 +29,8 @@ SET search_path = public
 AS $$
 DECLARE
   v_method text;
+  v_existing_check_in timestamptz;
+  v_existing_check_out timestamptz;
   v_cnt integer;
   v_first timestamptz;
   v_last timestamptz;
@@ -44,12 +46,20 @@ BEGIN
     p_single_punch_checkout_from_hour := 15;
   END IF;
 
-  SELECT oa.method
+  SELECT
+    oa.method,
+    oa.check_in,
+    oa.check_out
   INTO v_method
   FROM public.office_attendance oa
   WHERE oa.employee_id = p_employee_id AND oa.date = p_date;
 
   IF v_method = 'manual' THEN
+    RETURN;
+  END IF;
+
+  -- If we already have a checkout stored (from BioTime or a previous reconcile), don't change it.
+  IF v_existing_check_out IS NOT NULL THEN
     RETURN;
   END IF;
 
@@ -66,25 +76,26 @@ BEGIN
     RETURN;
   END IF;
 
-  v_check_in := NULL;
+  -- Keep the existing check_in if present; otherwise set it from logs.
+  v_check_in := v_existing_check_in;
   v_check_out := NULL;
 
   IF v_cnt = 1 THEN
     v_hour := EXTRACT(HOUR FROM (v_first AT TIME ZONE p_tz))::int;
     IF v_hour >= p_single_punch_checkout_from_hour THEN
-      v_check_in := NULL;
+      IF v_check_in IS NULL THEN v_check_in := v_first; END IF;
       v_check_out := v_first;
     ELSE
-      v_check_in := v_first;
+      IF v_check_in IS NULL THEN v_check_in := v_first; END IF;
       v_check_out := NULL;
     END IF;
   ELSE
     v_span := v_last - v_first;
     IF v_span >= make_interval(mins => p_min_span_minutes) THEN
-      v_check_in := v_first;
+      IF v_check_in IS NULL THEN v_check_in := v_first; END IF;
       v_check_out := v_last;
     ELSE
-      v_check_in := v_first;
+      IF v_check_in IS NULL THEN v_check_in := v_first; END IF;
       v_check_out := NULL;
     END IF;
   END IF;
@@ -107,7 +118,8 @@ BEGIN
   )
   ON CONFLICT (employee_id, date) DO UPDATE
   SET
-    check_in = EXCLUDED.check_in,
+    -- Only set check_in if we didn't already have it (to avoid shifting min/max unexpectedly).
+    check_in = COALESCE(public.office_attendance.check_in, EXCLUDED.check_in),
     check_out = EXCLUDED.check_out,
     device = COALESCE(public.office_attendance.device, EXCLUDED.device),
     method = CASE
@@ -182,4 +194,4 @@ REVOKE ALL ON FUNCTION public.office_reconcile_office_date_range(date, date, tex
 GRANT EXECUTE ON FUNCTION public.office_reconcile_office_date_range(date, date, text) TO service_role;
 
 COMMENT ON FUNCTION public.office_reconcile_office_day(date, text) IS
-  'Rebuilds office_attendance in/out for one office-calendar day from logs (Asia/Dubai). Ignores punch_state; last punch can be checkout. Skips method=manual.';
+  'Rebuilds office_attendance in/out for one office-calendar day from logs (Asia/Dubai). Ignores punch_state; fills checkout only when office_attendance.check_out is NULL. Skips method=manual.';
