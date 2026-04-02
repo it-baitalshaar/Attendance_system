@@ -77,6 +77,11 @@ Deno.serve(async (req: Request) => {
     const monthStart = firstDayOfMonth();
     const monthEnd = lastDayOfMonth();
 
+    await supabase.rpc('office_reconcile_office_date_range', {
+      p_start: monthStart,
+      p_end: monthEnd,
+    });
+
     let totalSent = 0;
     const departmentsToRun: OfficeDept[] = singleDept
       ? [singleDept]

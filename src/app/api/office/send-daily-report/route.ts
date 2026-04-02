@@ -3,6 +3,10 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sendMail } from '@/lib/email';
+import {
+  reconcileOfficeAttendanceDateRange,
+  reconcileOfficeAttendanceDay,
+} from '@/lib/officeAttendanceReconcileRpc';
 
 const OFFICE_DEPARTMENTS = ['Bait Alshaar', 'Al Saqia'] as const;
 type OfficeDept = (typeof OFFICE_DEPARTMENTS)[number];
@@ -152,6 +156,12 @@ export async function POST(request: Request) {
   const reportDate = reportType === 'monthEnd' ? lastDayOfMonth(uaeTodayIso()) : todayIso();
   const monthStart = firstDayOfMonth(reportDate);
   const monthEnd = lastDayOfMonth(reportDate);
+
+  if (reportType === 'monthEnd') {
+    await reconcileOfficeAttendanceDateRange(supabase, monthStart, monthEnd);
+  } else {
+    await reconcileOfficeAttendanceDay(supabase, reportDate);
+  }
 
   const departmentsToRun: OfficeDept[] = singleDept ? [singleDept] : [...OFFICE_DEPARTMENTS];
   let totalSent = 0;

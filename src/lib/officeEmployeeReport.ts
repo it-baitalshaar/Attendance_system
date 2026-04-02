@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { sendMail } from '@/lib/email';
+import {
+  reconcileOfficeAttendanceDateRange,
+  reconcileOfficeAttendanceDay,
+} from '@/lib/officeAttendanceReconcileRpc';
 
 const UAE_TIMEZONE = 'Asia/Dubai';
 const MIN_CHECKOUT_GAP_MS = 3 * 60 * 1000;
@@ -172,6 +176,8 @@ export async function sendOfficeEmployeeReportByIdentifier({
   let mailSubject: string;
 
   if (reportType === 'monthEnd') {
+    await reconcileOfficeAttendanceDateRange(supabase, monthStart, monthEnd);
+
     const { data: logRows } = await supabase
       .from('office_attendance_logs')
       .select('timestamp')
@@ -271,6 +277,8 @@ export async function sendOfficeEmployeeReportByIdentifier({
 </html>`;
     mailSubject = `${subjectPrefix} — ${monthLabel}`;
   } else {
+    await reconcileOfficeAttendanceDay(supabase, reportDate);
+
     const { data: todayRow } = await supabase
       .from('office_attendance')
       .select('check_in, check_out, worked_hours')

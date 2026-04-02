@@ -106,6 +106,11 @@ Deno.serve(async (req: Request) => {
     const monthStart = firstDayOfMonth();
     const monthEnd = lastDayOfMonth();
 
+    await supabase.rpc('office_reconcile_office_date_range', {
+      p_start: monthStart,
+      p_end: monthEnd,
+    });
+
     const { data: todayRow } = await supabase
       .from('office_attendance')
       .select('check_in, check_out, worked_hours')
