@@ -85,6 +85,14 @@ function dateKeyFromIso(iso: string | null | undefined): string | null {
   return String(iso).slice(0, 10);
 }
 
+function isIsoDate(s: unknown): s is string {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function isIsoMonth(s: unknown): s is string {
+  return typeof s === 'string' && /^\d{4}-\d{2}$/.test(s);
+}
+
 function inferCheckoutFromLogs(
   checkInIso: string | null,
   existingCheckoutIso: string | null,
@@ -138,7 +146,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  let body: { department?: string; reportType?: 'daily' | 'monthEnd' } = {};
+  let body: {
+    department?: string;
+    reportType?: 'daily' | 'monthEnd';
+    reportDate?: string; // YYYY-MM-DD (daily override)
+    reportMonth?: string; // YYYY-MM (month-end override)
+  } = {};
   try {
     body = await request.json();
   } catch {
@@ -148,14 +161,29 @@ export async function POST(request: Request) {
     typeof body?.department === 'string' && isOfficeDept(body.department) ? body.department : null;
   const reportType: 'daily' | 'monthEnd' = body?.reportType === 'monthEnd' ? 'monthEnd' : 'daily';
 
+  const reportDateOverride = typeof body?.reportDate === 'string' ? body.reportDate.trim() : null;
+  const reportMonthOverride = typeof body?.reportMonth === 'string' ? body.reportMonth.trim() : null;
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const reportDate = reportType === 'monthEnd' ? lastDayOfMonth(uaeTodayIso()) : todayIso();
-  const monthStart = firstDayOfMonth(reportDate);
-  const monthEnd = lastDayOfMonth(reportDate);
+  const uaeToday = uaeTodayIso();
+  let reportDate: string;
+  let monthStart: string;
+  let monthEnd: string;
+
+  if (reportType === 'monthEnd') {
+    const baseMonthIso = isIsoMonth(reportMonthOverride) ? `${reportMonthOverride}-01` : uaeToday;
+    monthStart = firstDayOfMonth(baseMonthIso);
+    monthEnd = lastDayOfMonth(baseMonthIso);
+    reportDate = monthEnd; // not used in month-end html logic, but keeps variables consistent
+  } else {
+    reportDate = isIsoDate(reportDateOverride) ? reportDateOverride : todayIso();
+    monthStart = firstDayOfMonth(reportDate);
+    monthEnd = lastDayOfMonth(reportDate);
+  }
 
   if (reportType === 'monthEnd') {
     await reconcileOfficeAttendanceDateRange(supabase, monthStart, monthEnd);

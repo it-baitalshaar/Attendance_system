@@ -44,6 +44,8 @@ export function OfficeReportSettingsTab() {
           settings={officeData.settings}
           emailsByDept={officeData.emailsByDept}
           timeByDept={officeData.timeByDept}
+          dateByDept={officeData.dateByDept}
+          monthByDept={officeData.monthByDept}
           toggling={officeData.toggling}
           testingDept={officeData.testingDept}
           testStatusByDept={officeData.testStatusByDept}
@@ -51,6 +53,8 @@ export function OfficeReportSettingsTab() {
           errorByDept={officeData.errorByDept}
           onToggle={officeData.handleToggle}
           onTimeChange={officeData.handleTimeChange}
+          onDateChange={officeData.handleDateChange}
+          onMonthChange={officeData.handleMonthChange}
           onNewEmailChange={(dept: OfficeReportDepartmentKey, value: string) =>
             officeData.setNewEmail((prev) => ({ ...prev, [dept]: value }))
           }

@@ -14,6 +14,48 @@ import {
 } from '../services/officeReportService';
 import type { OfficeReportSetting, OfficeReportEmailRow } from '../types';
 
+function uaeTodayIsoDate(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dubai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+
+  const y = Number(parts.year ?? '1970');
+  const m = Number(parts.month ?? '1');
+  const d = Number(parts.day ?? '1');
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return date.toISOString().slice(0, 10);
+}
+
+function uaeYesterdayIsoDate(): string {
+  const today = new Date(uaeTodayIsoDate());
+  today.setUTCDate(today.getUTCDate() - 1);
+  return today.toISOString().slice(0, 10);
+}
+
+function uaeThisMonthIso(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dubai',
+    year: 'numeric',
+    month: '2-digit',
+  })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = p.value;
+      return acc;
+    }, {});
+  const y = Number(parts.year ?? '1970');
+  const m = String(Number(parts.month ?? '1')).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
 export function useOfficeReportData() {
   const [settings, setSettings] = useState<OfficeReportSetting[]>([]);
   const [emailsByDept, setEmailsByDept] = useState<Record<OfficeReportDepartmentKey, OfficeReportEmailRow[]>>({
@@ -38,6 +80,14 @@ export function useOfficeReportData() {
   const [timeByDept, setTimeByDept] = useState<Record<OfficeReportDepartmentKey, string>>({
     'Bait Alshaar': '10:00',
     'Al Saqia': '10:00',
+  });
+  const [dateByDept, setDateByDept] = useState<Record<OfficeReportDepartmentKey, string>>({
+    'Bait Alshaar': uaeYesterdayIsoDate(),
+    'Al Saqia': uaeYesterdayIsoDate(),
+  });
+  const [monthByDept, setMonthByDept] = useState<Record<OfficeReportDepartmentKey, string>>({
+    'Bait Alshaar': uaeThisMonthIso(),
+    'Al Saqia': uaeThisMonthIso(),
   });
 
   const refreshSettings = useCallback(async () => {
@@ -120,7 +170,10 @@ export function useOfficeReportData() {
       ...prev,
       [department]: reportType === 'monthEnd' ? 'Sending month-end report…' : 'Sending test report…',
     }));
-    const result = await sendTestOfficeReport(department, reportType);
+    const result = await sendTestOfficeReport(department, reportType, {
+      reportDate: reportType === 'daily' ? dateByDept[department] : undefined,
+      reportMonth: reportType === 'monthEnd' ? monthByDept[department] : undefined,
+    });
     setTestingDept(null);
     if (result.error) {
       const err = result.error as { message?: string; context?: { body?: string } };
@@ -154,6 +207,14 @@ export function useOfficeReportData() {
     else await refreshSettings();
   };
 
+  const handleDateChange = (department: OfficeReportDepartmentKey, value: string) => {
+    setDateByDept((prev) => ({ ...prev, [department]: value }));
+  };
+
+  const handleMonthChange = (department: OfficeReportDepartmentKey, value: string) => {
+    setMonthByDept((prev) => ({ ...prev, [department]: value }));
+  };
+
   return {
     settings,
     emailsByDept,
@@ -166,10 +227,14 @@ export function useOfficeReportData() {
     testingDept,
     testStatusByDept,
     timeByDept,
+    dateByDept,
+    monthByDept,
     handleToggle,
     handleAddEmail,
     handleDeleteEmail,
     handleTestSend,
     handleTimeChange,
+    handleDateChange,
+    handleMonthChange,
   };
 }

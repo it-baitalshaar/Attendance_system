@@ -9,6 +9,8 @@ interface OfficeReportSectionProps {
   settings: OfficeReportSetting[];
   emailsByDept: Record<OfficeReportDepartmentKey, OfficeReportEmailRow[]>;
   timeByDept: Record<OfficeReportDepartmentKey, string>;
+  dateByDept: Record<OfficeReportDepartmentKey, string>;
+  monthByDept: Record<OfficeReportDepartmentKey, string>;
   toggling: OfficeReportDepartmentKey | null;
   testingDept: OfficeReportDepartmentKey | null;
   testStatusByDept: Record<OfficeReportDepartmentKey, string>;
@@ -16,6 +18,8 @@ interface OfficeReportSectionProps {
   errorByDept: Record<OfficeReportDepartmentKey, string>;
   onToggle: (d: OfficeReportDepartmentKey) => void;
   onTimeChange: (d: OfficeReportDepartmentKey, value: string) => void;
+  onDateChange: (d: OfficeReportDepartmentKey, value: string) => void;
+  onMonthChange: (d: OfficeReportDepartmentKey, value: string) => void;
   onNewEmailChange: (d: OfficeReportDepartmentKey, value: string) => void;
   onClearError: (d: OfficeReportDepartmentKey) => void;
   onAddEmail: (d: OfficeReportDepartmentKey) => void;
@@ -27,6 +31,8 @@ export function OfficeReportSection({
   settings,
   emailsByDept,
   timeByDept,
+  dateByDept,
+  monthByDept,
   toggling,
   testingDept,
   testStatusByDept,
@@ -34,6 +40,8 @@ export function OfficeReportSection({
   errorByDept,
   onToggle,
   onTimeChange,
+  onDateChange,
+  onMonthChange,
   onNewEmailChange,
   onClearError,
   onAddEmail,
@@ -126,6 +134,14 @@ export function OfficeReportSection({
               </div>
               {errorByDept[value] && <p className="text-red-500 text-sm mt-1">{errorByDept[value]}</p>}
               <div className="mt-4 flex flex-wrap items-center gap-2">
+                <label className="text-xs text-gray-600">Date:</label>
+                <input
+                  type="date"
+                  value={dateByDept[value]}
+                  onChange={(e) => onDateChange(value, e.target.value)}
+                  disabled={testingDept === value}
+                  className="border rounded px-2 py-1 text-sm"
+                />
                 <button
                   type="button"
                   onClick={() => onTestSend(value, 'daily')}
@@ -134,6 +150,14 @@ export function OfficeReportSection({
                 >
                   {testingDept === value ? 'Sending…' : 'Send test report now'}
                 </button>
+                <label className="text-xs text-gray-600">Month:</label>
+                <input
+                  type="month"
+                  value={monthByDept[value]}
+                  onChange={(e) => onMonthChange(value, e.target.value)}
+                  disabled={testingDept === value}
+                  className="border rounded px-2 py-1 text-sm"
+                />
                 <button
                   type="button"
                   onClick={() => onTestSend(value, 'monthEnd')}

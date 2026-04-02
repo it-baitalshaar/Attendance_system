@@ -77,13 +77,14 @@ export async function updateOfficeReportTime(
 
 export async function sendTestOfficeReport(
   department: OfficeReportDepartmentKey,
-  reportType: 'daily' | 'monthEnd' = 'daily'
+  reportType: 'daily' | 'monthEnd' = 'daily',
+  opts?: { reportDate?: string; reportMonth?: string }
 ): Promise<{ sent?: number; reason?: string; error?: unknown }> {
   const res = await fetch('/api/office/send-daily-report', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ department, reportType }),
+    body: JSON.stringify({ department, reportType, ...opts }),
   });
   const data = (await res.json().catch(() => ({}))) as {
     sent?: number;
