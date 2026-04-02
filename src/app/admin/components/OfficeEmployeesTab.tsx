@@ -303,6 +303,10 @@ export function OfficeEmployeesTab() {
   const [punchesLoading, setPunchesLoading] = useState(false);
   const [punchesError, setPunchesError] = useState('');
 
+  type PunchSortKey = 'datetime-desc' | 'datetime-asc' | 'department-asc' | 'department-desc';
+  const [punchSearch, setPunchSearch] = useState('');
+  const [punchSortBy, setPunchSortBy] = useState<PunchSortKey>('datetime-desc');
+
   const fetchReport = useCallback(async () => {
     setReportLoading(true);
     setReportError('');
@@ -338,6 +342,49 @@ export function OfficeEmployeesTab() {
       setPunchesLoading(false);
     }
   }, [punchesStart, punchesEnd]);
+
+  const punchesFilteredSorted = useMemo(() => {
+    const listBase = punchesData ?? [];
+    const q = punchSearch.trim().toLowerCase();
+
+    let list = listBase;
+    if (q) {
+      const terms = q.split(/\s+/).filter(Boolean);
+      list = list.filter((p) => {
+        const hay = [
+          p.employee_code,
+          p.name,
+          p.department,
+          p.type,
+          p.datetime,
+        ]
+          .join(' ')
+          .toLowerCase();
+        return terms.every((term) => hay.includes(term));
+      });
+    }
+
+    const timeValue = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
+    const dirForDatetime = punchSortBy === 'datetime-asc' ? 1 : -1;
+
+    return [...list].sort((a, b) => {
+      if (punchSortBy === 'datetime-asc' || punchSortBy === 'datetime-desc') {
+        return dirForDatetime * (timeValue(a.datetime) - timeValue(b.datetime));
+      }
+
+      const deptA = a.department || '';
+      const deptB = b.department || '';
+      const deptCmp = deptA.localeCompare(deptB, undefined, { sensitivity: 'base' });
+      if (deptCmp !== 0) return punchSortBy === 'department-desc' ? -deptCmp : deptCmp;
+
+      // Tie-breaker: newest first within each department.
+      return timeValue(b.datetime) - timeValue(a.datetime);
+    });
+  }, [punchesData, punchSearch, punchSortBy]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -836,7 +883,7 @@ export function OfficeEmployeesTab() {
       <section className="rounded-lg border bg-white p-4">
         <h3 className="text-lg font-medium mb-2">Recent check-in & check-out (selected dates)</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Punch log from <code>office_attendance_logs</code> for the selected range. Sorted newest first.
+          Punch log from <code>office_attendance_logs</code> for the selected range. Use Search and Sort to organize results.
           Log type can stay as check-in on some devices; final check-out status comes from the daily summary in <code>office_attendance</code>.
         </p>
         <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -869,6 +916,33 @@ export function OfficeEmployeesTab() {
         </div>
         {punchesError && <p className="text-sm text-red-600 mb-2">{punchesError}</p>}
         {punchesData && (
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Search</label>
+              <input
+                type="text"
+                value={punchSearch}
+                onChange={(e) => setPunchSearch(e.target.value)}
+                placeholder="Code / name / department"
+                className="border rounded px-3 py-2 text-sm min-w-[260px]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Sort by</label>
+              <select
+                value={punchSortBy}
+                onChange={(e) => setPunchSortBy(e.target.value as PunchSortKey)}
+                className="border rounded px-3 py-2 text-sm bg-white"
+              >
+                <option value="datetime-desc">Newest first</option>
+                <option value="datetime-asc">Oldest first</option>
+                <option value="department-asc">Department (A-Z)</option>
+                <option value="department-desc">Department (Z-A)</option>
+              </select>
+            </div>
+          </div>
+        )}
+        {punchesData && (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
@@ -881,10 +955,14 @@ export function OfficeEmployeesTab() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {punchesData.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-3 text-gray-500">No punches in this range.</td></tr>
+                {punchesFilteredSorted.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-3 text-gray-500">
+                      No punches match your search / filters in this range.
+                    </td>
+                  </tr>
                 ) : (
-                  punchesData.map((p, i) => (
+                  punchesFilteredSorted.map((p, i) => (
                     <tr key={`${p.employeeId}-${p.datetime}-${i}`} className="hover:bg-gray-50">
                       <td className="px-4 py-2 whitespace-nowrap">{formatDateTime(p.datetime)}</td>
                       <td className="px-4 py-2 font-medium">{p.employee_code}</td>
