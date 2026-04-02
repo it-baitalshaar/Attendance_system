@@ -40,7 +40,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  let body: { employeeId?: string; reportType?: 'daily' | 'monthEnd' } = {};
+  let body: {
+    employeeId?: string;
+    reportType?: 'daily' | 'monthEnd';
+    reportDate?: string; // YYYY-MM-DD override for daily
+    reportMonth?: string; // YYYY-MM override for month-end
+  } = {};
   try {
     body = await request.json();
   } catch {
@@ -67,6 +72,8 @@ export async function POST(request: Request) {
     employeeIdentifier: employeeId,
     subjectPrefix: reportType === 'monthEnd' ? 'Month-end work hours report' : 'Your work hours',
     reportType,
+    reportDate: typeof body?.reportDate === 'string' ? body.reportDate.trim() : undefined,
+    reportMonth: typeof body?.reportMonth === 'string' ? body.reportMonth.trim() : undefined,
   });
   if (!send.ok) {
     return NextResponse.json({ ok: false, error: send.error ?? 'Failed to send email' }, { status: 500 });

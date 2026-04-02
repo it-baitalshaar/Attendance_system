@@ -88,6 +88,14 @@ function inferCheckoutFromLogs(
   return best;
 }
 
+function isIsoDate(s: unknown): s is string {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function isIsoMonth(s: unknown): s is string {
+  return typeof s === 'string' && /^\d{4}-\d{2}$/.test(s);
+}
+
 /** All calendar dates from start to end inclusive (YYYY-MM-DD). */
 function enumerateDatesInclusive(startIso: string, endIso: string): string[] {
   const out: string[] = [];
@@ -116,12 +124,16 @@ export async function sendOfficeEmployeeReportByIdentifier({
   employeeIdentifier,
   subjectPrefix = 'Your work hours',
   reportType = 'daily',
+  reportDate: reportDateOverride,
+  reportMonth: reportMonthOverride,
 }: {
   supabaseUrl: string;
   serviceRoleKey: string;
   employeeIdentifier: string;
   subjectPrefix?: string;
   reportType?: 'daily' | 'monthEnd';
+  reportDate?: string; // YYYY-MM-DD override (daily)
+  reportMonth?: string; // YYYY-MM override (monthEnd)
 }): Promise<{ ok: boolean; error?: string; employeeId?: string; reportDate?: string }> {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -163,7 +175,16 @@ export async function sendOfficeEmployeeReportByIdentifier({
     return { ok: false, error: 'Employee has no email or personal_email set' };
   }
 
-  const reportDate = reportType === 'monthEnd' ? getUaeMonthEndIso() : getUaeDateIso(-1);
+  let reportDate: string;
+  if (reportType === 'monthEnd') {
+    const baseMonthIso = isIsoMonth(reportMonthOverride)
+      ? `${reportMonthOverride}-01`
+      : getUaeDateIso(0); // current month (UAE)
+    reportDate = lastDayOfMonth(baseMonthIso); // month-end date for the selected month
+  } else {
+    reportDate = isIsoDate(reportDateOverride) ? reportDateOverride : getUaeDateIso(-1); // default: yesterday (UAE)
+  }
+
   const monthStart = firstDayOfMonth(reportDate);
   const monthEnd = lastDayOfMonth(reportDate);
   const monthLabel = monthStart.slice(0, 7);
@@ -338,7 +359,7 @@ export async function sendOfficeEmployeeReportByIdentifier({
 <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 16px;">
   <h2>${escapeHtml(subjectPrefix)}</h2>
   <p>Hi ${safeName},</p>
-  <p><strong>Date (yesterday, UAE):</strong> ${reportDate}</p>
+  <p><strong>Date (UAE):</strong> ${reportDate}</p>
   <p><strong>Monthly period:</strong> ${monthStart} to ${monthEnd}</p>
   <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">
     <thead>

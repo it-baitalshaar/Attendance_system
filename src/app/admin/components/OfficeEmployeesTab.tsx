@@ -283,6 +283,12 @@ export function OfficeEmployeesTab() {
 
   const now = useMemo(() => new Date(), []);
   const uaeTodayIso = useMemo(() => getUaeTodayIso(), []);
+  const uaeYesterdayIso = useMemo(() => {
+    const d = new Date(uaeTodayIso);
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }, [uaeTodayIso]);
+  const uaeThisMonthIso = useMemo(() => uaeTodayIso.slice(0, 7), [uaeTodayIso]);
   const [reportStart, setReportStart] = useState(getMonthStart(now));
   const [reportEnd, setReportEnd] = useState(getMonthEnd(now));
   const [reportData, setReportData] = useState<{ results: ReportResult[]; grandTotal: number } | null>(null);
@@ -302,6 +308,10 @@ export function OfficeEmployeesTab() {
   const [punchesData, setPunchesData] = useState<PunchRow[] | null>(null);
   const [punchesLoading, setPunchesLoading] = useState(false);
   const [punchesError, setPunchesError] = useState('');
+
+  // Manual overrides for the "Email report" (daily) and "Month-end" buttons in the employee table.
+  const [manualDailyReportDate, setManualDailyReportDate] = useState(uaeYesterdayIso);
+  const [manualMonthEndIso, setManualMonthEndIso] = useState(uaeThisMonthIso);
 
   type PunchSortKey = 'datetime-desc' | 'datetime-asc' | 'department-asc' | 'department-desc';
   const [punchSearch, setPunchSearch] = useState('');
@@ -497,14 +507,15 @@ export function OfficeEmployeesTab() {
     setEditError('');
   }, []);
 
-  const sendEmployeeReport = useCallback(async (employeeId: string) => {
+  const sendEmployeeReport = useCallback(
+    async (employeeId: string) => {
     setSendingReportId(employeeId);
     setReportSendStatus(null);
     try {
       const res = await fetch('/api/office/send-employee-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId }),
+          body: JSON.stringify({ employeeId, reportDate: manualDailyReportDate }),
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
@@ -512,7 +523,7 @@ export function OfficeEmployeesTab() {
         const msg = (data as { error?: string })?.error ?? 'Failed to send';
         setReportSendStatus({ id: employeeId, msg });
       } else if ((data as { ok?: boolean }).ok) {
-        setReportSendStatus({ id: employeeId, msg: 'Report sent.' });
+          setReportSendStatus({ id: employeeId, msg: `Report sent for ${manualDailyReportDate}.` });
         setTimeout(() => setReportSendStatus(null), 3000);
       } else {
         setReportSendStatus({ id: employeeId, msg: (data as { error?: string })?.error ?? 'Failed to send' });
@@ -523,16 +534,19 @@ export function OfficeEmployeesTab() {
     } finally {
       setSendingReportId(null);
     }
-  }, []);
+    },
+    [manualDailyReportDate]
+  );
 
-  const sendEmployeeMonthEndReport = useCallback(async (employeeId: string) => {
+  const sendEmployeeMonthEndReport = useCallback(
+    async (employeeId: string) => {
     setSendingReportId(employeeId);
     setReportSendStatus(null);
     try {
       const res = await fetch('/api/office/send-employee-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId, reportType: 'monthEnd' }),
+          body: JSON.stringify({ employeeId, reportType: 'monthEnd', reportMonth: manualMonthEndIso }),
         credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
@@ -540,7 +554,7 @@ export function OfficeEmployeesTab() {
         const msg = (data as { error?: string })?.error ?? 'Failed to send';
         setReportSendStatus({ id: employeeId, msg });
       } else if ((data as { ok?: boolean }).ok) {
-        setReportSendStatus({ id: employeeId, msg: 'Month-end report sent.' });
+          setReportSendStatus({ id: employeeId, msg: `Month-end report sent for ${manualMonthEndIso}.` });
         setTimeout(() => setReportSendStatus(null), 3000);
       } else {
         setReportSendStatus({ id: employeeId, msg: (data as { error?: string })?.error ?? 'Failed to send' });
@@ -551,7 +565,9 @@ export function OfficeEmployeesTab() {
     } finally {
       setSendingReportId(null);
     }
-  }, []);
+    },
+    [manualMonthEndIso]
+  );
 
   const runDueReportsNow = useCallback(async () => {
     setSendingDueNow(true);
@@ -999,6 +1015,30 @@ export function OfficeEmployeesTab() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-end gap-4 mb-4 text-sm">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Date (daily email)</label>
+            <input
+              type="date"
+              value={manualDailyReportDate}
+              onChange={(e) => setManualDailyReportDate(e.target.value.slice(0, 10))}
+              className="border rounded px-3 py-2 bg-white"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Month (month-end email)</label>
+            <input
+              type="month"
+              value={manualMonthEndIso}
+              onChange={(e) => setManualMonthEndIso(e.target.value.slice(0, 7))}
+              className="border rounded px-3 py-2 bg-white"
+            />
+          </div>
+          <div className="text-xs text-gray-500 mb-0.5">
+            Used when you click <code>Email report</code> / <code>Month-end</code> for any employee.
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-end gap-3 mb-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
@@ -1077,7 +1117,11 @@ export function OfficeEmployeesTab() {
                           type="button"
                           onClick={() => sendEmployeeReport(e.id)}
                           disabled={sendingReportId === e.id || (!e.personal_email && !e.email)}
-                          title={e.personal_email || e.email ? 'Email this employee their work hours' : 'Add personal email to send report'}
+                          title={
+                            e.personal_email || e.email
+                              ? `Email this employee their work hours for ${manualDailyReportDate}`
+                              : 'Add personal email to send report'
+                          }
                           className="text-sm px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {sendingReportId === e.id ? 'Sending…' : 'Email report'}
@@ -1086,7 +1130,11 @@ export function OfficeEmployeesTab() {
                           type="button"
                           onClick={() => sendEmployeeMonthEndReport(e.id)}
                           disabled={sendingReportId === e.id || (!e.personal_email && !e.email)}
-                          title={e.personal_email || e.email ? 'Email this employee month-end work hours' : 'Add personal email to send report'}
+                          title={
+                            e.personal_email || e.email
+                              ? `Email this employee month-end work hours for ${manualMonthEndIso}`
+                              : 'Add personal email to send report'
+                          }
                           className="text-sm px-2 py-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {sendingReportId === e.id ? 'Sending…' : 'Month-end'}
