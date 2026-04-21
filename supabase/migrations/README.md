@@ -15,4 +15,4 @@ After running `add_employee_salary_and_history.sql`:
 
 ## If you get "column Employee(id) does not exist"
 
-Your `Employee` table may use `employee_id` as the primary key and have no `id` column. The migration above uses `REFERENCES "Employee"(employee_id)` and `employee_id text` in `Employee_history` for that case. If your `Employee.employee_id` type is different (e.g. `varchar(20)`), the migration should still work; if it fails, change the `employee_id` column type in the `CREATE TABLE` to match your `Employee.employee_id` type.
+Your `Employee` table may use `employee_id` as the primary key and have no `id` column. The migration above uses `REFERENCES "Employee"(employee_id)` and `employee_id text` in `Employee_history` for that case. If your `Employee.employee_id` type is different (e.g. `varchar(20)`), the migration should still work; if it fails, change the `employee_id` column type in the `CREATE TABLE` to match your `Employee.employee_id` type
