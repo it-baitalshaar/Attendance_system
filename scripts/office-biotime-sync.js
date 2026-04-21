@@ -21,7 +21,6 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const MIN_CHECKOUT_GAP_MINUTES = Number(process.env.BIOTIME_MIN_CHECKOUT_GAP_MINUTES || 3);
 
 function mustGetEnv(key) {
   const v = process.env[key];
@@ -131,11 +130,14 @@ async function main() {
     if (norm !== raw) employeeIdByCode.set(norm, id);
   });
 
-  let processed = 0;
+  let inserted = 0;
   let skipped = 0;
   let unknownEmployees = 0;
   let unknownCodes = [];
   let duplicates = 0;
+
+  // Track which (employeeId, date) pairs received new punches so we can reconcile them.
+  const affectedDates = new Set(); // values: "YYYY-MM-DD"
 
   for (const tx of txs) {
     const rawCode = String(tx?.employee_code ?? tx?.emp_code ?? tx?.code ?? tx?.pin ?? '').trim();
@@ -164,7 +166,8 @@ async function main() {
 
     const action = punchState === 0 ? 'checkin' : 'checkout';
 
-    // Insert log first (dedupe-safe)
+    // Only insert into logs — office_attendance is updated by the reconcile call below.
+    // This avoids out-of-order punch issues when the device labels don't match arrival order.
     const { error: logErr } = await supabase.from('office_attendance_logs').insert({
       employee_id: employeeId,
       action,
@@ -182,76 +185,25 @@ async function main() {
       throw new Error(`Failed inserting office_attendance_logs: ${logErr.message}`);
     }
 
-    // Read existing attendance row
-    const { data: existing, error: existingErr } = await supabase
-      .from('office_attendance')
-      .select('id, check_in, check_out, method')
-      .eq('employee_id', employeeId)
-      .eq('date', date)
-      .maybeSingle();
+    affectedDates.add(date);
+    inserted++;
+  }
 
-    if (existingErr) throw new Error(`Failed reading office_attendance: ${existingErr.message}`);
-
-    const next = {
-      employee_id: employeeId,
-      date,
-      device: 'BioTime',
-    };
-
-    const existingCheckIn = existing?.check_in ? new Date(existing.check_in).getTime() : null;
-    const existingCheckOut = existing?.check_out ? new Date(existing.check_out).getTime() : null;
-    const punchMs = new Date(punchTime).getTime();
-    if (!Number.isFinite(punchMs)) {
-      skipped++;
-      continue;
-    }
-
-    // Fault-tolerant punch merge:
-    // - first punch of day -> check_in
-    // - any later punch after check_in -> check_out (latest wins)
-    // This handles devices that incorrectly mark evening punches as check-in.
-    if (existingCheckIn == null && existingCheckOut == null) {
-      next.check_in = punchTime;
-    } else if (existingCheckIn == null && existingCheckOut != null) {
-      // Repair inconsistent row by splitting earliest/latest.
-      if (punchMs <= existingCheckOut) {
-        next.check_in = punchTime;
-      } else {
-        next.check_in = existing.check_out;
-        next.check_out = punchTime;
-      }
-    } else if (existingCheckIn != null) {
-      if (punchMs < existingCheckIn) {
-        next.check_in = punchTime; // earlier than current check-in
-      } else if (existingCheckOut == null || punchMs > existingCheckOut) {
-        const minGapMs = Math.max(0, MIN_CHECKOUT_GAP_MINUTES) * 60 * 1000;
-        const gapFromCheckIn = punchMs - existingCheckIn;
-        if (gapFromCheckIn >= minGapMs) {
-          next.check_out = punchTime; // later punch becomes checkout
-        } else {
-          // Ignore likely accidental quick re-punch (e.g. within 2-3 min of check-in).
-          skipped++;
-          continue;
-        }
-      }
-    }
-
-    // Don't override manual edits
-    if (existing?.method !== 'manual') next.method = 'biometric';
-
-    if (existing?.id) {
-      const { error: updErr } = await supabase.from('office_attendance').update(next).eq('id', existing.id);
-      if (updErr) throw new Error(`Failed updating office_attendance: ${updErr.message}`);
+  // Reconcile each affected date: reads ALL logs for the day and resolves
+  // check_in (first punch) and check_out (last punch) correctly, regardless
+  // of device punch_state labels or the order punches arrived in the API.
+  let reconciled = 0;
+  for (const date of affectedDates) {
+    const { error: rpcErr } = await supabase.rpc('office_reconcile_office_day', { p_date: date });
+    if (rpcErr) {
+      console.error(`[office-biotime-sync] reconcile failed for ${date}:`, rpcErr.message);
     } else {
-      const { error: insErr } = await supabase.from('office_attendance').insert(next);
-      if (insErr) throw new Error(`Failed inserting office_attendance: ${insErr.message}`);
+      reconciled++;
     }
-
-    processed++;
   }
 
   console.log(
-    `[office-biotime-sync] processed=${processed} skipped=${skipped} unknownEmployees=${unknownEmployees} duplicates=${duplicates}`
+    `[office-biotime-sync] inserted=${inserted} skipped=${skipped} duplicates=${duplicates} unknownEmployees=${unknownEmployees} reconciled=${reconciled}/${affectedDates.size} dates`
   );
   if (unknownCodes.length > 0) {
     console.log('[office-biotime-sync] unknown employee_code values from BioTime (check if they exist in office_employees):', unknownCodes.join(', '));
