@@ -85,6 +85,17 @@ function formatTimeShort(value: string | null): string {
     return '—';
   }
 }
+
+function toHHMM(value: string | null): string {
+  if (!value) return '';
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
 type PunchRow = {
   employeeId: string;
   employee_code: string;
@@ -316,6 +327,16 @@ export function OfficeEmployeesTab() {
   type PunchSortKey = 'datetime-desc' | 'datetime-asc' | 'department-asc' | 'department-desc';
   const [punchSearch, setPunchSearch] = useState('');
   const [punchSortBy, setPunchSortBy] = useState<PunchSortKey>('datetime-desc');
+
+  const [editAttendance, setEditAttendance] = useState<{
+    employeeId: string;
+    employeeName: string;
+    date: string;
+    checkIn: string;
+    checkOut: string;
+  } | null>(null);
+  const [editAttendanceSaving, setEditAttendanceSaving] = useState(false);
+  const [editAttendanceError, setEditAttendanceError] = useState('');
 
   const fetchReport = useCallback(async () => {
     setReportLoading(true);
@@ -648,6 +669,61 @@ export function OfficeEmployeesTab() {
     closeEdit();
   }, [editEmployee, editForm, supabase, closeEdit]);
 
+  const openAttendanceEdit = useCallback(
+    (employeeId: string, employeeName: string, date: string, day: DayEntry | undefined) => {
+      setEditAttendance({
+        employeeId,
+        employeeName,
+        date,
+        checkIn: day ? toHHMM(day.checkIn) : '',
+        checkOut: day ? toHHMM(day.checkOut) : '',
+      });
+      setEditAttendanceError('');
+    },
+    []
+  );
+
+  const saveAttendanceEdit = useCallback(async () => {
+    if (!editAttendance) return;
+    setEditAttendanceSaving(true);
+    setEditAttendanceError('');
+
+    const checkInISO = editAttendance.checkIn
+      ? `${editAttendance.date}T${editAttendance.checkIn}:00+04:00`
+      : null;
+    const checkOutISO = editAttendance.checkOut
+      ? `${editAttendance.date}T${editAttendance.checkOut}:00+04:00`
+      : null;
+
+    let workedHours: number | null = null;
+    if (checkInISO && checkOutISO) {
+      const diff = (new Date(checkOutISO).getTime() - new Date(checkInISO).getTime()) / 3600000;
+      workedHours = diff > 0 ? Math.round(diff * 100) / 100 : null;
+    }
+
+    const { error: upsertError } = await supabase
+      .from('office_attendance')
+      .upsert(
+        {
+          employee_id: editAttendance.employeeId,
+          date: editAttendance.date,
+          check_in: checkInISO,
+          check_out: checkOutISO,
+          worked_hours: workedHours,
+          method: 'manual',
+        },
+        { onConflict: 'employee_id,date' }
+      );
+
+    setEditAttendanceSaving(false);
+    if (upsertError) {
+      setEditAttendanceError(upsertError.message);
+      return;
+    }
+    setEditAttendance(null);
+    fetchReport();
+  }, [editAttendance, supabase, fetchReport]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -875,8 +951,16 @@ export function OfficeEmployeesTab() {
                           ? `${formatTimeShort(day.checkIn)}–${formatTimeShort(day.checkOut)}`
                           : '—';
                         return (
-                          <td key={date} className="px-2 py-1.5 text-center text-gray-700 whitespace-nowrap">
-                            {text}
+                          <td key={date} className="px-2 py-1.5 text-center text-gray-700 whitespace-nowrap group/cell">
+                            <span>{text}</span>
+                            <button
+                              type="button"
+                              onClick={() => openAttendanceEdit(r.employee.id, r.employee.name, date, day)}
+                              className="ml-1 opacity-0 group-hover/cell:opacity-100 text-blue-400 hover:text-blue-600 transition-opacity"
+                              title="Edit check-in / check-out"
+                            >
+                              ✏
+                            </button>
                           </td>
                         );
                       })}
@@ -1186,6 +1270,65 @@ export function OfficeEmployeesTab() {
           </div>
         )}
       </section>
+
+      {/* Edit attendance modal */}
+      {editAttendance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+            <div className="p-4 border-b">
+              <h3 className="text-lg font-semibold">Edit attendance</h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {editAttendance.employeeName} — {editAttendance.date}
+              </p>
+            </div>
+            <form
+              className="p-4 space-y-4"
+              onSubmit={(ev) => { ev.preventDefault(); saveAttendanceEdit(); }}
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Check-in (Dubai time)</label>
+                <input
+                  type="time"
+                  value={editAttendance.checkIn}
+                  onChange={(e) => setEditAttendance((a) => a ? { ...a, checkIn: e.target.value } : a)}
+                  className="w-full border rounded px-3 py-2"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Check-out (Dubai time)</label>
+                <input
+                  type="time"
+                  value={editAttendance.checkOut}
+                  onChange={(e) => setEditAttendance((a) => a ? { ...a, checkOut: e.target.value } : a)}
+                  className="w-full border rounded px-3 py-2"
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                Saved as manual — the biometric sync will not overwrite this entry.
+              </p>
+              {editAttendanceError && (
+                <p className="text-sm text-red-600">{editAttendanceError}</p>
+              )}
+              <div className="flex gap-2 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditAttendance(null)}
+                  className="px-4 py-2 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editAttendanceSaving}
+                  className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {editAttendanceSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Edit employee modal */}
       {editEmployee && (
