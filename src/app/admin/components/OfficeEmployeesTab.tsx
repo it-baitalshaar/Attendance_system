@@ -695,34 +695,27 @@ export function OfficeEmployeesTab() {
       ? `${editAttendance.date}T${editAttendance.checkOut}:00+04:00`
       : null;
 
-    let workedHours: number | null = null;
-    if (checkInISO && checkOutISO) {
-      const diff = (new Date(checkOutISO).getTime() - new Date(checkInISO).getTime()) / 3600000;
-      workedHours = diff > 0 ? Math.round(diff * 100) / 100 : null;
-    }
-
-    const { error: upsertError } = await supabase
-      .from('office_attendance')
-      .upsert(
-        {
-          employee_id: editAttendance.employeeId,
-          date: editAttendance.date,
-          check_in: checkInISO,
-          check_out: checkOutISO,
-          worked_hours: workedHours,
-          method: 'manual',
-        },
-        { onConflict: 'employee_id,date' }
-      );
+    const res = await fetch('/api/office/attendance-edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        employee_id: editAttendance.employeeId,
+        date: editAttendance.date,
+        check_in: checkInISO,
+        check_out: checkOutISO,
+      }),
+    });
 
     setEditAttendanceSaving(false);
-    if (upsertError) {
-      setEditAttendanceError(upsertError.message);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setEditAttendanceError((data as { error?: string }).error ?? 'Failed to save');
       return;
     }
     setEditAttendance(null);
     fetchReport();
-  }, [editAttendance, supabase, fetchReport]);
+  }, [editAttendance, fetchReport]);
 
   return (
     <div className="space-y-6">
