@@ -115,8 +115,8 @@ BEGIN
   ON CONFLICT (employee_id, date) DO UPDATE
   SET
     check_in     = COALESCE(public.office_attendance.check_in, EXCLUDED.check_in),
-    check_out    = EXCLUDED.check_out,
-    worked_hours = EXCLUDED.worked_hours,
+    check_out    = COALESCE(EXCLUDED.check_out, public.office_attendance.check_out),
+    worked_hours = COALESCE(EXCLUDED.worked_hours, public.office_attendance.worked_hours),
     device       = COALESCE(public.office_attendance.device, EXCLUDED.device),
     method       = CASE
                      WHEN public.office_attendance.method = 'manual' THEN public.office_attendance.method
