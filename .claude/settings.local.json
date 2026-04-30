@@ -4,7 +4,10 @@
       "Bash(git stash *)",
       "Bash(git fetch *)",
       "Bash(git reset *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(curl -s 'https://fhsvgeacwnnvqidyhnok.supabase.co/rest/v1/Attendance?date=eq.2026-04-24&select=id,employee_id,date,status,status_attendance,notes&limit=100' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM')",
+      "Bash(curl -s 'https://fhsvgeacwnnvqidyhnok.supabase.co/rest/v1/Attendance?date=eq.2026-04-24&select=id&limit=1' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Prefer: count=exact' -I)",
+      "Read(//c/Users/user/.claude/**)"
     ]
   }
 }

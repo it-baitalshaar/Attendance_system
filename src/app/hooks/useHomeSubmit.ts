@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { createSupabbaseFrontendClient } from '@/lib/supabase';
 import type { AttendanceStatus } from '@/redux/slice';
 import { HomeEmployee } from '../types/home';
@@ -29,6 +29,7 @@ export function useHomeSubmit(state: HomeSubmitState) {
   const [confirmModal, setConfirmModal] = useState<'idle' | 'open' | 'submitting'>('idle');
   const [reportModal, setReportModal] = useState(false);
   const [reportData, setReportData] = useState<ReportData | null>(null);
+  const isSubmittingRef = useRef(false);
   const { setExistingSubmission, setCardsLocked, setEditMode, setUserHasUnlocked } = state;
 
   const handleSubmitClick = () => {
@@ -40,14 +41,18 @@ export function useHomeSubmit(state: HomeSubmitState) {
   };
 
   const handleConfirmSubmit = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     const supabase = createSupabbaseFrontendClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       alert('You must be logged in to submit.');
+      isSubmittingRef.current = false;
       return;
     }
     if (!state.selectedDepartment || state.employeeList.length === 0) {
       setConfirmModal('idle');
+      isSubmittingRef.current = false;
       return;
     }
     setConfirmModal('submitting');
@@ -94,6 +99,7 @@ export function useHomeSubmit(state: HomeSubmitState) {
         if (!res.ok) {
           alert(data?.error || 'Failed to submit attendance.');
           setConfirmModal('open');
+          isSubmittingRef.current = false;
           return;
         }
       } else {
@@ -118,6 +124,7 @@ export function useHomeSubmit(state: HomeSubmitState) {
         if (!res.ok) {
           alert(data?.error || 'Failed to submit attendance.');
           setConfirmModal('open');
+          isSubmittingRef.current = false;
           return;
         }
       }
@@ -147,6 +154,8 @@ export function useHomeSubmit(state: HomeSubmitState) {
     } catch {
       alert('Error submitting attendance.');
       setConfirmModal('open');
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 

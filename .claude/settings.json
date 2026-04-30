@@ -3,7 +3,17 @@
     "allow": [
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npx supabase *)",
+      "Bash(supabase --version)",
+      "Bash(curl -s -X DELETE 'https://fhsvgeacwnnvqidyhnok.supabase.co/rest/v1/Track_Attendance?date=eq.2026-04-24&department=eq.Construction' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Prefer: return=representation' -w '\\\\nHTTP %{http_code}')",
+      "Bash(curl -s -X POST https://fhsvgeacwnnvqidyhnok.supabase.co/rest/v1/Track_Attendance -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Content-Type: application/json' -H 'Prefer: return=representation' -d '{ *)",
+      "Bash(curl -s 'https://fhsvgeacwnnvqidyhnok.supabase.co/rest/v1/Attendance?date=eq.2026-04-24&select=employee_id,id,status_attendance,notes' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoc3ZnZWFjd25udnFpZHlobm9rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNTk2MjkzOSwiZXhwIjoyMDQxNTM4OTM5fQ.Mtq-V_sqOX05o9tfADlaun29e_NO7PMhZqkvpQRZplM')",
+      "Bash(python3 -c ' *)"
+      "sbp_54aecdf7ac33f676755470819dad19aa2db70de8"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\user\\.claude"
     ]
   }
 }

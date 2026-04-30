@@ -409,18 +409,10 @@ export async function POST(request: Request) {
       }
 
       for (const entry of payload.entries) {
-        const { data: existingRow } = await supabase
-          .from('Attendance')
-          .select('id')
-          .eq('employee_id', entry.employee_id)
-          .eq('date', targetDate)
-          .maybeSingle();
-
         // Parse notes to extract status_attendance (Weekend, Holiday-Work, Sick Leave, etc.)
-        // Attendance table has: status, status_attendance, notes (no status_employee column)
         let status_attendance: string = entry.status;
         const notes = entry.notes ?? '';
-        
+
         if (notes.startsWith('Attendance type: ')) {
           const rest = notes.slice(18);
           const firstLineEnd = rest.indexOf('\n');
@@ -435,25 +427,20 @@ export async function POST(request: Request) {
             }
           }
         }
-        
+
         if (notes.includes('Sick Leave') && status_attendance === entry.status) status_attendance = 'Sick Leave';
         else if (notes.includes('Absence with excuse') && status_attendance === entry.status) status_attendance = 'Absence with excuse';
         else if (notes.includes('Absence without excuse') && status_attendance === entry.status) status_attendance = 'Absence without excuse';
-        else if (entry.status === 'present' && (status_attendance === 'present' || status_attendance === entry.status)) status_attendance = 'Present'; // report expects 'Present' for "P" and overtime
+        else if (entry.status === 'present' && (status_attendance === 'present' || status_attendance === entry.status)) status_attendance = 'Present';
 
-        const row = {
-          employee_id: entry.employee_id,
-          date: targetDate,
-          status: entry.status,
-          status_attendance,
-          notes: entry.notes,
-        };
-
-        if (existingRow) {
-          await supabase.from('Attendance').update(row).eq('id', existingRow.id);
-        } else {
-          await supabase.from('Attendance').insert(row);
-        }
+        // Upsert: inserts on first submission, replaces on re-submission/edit.
+        // Requires UNIQUE constraint on (employee_id, date) in the DB.
+        await supabase
+          .from('Attendance')
+          .upsert(
+            { employee_id: entry.employee_id, date: targetDate, status: entry.status, status_attendance, notes: entry.notes },
+            { onConflict: 'employee_id,date' }
+          );
       }
 
       if (!isEdit) {
@@ -570,12 +557,13 @@ export async function POST(request: Request) {
           const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, true);
           const notesVal = employees[i].projects.projectId[0]?.note || empStat.note || null;
 
-          const { data: existingAttendance } = await supabase
+          const { data: existingAttendanceRows } = await supabase
             .from('Attendance')
             .select('id')
             .eq('employee_id', employees[i].employee_id)
             .eq('date', targetDate)
-            .maybeSingle();
+            .limit(1);
+          const existingAttendance = existingAttendanceRows?.[0] ?? null;
 
           let attendanceId: string;
           let isUpdate = false;
@@ -653,12 +641,13 @@ export async function POST(request: Request) {
         } else if ((status_attendance === 'present' || status_employee === 'Sick Leave') && !hasProjects) {
             // No projects but still Present - save Attendance record without projects
             console.log("No projects found for employee", employees[i].employee_id);
-            const { data: existingPresent } = await supabase
+            const { data: existingPresentRows } = await supabase
               .from('Attendance')
               .select('id')
               .eq('employee_id', employees[i].employee_id)
               .eq('date', targetDate)
-              .maybeSingle();
+              .limit(1);
+            const existingPresent = existingPresentRows?.[0] ?? null;
 
             const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, true);
             const row = { status: status_attendance || 'present', status_attendance: final_status_attendance, notes: empStat.note || null };
@@ -686,12 +675,13 @@ export async function POST(request: Request) {
           const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, false);
           const row = { status: status_attendance || 'absent', status_attendance: final_status_attendance, notes: empStat.note || null };
 
-          const { data: existingAbsent } = await supabase
+          const { data: existingAbsentRows } = await supabase
             .from('Attendance')
             .select('id')
             .eq('employee_id', employees[i].employee_id)
             .eq('date', targetDate)
-            .maybeSingle();
+            .limit(1);
+          const existingAbsent = existingAbsentRows?.[0] ?? null;
 
           if (existingAbsent) {
             const { error: delErr } = await supabase

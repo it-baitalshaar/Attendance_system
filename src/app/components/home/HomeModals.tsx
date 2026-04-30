@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { ReportData } from '../../types/home';
 
 interface HomeModalsProps {
@@ -29,6 +30,14 @@ export function HomeModals({
   reportData,
   setReportModal,
 }: HomeModalsProps) {
+  const submitClickedRef = useRef(false);
+
+  const handleSubmitClick = () => {
+    if (submitClickedRef.current) return;
+    submitClickedRef.current = true;
+    onConfirmSubmit();
+  };
+
   return (
     <>
       {confirmModal === 'open' && (
@@ -43,7 +52,7 @@ export function HomeModals({
             <p className="text-yellow-600 mb-4">Vacation: {vacationCount}</p>
             <div className="flex gap-3 justify-end flex-wrap">
               <button type="button" onClick={() => setConfirmModal('idle')} className="min-h-[44px] px-4 py-2 border rounded-lg touch-manipulation">Cancel</button>
-              <button type="button" onClick={onConfirmSubmit} className="min-h-[44px] px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 touch-manipulation">Submit</button>
+              <button type="button" onClick={handleSubmitClick} className="min-h-[44px] px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 touch-manipulation">Submit</button>
             </div>
           </div>
         </div>
