@@ -133,7 +133,11 @@ export function buildAttendanceReport(
       projectParts.push({ name, hours: hrs });
     }
 
-    const sa = att.status_attendance ?? '';
+    // Some legacy records store type in notes as "Attendance type: Weekend" when
+    // status_attendance column is null — parse notes as fallback.
+    const saRaw = att.status_attendance?.trim() ?? '';
+    const sa = saRaw || ((att.notes ?? '').match(/Attendance\s+type:\s*([\w-]+)/i)?.[1] ?? '');
+
     const { overtime_normal, overtime_holiday, overtime_public_holiday } = addOvertimeToBuckets(
       projRows,
       sa
@@ -150,7 +154,7 @@ export function buildAttendanceReport(
     } else {
       dayDataByKey.set(k, {
         status: att.status,
-        status_attendance: att.status_attendance,
+        status_attendance: sa || att.status_attendance,
         notes: att.notes,
         working_hours,
         overtime_normal,
