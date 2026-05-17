@@ -133,10 +133,11 @@ export function buildAttendanceReport(
       projectParts.push({ name, hours: hrs });
     }
 
-    // Some legacy records store type in notes as "Attendance type: Weekend" when
-    // status_attendance column is null — parse notes as fallback.
+    // Notes "Attendance type: Weekend/Holiday-Work" override status_attendance.
+    // Some records have status_attendance='Present' but the real type is in notes.
     const saRaw = att.status_attendance?.trim() ?? '';
-    const sa = saRaw || ((att.notes ?? '').match(/Attendance\s+type:\s*([\w-]+)/i)?.[1] ?? '');
+    const notesType = (att.notes ?? '').match(/Attendance\s+type:\s*([\w-]+)/i)?.[1] ?? '';
+    const sa = notesType || saRaw;
 
     const { overtime_normal, overtime_holiday, overtime_public_holiday } = addOvertimeToBuckets(
       projRows,
@@ -165,10 +166,12 @@ export function buildAttendanceReport(
     }
   }
 
-  // Apply 8hr default: if working_hours=0 and (Weekend or Holiday-Work) → 8
+  // Apply 8hr default only when the day has actual project rows (the employee uses
+  // project-hour tracking). Employees with no project entries (e.g. Al Saqia) keep 0.
   dayDataByKey.forEach((v) => {
     if (
       v.working_hours === 0 &&
+      v.projectParts.length > 0 &&
       (v.status_attendance === 'Weekend' || v.status_attendance === 'Holiday-Work')
     ) {
       v.working_hours = 8;

@@ -62,15 +62,38 @@ function computeSummary(days: AttendanceReportDay[]) {
   for (const d of days) {
     const c = d.status_code;
     if (c === 'P') present++;
+    else if (c === 'H') holidayWork++;
     else if (ABSENT_CODES.has(c)) { absent++; absentDays.push(d); }
     else if (c === 'V') vacation++;
     else if (c === 'W') weekend++;
-    else if (c === 'H') { holidayWork++; present++; }
 
     totalHours += d.working_hours ?? 0;
     totalOT += (d.overtime.normal ?? 0) + (d.overtime.holiday ?? 0) + (d.overtime.public_holiday ?? 0);
   }
-  return { present, absent, vacation, weekend, holidayWork, totalHours, totalOT, absentDays };
+  // Worked days = regular present + holiday-work days
+  const workedDays = present + holidayWork;
+  return { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, absentDays };
+}
+
+function toLocalIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getMissingDates(days: AttendanceReportDay[], calFrom: string, calTo: string): string[] {
+  if (!calFrom || !calTo) return [];
+  const recorded = new Set(days.map((d) => d.date));
+  const missing: string[] = [];
+  const cur = new Date(calFrom + 'T00:00:00');
+  const end = new Date(calTo + 'T00:00:00');
+  while (cur <= end) {
+    const iso = toLocalIso(cur);
+    if (!recorded.has(iso)) missing.push(iso);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return missing;
 }
 
 const ALL = '';
@@ -255,14 +278,14 @@ export function AttendanceReportSection() {
       {/* Printable report area */}
       <div id="attendance-print-area">
         {report.map((empReport: AttendanceReportEmployeeReport, idx) => {
-          const { present, absent, vacation, weekend, holidayWork, totalHours, totalOT, absentDays } = computeSummary(empReport.days);
+          const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, absentDays } = computeSummary(empReport.days);
           const recordedDays = empReport.days.length;
-          // Calendar days in the queried period (not just recorded rows)
           const calFrom = reportFrom || fromDate;
           const calTo = reportTo || toDate;
           const calendarDays = calFrom && calTo
             ? Math.round((new Date(calTo + 'T00:00:00').getTime() - new Date(calFrom + 'T00:00:00').getTime()) / 86400000) + 1
             : recordedDays;
+          const missingDates = getMissingDates(empReport.days, calFrom, calTo);
           const periodLabel = calFrom && calTo
             ? `${formatDateShort(calFrom)} – ${formatDateShort(calTo)}`
             : empReport.days.length > 0
@@ -295,23 +318,36 @@ export function AttendanceReportSection() {
               </div>
 
               {/* ── Summary Cards ── */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-0 border-b divide-x divide-gray-100">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-0 border-b divide-x divide-gray-100">
                 {[
-                  { label: 'Present',      value: present,     color: 'text-emerald-600', sub: holidayWork > 0 ? `incl. ${holidayWork} holiday-work` : undefined },
-                  { label: 'Absent',       value: absent,      color: absent > 0 ? 'text-red-600' : 'text-gray-400' },
-                  { label: 'Vacation',     value: vacation,    color: 'text-blue-600' },
-                  { label: 'Weekend',      value: weekend,     color: 'text-slate-500' },
-                  { label: 'Work Hours',   value: totalHours,  color: 'text-slate-700', suffix: 'h' },
-                  { label: 'Overtime',     value: totalOT,     color: totalOT > 0 ? 'text-amber-600' : 'text-gray-400', suffix: 'h' },
-                  { label: 'Total Days',   value: calendarDays, color: 'text-slate-600', sub: recordedDays !== calendarDays ? `${recordedDays} recorded` : undefined },
+                  { label: 'Worked Days',    value: workedDays,   color: 'text-emerald-600', sub: holidayWork > 0 ? `${present}P + ${holidayWork}H` : undefined },
+                  { label: 'Present (P)',    value: present,      color: 'text-emerald-500' },
+                  { label: 'Weekend (W)',    value: weekend,      color: 'text-slate-500' },
+                  { label: 'Holiday-Work (H)', value: holidayWork, color: 'text-amber-600' },
+                  { label: 'Vacation (V)',   value: vacation,     color: 'text-blue-600' },
+                  { label: 'Absent',         value: absent,       color: absent > 0 ? 'text-red-600' : 'text-gray-400' },
+                  { label: 'Work Hours',     value: totalHours,   color: 'text-slate-700', suffix: 'h' },
+                  { label: 'Overtime',       value: totalOT,      color: totalOT > 0 ? 'text-amber-600' : 'text-gray-400', suffix: 'h' },
                 ].map(({ label, value, color, suffix, sub }) => (
-                  <div key={label} className="p-4 text-center">
+                  <div key={label} className="p-3 text-center">
                     <div className={`text-2xl font-bold ${color}`}>{value}{suffix}</div>
-                    <div className="text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide">{label}</div>
+                    <div className="text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide leading-tight">{label}</div>
                     {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
                   </div>
                 ))}
               </div>
+
+              {/* ── Missing Days Banner ── */}
+              {missingDates.length > 0 && (
+                <div className="px-6 py-3 bg-yellow-50 border-b border-yellow-100 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-yellow-700 uppercase tracking-wide shrink-0">
+                    {missingDates.length} day{missingDates.length > 1 ? 's' : ''} with no record:
+                  </span>
+                  <span className="text-xs text-yellow-700">
+                    {missingDates.map((d) => formatDateShort(d)).join(' · ')}
+                  </span>
+                </div>
+              )}
 
               {/* ── Important Days (Absences) ── */}
               {absentDays.length > 0 && (
