@@ -1,5 +1,6 @@
 import { LeaveReportRow } from '../services/reportService';
 import { AttendanceReportSection } from './reports/AttendanceReportSection';
+import { SalaryReportSection } from './reports/SalaryReportSection';
 
 interface ReportsTabProps {
   leaveReport: LeaveReportRow[];
@@ -183,6 +184,7 @@ export function ReportsTab({
       )}
 
       <AttendanceReportSection />
+      <SalaryReportSection />
     </div>
   );
 }

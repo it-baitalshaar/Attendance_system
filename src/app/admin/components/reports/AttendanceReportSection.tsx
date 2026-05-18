@@ -5,19 +5,16 @@ import { useAttendanceReport } from '../../hooks/useAttendanceReport';
 import { fetchDepartmentsService } from '../../services/departmentService';
 import { fetchEmployeesService } from '../../services/employeeService';
 import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../types/attendanceReport';
-import { WORKER_CARD_AR } from '@/app/constants/workerCardReportAr';
 
-function formatDate(dateStr: string) {
-  try {
-    return new Date(dateStr + 'Z').toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return dateStr;
-  }
+function getDeptTheme(dept: string) {
+  const d = (dept ?? '').toLowerCase();
+  if (d.includes('maintenance'))
+    return { gradient: 'from-red-900 to-red-800',      border: 'border-red-400',    company: 'Bait Alshaar Contracting and General Maintenance' };
+  if (d.includes('construction'))
+    return { gradient: 'from-orange-900 to-orange-800', border: 'border-orange-400', company: 'Bait Alshaar Contracting and General Maintenance' };
+  if (d.includes('saqi'))
+    return { gradient: 'from-blue-900 to-blue-800',    border: 'border-blue-400',   company: 'Al Saqiya Trading' };
+  return   { gradient: 'from-slate-800 to-slate-700',  border: 'border-slate-400',  company: 'Bait Alshaar Contracting and General Maintenance' };
 }
 
 function formatDateShort(dateStr: string) {
@@ -152,14 +149,75 @@ export function AttendanceReportSection() {
 
   const hasReport = report.length > 0;
 
+  // ── Summary page computations ──
+  const calFrom = reportFrom || fromDate;
+  const calTo = reportTo || toDate;
+  const summaryCalendarDays = calFrom && calTo
+    ? Math.round((new Date(calTo + 'T00:00:00').getTime() - new Date(calFrom + 'T00:00:00').getTime()) / 86400000) + 1
+    : 0;
+  let summaryPeriodWeekends = 0;
+  if (calFrom && calTo) {
+    const cur = new Date(calFrom + 'T00:00:00');
+    const end = new Date(calTo + 'T00:00:00');
+    while (cur <= end) {
+      const dow = cur.getDay();
+      if (dow === 5 || dow === 6) summaryPeriodWeekends++;
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+  const summaryPeriodLabel = calFrom && calTo
+    ? `${formatDateShort(calFrom)} – ${formatDateShort(calTo)}`
+    : '';
+  const summaryCalFrom = calFrom;
+  const employeeSummaries = report.map((emp) => {
+    const s = computeSummary(emp.days);
+    const awo = s.absentDays.filter(d => d.status_code === 'AWO').length;
+    const sl  = s.absentDays.filter(d => d.status_code === 'SL').length;
+    const a   = s.absentDays.filter(d => d.status_code === 'A').length;
+    // Salary for summary column
+    const sal = emp.employee.salary;
+    let totalSalary: number | null = null;
+    if (sal != null && sal > 0 && summaryCalFrom) {
+      const [sy, sm] = summaryCalFrom.split('-').map(Number);
+      const md = new Date(sy, sm, 0).getDate();
+      const hr = sal / (md * 8);
+      const baseH = Math.max(0, emp.days.length * 8 - awo * 8);
+      let ot = 0;
+      emp.days.forEach((day) => {
+        ot += day.overtime.normal        * 1.25 * hr;
+        ot += day.overtime.holiday       * 1.5  * hr;
+        ot += day.overtime.public_holiday * 1.5  * hr;
+      });
+      totalSalary = Math.round(baseH * hr + ot);
+    }
+    return { employee: emp.employee, ...s, awo, sl, a, totalSalary };
+  });
+  const grandTotals = employeeSummaries.reduce(
+    (acc, s) => ({
+      workedDays: acc.workedDays + s.workedDays,
+      present: acc.present + s.present,
+      holidayWork: acc.holidayWork + s.holidayWork,
+      weekend: acc.weekend + s.weekend,
+      vacation: acc.vacation + s.vacation,
+      absent: acc.absent + s.absent,
+      awo: acc.awo + s.awo,
+      sl: acc.sl + s.sl,
+      a: acc.a + s.a,
+      totalHours: acc.totalHours + s.totalHours,
+      totalOT: acc.totalOT + s.totalOT,
+      totalSalary: acc.totalSalary + (s.totalSalary ?? 0),
+    }),
+    { workedDays: 0, present: 0, holidayWork: 0, weekend: 0, vacation: 0, absent: 0, awo: 0, sl: 0, a: 0, totalHours: 0, totalOT: 0, totalSalary: 0 }
+  );
+
   const handleDownloadCsv = () => {
     if (!hasReport) return;
     const header = [
       'Employee ID', 'Employee Name', 'Department', 'Salary',
-      WORKER_CARD_AR.date, 'Status Code',
-      WORKER_CARD_AR.workHours, WORKER_CARD_AR.overtimeNormal,
-      WORKER_CARD_AR.overtimeHoliday, WORKER_CARD_AR.overtimePublicHoliday,
-      WORKER_CARD_AR.project, WORKER_CARD_AR.notes,
+      'Date', 'Status',
+      'Work Hrs', 'OT (×1.25)',
+      'W.OT (×1.5)', 'H.OT (×1.5)',
+      'Project', 'Notes',
     ];
     const rows: string[] = [header.join(',')];
     report.forEach((emp) => {
@@ -191,28 +249,45 @@ export function AttendanceReportSection() {
       <style>{`
         @media print {
           @page { size: A4 portrait; margin: 10mm 12mm; }
-          body * { visibility: hidden; }
-          #attendance-print-area, #attendance-print-area * { visibility: visible; }
-          #attendance-print-area { position: absolute; top: 0; left: 0; width: 100%; }
+          body.print-attendance * { visibility: hidden; }
+          body.print-attendance #attendance-print-area,
+          body.print-attendance #attendance-print-area * { visibility: visible; }
+          body.print-attendance #attendance-print-area { position: absolute; top: 0; left: 0; width: 100%; }
           .print-page-break { page-break-after: always; break-after: page; margin: 0 !important; }
           .no-print { display: none !important; }
           /* preserve background colours */
           .emp-hdr, .emp-summary { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
           /* compact card */
           .emp-card { box-shadow: none !important; border: 1px solid #d1d5db; margin-top: 0 !important; border-radius: 0 !important; }
+          /* compact header */
+          .emp-hdr { padding: 5px 12px !important; }
+          .emp-hdr .company-name { font-size: 5.5pt !important; letter-spacing: 0.04em !important; margin-bottom: 1px !important; }
+          .emp-hdr h2 { font-size: 12pt !important; line-height: 1.2 !important; }
+          .emp-hdr .text-sm, .emp-hdr .text-base { font-size: 7.5pt !important; }
           /* compact summary strip */
-          .sum-card { padding: 5px 8px !important; }
-          .sum-val { font-size: 15pt !important; line-height: 1.1 !important; }
-          .sum-lbl { font-size: 6.5pt !important; }
-          /* compact table */
-          .att-table { font-size: 8pt !important; }
-          .att-table th, .att-table td { padding: 2.5px 5px !important; }
-          .att-table .status-badge { padding: 1px 5px !important; font-size: 7pt !important; }
+          .sum-card { padding: 3px 6px !important; }
+          .sum-val { font-size: 11pt !important; line-height: 1.1 !important; }
+          .sum-lbl { font-size: 5.5pt !important; letter-spacing: 0 !important; }
+          /* compact table — rows sized to fill page evenly */
+          .att-table { font-size: 7.5pt !important; table-layout: fixed !important; width: 100% !important; }
+          .att-table th, .att-table td { padding: 3.5px 4px !important; line-height: 1.35 !important; vertical-align: middle !important; }
+          .att-table th { font-size: 6.5pt !important; padding: 2px 4px !important; }
+          .att-table .status-badge { padding: 0 4px !important; font-size: 6.5pt !important; border-radius: 3px !important; }
           .att-table .badge-dot { display: none !important; }
+          .att-table .ot-rate { display: none !important; }
+          /* date cell: compact two-line */
+          .att-table .date-day { font-size: 7.5pt !important; }
+          .att-table .date-wd  { font-size: 6pt !important; }
+          /* project / notes: 1 line in print to guarantee row height */
+          .att-table .cell-project { overflow: hidden !important; display: -webkit-box !important; -webkit-line-clamp: 1 !important; -webkit-box-orient: vertical !important; }
+          .att-table .cell-notes  { overflow: hidden !important; display: -webkit-box !important; -webkit-line-clamp: 1 !important; -webkit-box-orient: vertical !important; }
           /* absent highlight must still print */
           .att-table tr.row-absent { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           /* section banners */
-          .absent-banner, .missing-banner, .footer-bar { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .missing-banner { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 2px 8px !important; font-size: 6.5pt !important; }
+          /* header signature column */
+          .emp-hdr-sig { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; min-height: 22mm !important; width: 50mm !important; border: 1.5pt solid #94a3b8 !important; }
+          .emp-hdr-sig span { color: #e2e8f0 !important; font-size: 14pt !important; }
         }
       `}</style>
 
@@ -280,8 +355,14 @@ export function AttendanceReportSection() {
               Download CSV
             </button>
             <button
-              type="button" onClick={() => window.print()} disabled={!hasReport || loading}
+              type="button"
+              disabled={!hasReport || loading}
               className="px-4 py-2 text-sm rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40"
+              onClick={() => {
+                document.body.classList.add('print-attendance');
+                window.print();
+                document.body.classList.remove('print-attendance');
+              }}
             >
               Print / Save as PDF
             </button>
@@ -294,7 +375,8 @@ export function AttendanceReportSection() {
 
       {/* Printable report area */}
       <div id="attendance-print-area">
-        {report.map((empReport: AttendanceReportEmployeeReport, idx) => {
+        {report.map((empReport: AttendanceReportEmployeeReport) => {
+          const deptTheme = getDeptTheme(empReport.employee.department);
           const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, absentDays } = computeSummary(empReport.days);
           const recordedDays = empReport.days.length;
           const calFrom = reportFrom || fromDate;
@@ -309,6 +391,40 @@ export function AttendanceReportSection() {
               ? `${formatDateShort(empReport.days[0].date)} – ${formatDateShort(empReport.days[empReport.days.length - 1].date)}`
               : '';
 
+          // AWO / SL / A breakdown
+          const awoCount = absentDays.filter(d => d.status_code === 'AWO').length;
+          const slCount  = absentDays.filter(d => d.status_code === 'SL').length;
+          const aCount   = absentDays.filter(d => d.status_code === 'A').length;
+          const absentSub = absent > 0
+            ? [awoCount > 0 ? `AWO: ${awoCount}` : '', slCount > 0 ? `SL: ${slCount}` : '', aCount > 0 ? `A: ${aCount}` : ''].filter(Boolean).join(' · ')
+            : undefined;
+
+          // Salary calculation (only when salary is set)
+          const empSalary = empReport.employee.salary;
+          let salarySummary: {
+            monthDays: number;
+            hourlyRate: number;
+            effectiveBaseHours: number;
+            baseSalary: number;
+            otAmount: number;
+            totalSalary: number;
+          } | null = null;
+          if (empSalary != null && empSalary > 0 && calFrom) {
+            const [sy, sm] = calFrom.split('-').map(Number);
+            const monthDays = new Date(sy, sm, 0).getDate();
+            const hourlyRate = empSalary / (monthDays * 8);
+            const effectiveBaseHours = Math.max(0, recordedDays * 8 - awoCount * 8);
+            const baseSalary = effectiveBaseHours * hourlyRate;
+            let otAmount = 0;
+            empReport.days.forEach((day) => {
+              otAmount += day.overtime.normal       * 1.25 * hourlyRate;
+              otAmount += day.overtime.holiday      * 1.5  * hourlyRate;
+              otAmount += day.overtime.public_holiday * 1.5  * hourlyRate;
+            });
+            const totalSalary = Math.round(baseSalary + otAmount);
+            salarySummary = { monthDays, hourlyRate, effectiveBaseHours, baseSalary, otAmount, totalSalary };
+          }
+
           // Dynamic column visibility — hide columns that are all empty for this employee
           const showWorkHours = empReport.days.some(d => d.working_hours > 0);
           const showOtNormal = empReport.days.some(d => d.overtime.normal > 0);
@@ -322,62 +438,96 @@ export function AttendanceReportSection() {
           return (
             <div
               key={empReport.employee.id}
-              className={`emp-card bg-white rounded-lg shadow mt-6 overflow-hidden ${idx < report.length - 1 ? 'print-page-break' : ''}`}
+              className="emp-card bg-white rounded-lg shadow mt-6 overflow-hidden print-page-break"
             >
-              {/* ── Employee Header ── */}
-              <div
-                className="emp-hdr bg-gradient-to-r from-slate-800 to-slate-700 text-white px-6 py-4"
-                style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                  <div>
+              {/* ── Employee Header: dark-left all info + white-right empty signature box ── */}
+              <div className="flex items-stretch overflow-hidden">
+                {/* Dark left — all text including period & supervisor label */}
+                <div
+                  className={`emp-hdr flex-1 bg-gradient-to-r ${deptTheme.gradient} text-white px-5 py-3`}
+                  style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+                >
+                  <div className="flex items-baseline justify-between gap-4">
                     <h2 className="text-xl font-bold tracking-wide leading-tight">{empReport.employee.name}</h2>
-                    <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-slate-300">
-                      <span className="font-mono bg-slate-600 px-2 py-0.5 rounded text-xs">{empReport.employee.id}</span>
-                      <span>{empReport.employee.department}</span>
-                      {empReport.employee.salary != null && empReport.employee.salary > 0 && (
-                        <span>Salary: <strong className="text-white">{empReport.employee.salary}</strong></span>
-                      )}
-                    </div>
+                    <span className="company-name text-xs text-slate-400 uppercase tracking-widest font-medium shrink-0">
+                      {deptTheme.company}
+                    </span>
                   </div>
-                  <div className="text-right text-slate-300 text-sm">
-                    <div className="text-white font-semibold text-base">{periodLabel}</div>
-                    <div>{calendarDays} days in period</div>
+                  {/* Row 2: ID · Dept · salary · rate · OT · Total */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0 mt-1 text-sm text-slate-300">
+                    <span className="font-mono bg-slate-600 px-2 py-0.5 rounded text-xs">{empReport.employee.id}</span>
+                    <span>{empReport.employee.department}</span>
+                    {empReport.employee.salary != null && empReport.employee.salary > 0 && (
+                      <>
+                        <span className="text-slate-500">·</span>
+                        <span>
+                          <strong className="text-white">{empReport.employee.salary.toLocaleString('en-US')}</strong>/mo
+                          {salarySummary && (
+                            <span className="font-mono text-slate-400 text-xs ml-1">@{salarySummary.hourlyRate.toFixed(2)}/h</span>
+                          )}
+                        </span>
+                        {salarySummary && (
+                          <>
+                            {salarySummary.otAmount > 0 && (
+                              <span className="text-amber-300 text-xs">· OT +{Math.round(salarySummary.otAmount).toLocaleString('en-US')}</span>
+                            )}
+                            {awoCount > 0 && (
+                              <span className="text-red-400 text-xs">· AWO −{awoCount}d</span>
+                            )}
+                            <span className="text-slate-400 text-xs">·</span>
+                            <span className="font-bold text-white tabular-nums">
+                              Total: {salarySummary.totalSalary.toLocaleString('en-US')}
+                            </span>
+                          </>
+                        )}
+                      </>
+                    )}
                   </div>
+                  {/* Row 3: period+days left, supervisor label flush-right before the white box */}
+                  <div className="flex items-center justify-between mt-1.5 text-xs text-slate-400">
+                    <span>
+                      <span className="font-semibold text-slate-200">{periodLabel}</span>
+                      <span className="ml-1.5">· {calendarDays} days</span>
+                    </span>
+                    <span className="font-medium text-slate-300 uppercase tracking-wide whitespace-nowrap">
+                      Supervisor / Engineer Signature →
+                    </span>
+                  </div>
+                </div>
+                {/* White right — empty signature box with border and watermark */}
+                <div
+                  className={`emp-hdr-sig w-48 shrink-0 border-2 ${deptTheme.border} bg-white flex items-center justify-center`}
+                  style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+                >
+                  <span className="text-2xl font-bold text-slate-200 select-none tracking-widest uppercase">
+                    Signature
+                  </span>
                 </div>
               </div>
 
-              {/* ── Summary Strip — two rows of 4 ── */}
+              {/* ── Summary Strip — single row of 6 ── */}
               <div
                 className="emp-summary border-b"
                 style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
               >
-                {/* Row 1: attendance codes */}
-                <div className="grid grid-cols-4 divide-x divide-gray-100 border-b border-gray-100">
+                <div className="grid grid-cols-6 divide-x divide-gray-100">
                   {[
-                    { label: 'Worked Days', value: workedDays, color: 'text-emerald-600', sub: holidayWork > 0 ? `${present}P + ${holidayWork}H` : undefined },
-                    { label: 'Weekend (W)',  value: weekend,   color: weekend > 0 ? 'text-slate-600' : 'text-gray-300' },
-                    { label: 'Vacation (V)', value: vacation,  color: vacation > 0 ? 'text-blue-600' : 'text-gray-300' },
-                    { label: 'Absent',       value: absent,    color: absent > 0 ? 'text-red-600' : 'text-gray-300' },
+                    {
+                      label: 'Worked',
+                      value: workedDays,
+                      color: 'text-emerald-600',
+                      sub: holidayWork > 0 ? `${present}P + ${holidayWork}H` : present > 0 ? `${present}P` : undefined,
+                    },
+                    { label: 'Weekend',  value: weekend,          color: weekend > 0   ? 'text-slate-600'  : 'text-gray-300' },
+                    { label: 'Vacation', value: vacation,         color: vacation > 0  ? 'text-blue-600'   : 'text-gray-300' },
+                    { label: 'Absent',   value: absent,           color: absent > 0    ? 'text-red-600'    : 'text-gray-300', sub: absentSub },
+                    { label: 'Work Hrs', value: `${totalHours}h`, color: totalHours > 0 ? 'text-slate-700' : 'text-gray-300' },
+                    { label: 'Overtime', value: `${totalOT}h`,    color: totalOT > 0   ? 'text-amber-600'  : 'text-gray-300' },
                   ].map(({ label, value, color, sub }) => (
                     <div key={label} className="sum-card p-3 text-center">
                       <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
                       <div className="sum-lbl text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide leading-tight">{label}</div>
                       {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
-                    </div>
-                  ))}
-                </div>
-                {/* Row 2: hours + calendar */}
-                <div className="grid grid-cols-4 divide-x divide-gray-100">
-                  {[
-                    { label: 'Present (P)',  value: present,      color: present > 0 ? 'text-emerald-500' : 'text-gray-300' },
-                    { label: 'Holiday-Work', value: holidayWork,  color: holidayWork > 0 ? 'text-amber-600' : 'text-gray-300' },
-                    { label: 'Work Hours',   value: `${totalHours}h`, color: totalHours > 0 ? 'text-slate-700' : 'text-gray-300' },
-                    { label: 'Overtime',     value: `${totalOT}h`,    color: totalOT > 0 ? 'text-amber-600' : 'text-gray-300' },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} className="sum-card p-3 text-center">
-                      <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
-                      <div className="sum-lbl text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide leading-tight">{label}</div>
                     </div>
                   ))}
                 </div>
@@ -395,37 +545,40 @@ export function AttendanceReportSection() {
                 </div>
               )}
 
-              {/* ── Absent Days Banner ── */}
-              {absentDays.length > 0 && (
-                <div className="absent-banner px-5 py-3 bg-red-50 border-b border-red-100">
-                  <span className="text-xs font-semibold text-red-700 uppercase tracking-wide mr-2">
-                    Absent days ({absentDays.length}):
-                  </span>
-                  <span className="inline-flex flex-wrap gap-1.5">
-                    {absentDays.map((d) => {
-                      const meta = getMeta(d.status_code);
-                      return (
-                        <span key={d.date} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${meta.bg} ${meta.color}`}>
-                          {formatDateShort(d.date)} · {d.status_code}
-                          {d.notes && <span className="opacity-60 ml-1">{d.notes}</span>}
-                        </span>
-                      );
-                    })}
-                  </span>
-                </div>
-              )}
 
               {/* ── Daily Attendance Table ── */}
               <div className="overflow-x-auto">
-                <table className="att-table w-full text-sm border-collapse">
+                <table className="att-table w-full text-sm border-collapse table-fixed">
+                  <colgroup>
+                    <col style={{ width: '88px' }} />
+                    <col style={{ width: '62px' }} />
+                    {showWorkHours        && <col style={{ width: '40px' }} />}
+                    {showOtNormal         && <col style={{ width: '36px' }} />}
+                    {showOtHoliday        && <col style={{ width: '40px' }} />}
+                    {showOtPublicHoliday  && <col style={{ width: '40px' }} />}
+                    {showProjects         && <col />}
+                    {showNotes            && <col style={{ width: '150px' }} />}
+                  </colgroup>
                   <thead>
                     <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
                       <th className="px-4 py-2.5 text-left font-semibold">Date</th>
                       <th className="px-3 py-2.5 text-center font-semibold">Status</th>
-                      {showWorkHours && <th className="px-3 py-2.5 text-right font-semibold">Work Hrs</th>}
-                      {showOtNormal && <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" dir="rtl">{WORKER_CARD_AR.overtimeNormal}</th>}
-                      {showOtHoliday && <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" dir="rtl">{WORKER_CARD_AR.overtimeHoliday}</th>}
-                      {showOtPublicHoliday && <th className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" dir="rtl">{WORKER_CARD_AR.overtimePublicHoliday}</th>}
+                      {showWorkHours && <th className="px-3 py-2.5 text-right font-semibold">Hrs</th>}
+                      {showOtNormal && (
+                        <th className="px-3 py-2.5 text-right font-semibold">
+                          OT<span className="ot-rate block text-gray-400 font-normal normal-case tracking-normal">×1.25</span>
+                        </th>
+                      )}
+                      {showOtHoliday && (
+                        <th className="px-3 py-2.5 text-right font-semibold">
+                          W.OT<span className="ot-rate block text-gray-400 font-normal normal-case tracking-normal">×1.5</span>
+                        </th>
+                      )}
+                      {showOtPublicHoliday && (
+                        <th className="px-3 py-2.5 text-right font-semibold">
+                          H.OT<span className="ot-rate block text-gray-400 font-normal normal-case tracking-normal">×1.5</span>
+                        </th>
+                      )}
                       {showProjects && <th className="px-3 py-2.5 text-left font-semibold">Project</th>}
                       {showNotes && <th className="px-3 py-2.5 text-left font-semibold">Notes</th>}
                     </tr>
@@ -436,8 +589,13 @@ export function AttendanceReportSection() {
                       const isAbsent = ABSENT_CODES.has(day.status_code);
                       return (
                         <tr key={day.date} className={`row-absent ${isAbsent ? meta.bg : 'hover:bg-gray-50'} transition-colors`}>
-                          <td className="px-4 py-2 whitespace-nowrap font-medium text-gray-700">
-                            {formatDate(day.date)}
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            <div className="date-day font-medium text-gray-700 leading-tight text-sm">
+                              {formatDateShort(day.date)}
+                            </div>
+                            <div className="date-wd text-xs text-gray-400 leading-tight">
+                              {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
+                            </div>
                           </td>
                           <td className="px-3 py-2 text-center">
                             <span className={`status-badge inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
@@ -466,48 +624,158 @@ export function AttendanceReportSection() {
                             </td>
                           )}
                           {showProjects && (
-                            <td className="px-3 py-2 max-w-xs text-gray-600 text-xs">
-                              {day.projects && day.projects !== '—' ? day.projects : <span className="text-gray-300">—</span>}
+                            <td className="px-3 py-2 text-gray-600 text-xs">
+                              {day.projects && day.projects !== '—'
+                                ? <span className="cell-project line-clamp-2">{day.projects}</span>
+                                : <span className="text-gray-300">—</span>}
                             </td>
                           )}
                           {showNotes && (
-                            <td className="px-3 py-2 max-w-xs text-gray-500 italic text-xs">
-                              {day.notes && day.notes !== '—' ? day.notes : <span className="not-italic text-gray-300">—</span>}
+                            <td className="px-3 py-2 text-gray-500 italic text-xs">
+                              {day.notes && day.notes !== '—'
+                                ? <span className="cell-notes line-clamp-1 not-italic">{day.notes}</span>
+                                : <span className="not-italic text-gray-300">—</span>}
                             </td>
                           )}
                         </tr>
                       );
                     })}
                   </tbody>
-                  <tfoot>
-                    <tr className="footer-bar bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
-                      <td className="px-4 py-2.5" colSpan={2}>
-                        {workedDays} worked · {weekend} weekend · {vacation} vacation · {absent} absent
-                      </td>
-                      {showWorkHours && <td className="px-3 py-2.5 text-right tabular-nums">{totalHours}h</td>}
-                      {showOtNormal && (
-                        <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
-                          {empReport.days.reduce((s, d) => s + d.overtime.normal, 0) || '—'}
-                        </td>
-                      )}
-                      {showOtHoliday && (
-                        <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
-                          {empReport.days.reduce((s, d) => s + d.overtime.holiday, 0) || '—'}
-                        </td>
-                      )}
-                      {showOtPublicHoliday && (
-                        <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
-                          {empReport.days.reduce((s, d) => s + d.overtime.public_holiday, 0) || '—'}
-                        </td>
-                      )}
-                      {(showProjects || showNotes) && <td colSpan={(showProjects ? 1 : 0) + (showNotes ? 1 : 0)} />}
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
+
             </div>
           );
         })}
+
+        {/* ── Overall Summary Page ── */}
+        {hasReport && (
+          <div className="emp-card bg-white rounded-lg shadow mt-6 overflow-hidden">
+            <div
+              className="emp-hdr bg-gradient-to-r from-indigo-900 to-indigo-800 text-white px-6 py-4"
+              style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <div>
+                  <h2 className="text-xl font-bold tracking-wide leading-tight">Overall Summary</h2>
+                  <div className="text-indigo-200 text-sm mt-1">
+                    {department !== ALL ? department : 'All Departments'} · {report.length} employee{report.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
+                <div className="text-right text-indigo-200 text-sm">
+                  <div className="text-white font-semibold text-base">{summaryPeriodLabel}</div>
+                  <div>{summaryCalendarDays} calendar days</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Period stats strip */}
+            <div
+              className="emp-summary border-b"
+              style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+            >
+              <div className="grid grid-cols-4 divide-x divide-gray-100">
+                {[
+                  { label: 'Calendar Days',  value: summaryCalendarDays,                         color: 'text-slate-700' },
+                  { label: 'Weekend Days',   value: summaryPeriodWeekends,                        color: 'text-slate-500' },
+                  { label: 'Work Days',      value: summaryCalendarDays - summaryPeriodWeekends,  color: 'text-emerald-600' },
+                  { label: 'Employees',      value: report.length,                                color: 'text-indigo-600' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="sum-card p-3 text-center">
+                    <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
+                    <div className="sum-lbl text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide leading-tight">{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Abbreviation legend */}
+            <div
+              className="px-5 py-2 bg-gray-50 border-b flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500"
+              style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+            >
+              {[
+                ['P', 'Present'], ['H', 'Holiday-Work'], ['W', 'Weekend'], ['V', 'Vacation'],
+                ['AWO', 'Absent – no excuse'], ['SL', 'Sick Leave'], ['A', 'Absent – excused'],
+                ['OT', '×1.25 normal'], ['W.OT', '×1.5 weekend'], ['H.OT', '×1.5 holiday'],
+              ].map(([code, desc]) => (
+                <span key={code}>
+                  <span className="font-semibold text-gray-700">{code}</span>
+                  <span className="text-gray-400 ml-1">= {desc}</span>
+                </span>
+              ))}
+            </div>
+
+            {/* Per-employee summary table */}
+            <div className="overflow-x-auto">
+              <table className="att-table w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="px-4 py-2.5 text-left font-semibold">Employee</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-emerald-700">Worked</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-emerald-600">P</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-amber-600">H</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-slate-500">W</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-blue-600">V</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-red-600">AWO</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-orange-600">SL</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-purple-600">A</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">Work Hrs</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">OT</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-indigo-700">Total Salary</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {employeeSummaries.map((s) => (
+                    <tr key={s.employee.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <div className="font-medium text-gray-800">{s.employee.name}</div>
+                        <div className="text-xs text-gray-400 font-mono">{s.employee.id} · {s.employee.department}</div>
+                      </td>
+                      <td className="px-3 py-2 text-center font-bold text-emerald-700">{s.workedDays}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-emerald-600">{s.present      || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-amber-600">{s.holidayWork    || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-slate-500">{s.weekend        || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-blue-600">{s.vacation        || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-red-600">{s.awo              || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-orange-600">{s.sl            || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-purple-600">{s.a             || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                        {s.totalHours > 0 ? `${s.totalHours}h` : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-600">
+                        {s.totalOT > 0 ? `${s.totalOT}h` : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-indigo-700">
+                        {s.totalSalary != null
+                          ? s.totalSalary.toLocaleString('en-US')
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="footer-bar bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
+                    <td className="px-4 py-2.5">TOTAL — {report.length} employee{report.length !== 1 ? 's' : ''}</td>
+                    <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{grandTotals.workedDays}</td>
+                    <td className="px-3 py-2.5 text-center text-emerald-600">{grandTotals.present      || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-amber-600">{grandTotals.holidayWork    || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-slate-500">{grandTotals.weekend        || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-blue-600">{grandTotals.vacation        || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-red-600">{grandTotals.awo              || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-orange-600">{grandTotals.sl            || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-purple-600">{grandTotals.a             || '—'}</td>
+                    <td className="px-3 py-2.5 text-right">{grandTotals.totalHours > 0 ? `${grandTotals.totalHours}h` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-amber-600">{grandTotals.totalOT > 0 ? `${grandTotals.totalOT}h` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-indigo-700">
+                      {grandTotals.totalSalary > 0 ? grandTotals.totalSalary.toLocaleString('en-US') : '—'}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {!loading && report.length === 0 && !error && fromDate && toDate && (
