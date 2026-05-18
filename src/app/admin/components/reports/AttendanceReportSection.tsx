@@ -9,12 +9,12 @@ import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../
 function getDeptTheme(dept: string) {
   const d = (dept ?? '').toLowerCase();
   if (d.includes('maintenance'))
-    return { gradient: 'from-red-900 to-red-800',      border: 'border-red-400',    company: 'Bait Alshaar Contracting and General Maintenance' };
+    return { gradient: 'from-red-900 to-red-800',       border: 'border-red-800',   accentText: 'text-red-800',   company: 'Bait Alshaar Contracting and General Maintenance', weekendIsWorked: true };
   if (d.includes('construction'))
-    return { gradient: 'from-orange-900 to-orange-800', border: 'border-orange-400', company: 'Bait Alshaar Contracting and General Maintenance' };
+    return { gradient: 'from-orange-900 to-orange-800', border: 'border-red-800',   accentText: 'text-red-800',   company: 'Bait Alshaar Contracting and General Maintenance', weekendIsWorked: true };
   if (d.includes('saqi'))
-    return { gradient: 'from-blue-900 to-blue-800',    border: 'border-blue-400',   company: 'Al Saqiya Trading' };
-  return   { gradient: 'from-slate-800 to-slate-700',  border: 'border-slate-400',  company: 'Bait Alshaar Contracting and General Maintenance' };
+    return { gradient: 'from-blue-900 to-blue-800',     border: 'border-blue-700',  accentText: 'text-blue-700',  company: 'Al Saqiya Trading',                                 weekendIsWorked: false };
+  return   { gradient: 'from-slate-800 to-slate-700',   border: 'border-slate-400', accentText: 'text-amber-600', company: 'Bait Alshaar Contracting and General Maintenance',  weekendIsWorked: false };
 }
 
 function formatDateShort(dateStr: string) {
@@ -522,7 +522,7 @@ export function AttendanceReportSection() {
                     { label: 'Vacation', value: vacation,         color: vacation > 0  ? 'text-blue-600'   : 'text-gray-300' },
                     { label: 'Absent',   value: absent,           color: absent > 0    ? 'text-red-600'    : 'text-gray-300', sub: absentSub },
                     { label: 'Work Hrs', value: `${totalHours}h`, color: totalHours > 0 ? 'text-slate-700' : 'text-gray-300' },
-                    { label: 'Overtime', value: `${totalOT}h`,    color: totalOT > 0   ? 'text-amber-600'  : 'text-gray-300' },
+                    { label: 'Overtime', value: `${totalOT}h`,    color: totalOT > 0   ? deptTheme.accentText : 'text-gray-300' },
                   ].map(({ label, value, color, sub }) => (
                     <div key={label} className="sum-card p-3 text-center">
                       <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
