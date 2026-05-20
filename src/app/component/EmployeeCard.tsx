@@ -67,6 +67,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
   const [attendance, setAttendance] = useState<string | undefined>(initialStatus === 'present' ? 'Present' : undefined);
   const [weekendSelected, setWeekendSelected] = useState(false);
   const [holidaySelected, setHolidaySelected] = useState(false);
+  const [halfDayAMSelected, setHalfDayAMSelected] = useState(false);
+  const [halfDayPMSelected, setHalfDayPMSelected] = useState(false);
   const [absenceReason, setAbsenceReason] = useState('');
   const [overtimeHours, setOvertimeHours] = useState<number | null>(null);
   let   [inputHours, setInputHours] = useState<number | 0>(0);
@@ -113,68 +115,91 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       const n = initialNotes.toLowerCase();
       setWeekendSelected(n.includes('weekend'));
       setHolidaySelected(n.includes('holiday'));
+      setHalfDayAMSelected(n.includes('half day am'));
+      setHalfDayPMSelected(n.includes('half day pm'));
+      // Keep Redux status_employee in sync so re-submission preserves the type
+      if (n.includes('half day am')) dispatch(setEmployeesStatus({ status: 'Half Day AM', employee_id: employee.employee_id }));
+      else if (n.includes('half day pm')) dispatch(setEmployeesStatus({ status: 'Half Day PM', employee_id: employee.employee_id }));
+      else if (n.includes('weekend')) dispatch(setEmployeesStatus({ status: 'Weekend', employee_id: employee.employee_id }));
+      else if (n.includes('holiday')) dispatch(setEmployeesStatus({ status: 'Holiday-Work', employee_id: employee.employee_id }));
     }
   }, [initialStatus, initialNotes, employee.employee_id, dispatch]);
 
 
 
-  const applyAttendanceTypeToRedux = (weekend: boolean, holiday: boolean) => {
+  const applyAttendanceTypeToRedux = (weekend: boolean, holiday: boolean, halfDayAM = false, halfDayPM = false) => {
     const parts: string[] = [];
     if (weekend) parts.push('Weekend');
     if (holiday) parts.push('Holiday');
+    if (halfDayAM) parts.push('Half Day AM');
+    if (halfDayPM) parts.push('Half Day PM');
     const notesVal = parts.length ? parts.join(', ') : null;
     dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: notesVal }));
     if (notesVal) dispatch(Add_notes_to_cases_without_projects({ employee_id: employee.employee_id, notes: notesVal }));
-    const statusForApi = weekend ? 'Weekend' : holiday ? 'Holiday-Work' : 'Present';
+    const statusForApi = weekend ? 'Weekend' : holiday ? 'Holiday-Work' : halfDayAM ? 'Half Day AM' : halfDayPM ? 'Half Day PM' : 'Present';
     dispatch(setEmployeesStatus({ status: statusForApi, employee_id: employee.employee_id }));
-    if (weekend || holiday) {
-      setProject(weekend || holiday);
+    if (weekend || holiday || halfDayAM || halfDayPM) {
+      setProject(true);
     }
   };
 
   const handleDropDownAttendance = (select_status: string, fromDropdown = false) => {
+    const clearAll = () => { setWeekendSelected(false); setHolidaySelected(false); setHalfDayAMSelected(false); setHalfDayPMSelected(false); };
     if (fromDropdown) {
       if (select_status === 'Weekend') {
-        setWeekendSelected(true);
-        setHolidaySelected(false);
+        clearAll(); setWeekendSelected(true);
         setAttendance('Present');
-        applyAttendanceTypeToRedux(true, false);
+        applyAttendanceTypeToRedux(true, false, false, false);
       } else if (select_status === 'Holiday-Work') {
-        setHolidaySelected(true);
-        setWeekendSelected(false);
+        clearAll(); setHolidaySelected(true);
         setAttendance('Present');
-        applyAttendanceTypeToRedux(false, true);
+        applyAttendanceTypeToRedux(false, true, false, false);
+      } else if (select_status === 'Half Day AM') {
+        clearAll(); setHalfDayAMSelected(true);
+        setAttendance('Present');
+        applyAttendanceTypeToRedux(false, false, true, false);
+      } else if (select_status === 'Half Day PM') {
+        clearAll(); setHalfDayPMSelected(true);
+        setAttendance('Present');
+        applyAttendanceTypeToRedux(false, false, false, true);
       } else if (select_status === 'Present') {
-        setWeekendSelected(false);
-        setHolidaySelected(false);
+        clearAll();
         setAttendance('Present');
-        applyAttendanceTypeToRedux(false, false);
+        applyAttendanceTypeToRedux(false, false, false, false);
       } else {
-        setWeekendSelected(false);
-        setHolidaySelected(false);
+        clearAll();
         setAttendance(undefined);
       }
       return;
     }
     if (select_status === 'Weekend') {
       const next = !weekendSelected;
-      setWeekendSelected(next);
-      setHolidaySelected(false);
+      clearAll(); setWeekendSelected(next);
       if (!next) setAttendance(undefined);
       else setAttendance('Present');
-      applyAttendanceTypeToRedux(next, false);
+      applyAttendanceTypeToRedux(next, false, false, false);
     } else if (select_status === 'Holiday-Work') {
       const next = !holidaySelected;
-      setHolidaySelected(next);
-      setWeekendSelected(false);
+      clearAll(); setHolidaySelected(next);
       if (!next) setAttendance(undefined);
       else setAttendance('Present');
-      applyAttendanceTypeToRedux(false, next);
+      applyAttendanceTypeToRedux(false, next, false, false);
+    } else if (select_status === 'Half Day AM') {
+      const next = !halfDayAMSelected;
+      clearAll(); setHalfDayAMSelected(next);
+      if (!next) setAttendance(undefined);
+      else setAttendance('Present');
+      applyAttendanceTypeToRedux(false, false, next, false);
+    } else if (select_status === 'Half Day PM') {
+      const next = !halfDayPMSelected;
+      clearAll(); setHalfDayPMSelected(next);
+      if (!next) setAttendance(undefined);
+      else setAttendance('Present');
+      applyAttendanceTypeToRedux(false, false, false, next);
     } else if (select_status === 'undefined' || select_status === 'Present') {
       setAttendance(select_status === 'Present' ? 'Present' : undefined);
-      setWeekendSelected(false);
-      setHolidaySelected(false);
-      if (select_status === 'Present') applyAttendanceTypeToRedux(false, false);
+      clearAll();
+      if (select_status === 'Present') applyAttendanceTypeToRedux(false, false, false, false);
     } else {
       setAttendance(undefined);
     }
@@ -612,7 +637,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
         <div className="w-full space-y-2">
           <label className={`block text-sm font-medium mb-1 ${isSaqiya ? 'text-theme-accent' : 'text-white'}`}>حاله الحضور</label>
           <p className={`text-xs mb-1 ${isSaqiya ? 'text-theme-accent/80' : 'text-white/80'}`}>
-            Select one: Weekend or Holiday (or neither).
+            Select one: Weekend, Holiday, Half Day AM or Half Day PM (or neither).
           </p>
           {hideModeToggle ? (
             <div className="flex flex-wrap gap-2 justify-center">
@@ -644,10 +669,38 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
                   Holiday
                 </span>
               </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleDropDownAttendance('Half Day AM')}
+                aria-pressed={halfDayAMSelected}
+                className={`min-h-[40px] px-3 py-2 rounded-lg text-sm font-medium transition touch-manipulation bg-orange-500 text-white ${
+                  halfDayAMSelected ? selectedRing : 'opacity-60 hover:opacity-80'
+                }`}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {halfDayAMSelected && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                  Half Day AM
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleDropDownAttendance('Half Day PM')}
+                aria-pressed={halfDayPMSelected}
+                className={`min-h-[40px] px-3 py-2 rounded-lg text-sm font-medium transition touch-manipulation bg-orange-500 text-white ${
+                  halfDayPMSelected ? selectedRing : 'opacity-60 hover:opacity-80'
+                }`}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {halfDayPMSelected && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                  Half Day PM
+                </span>
+              </button>
             </div>
           ) : (
             <select
-              value={weekendSelected ? 'Weekend' : holidaySelected ? 'Holiday-Work' : (attendance ?? 'undefined')}
+              value={weekendSelected ? 'Weekend' : holidaySelected ? 'Holiday-Work' : halfDayAMSelected ? 'Half Day AM' : halfDayPMSelected ? 'Half Day PM' : (attendance ?? 'undefined')}
               onChange={(e) => handleDropDownAttendance(e.target.value, true)}
               className="w-full sm:w-[10rem] p-2 border rounded-lg focus:ring focus:ring-blue-200 text-black"
             >
@@ -655,6 +708,8 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
               <option value="Present">Present</option>
               <option value="Weekend">Weekend</option>
               <option value="Holiday-Work">holiday</option>
+              <option value="Half Day AM">Half Day AM (7:30–12:00)</option>
+              <option value="Half Day PM">Half Day PM (13:00–16:30)</option>
             </select>
           )}
         </div>

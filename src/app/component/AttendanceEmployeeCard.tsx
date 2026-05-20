@@ -59,7 +59,8 @@ const statusOptions: { value: AttendanceStatus; label: string; color: string }[]
 
 const attendanceTypeOptions = [
   { value: 'Present', label: 'Present' },
-  { value: 'Half Day', label: 'Half Day' },
+  { value: 'Half Day AM', label: 'Half Day AM (7:30–12:00)' },
+  { value: 'Half Day PM', label: 'Half Day PM (13:00–16:30)' },
   { value: 'Weekend', label: 'Weekend' },
   { value: 'Holiday-Work', label: 'Holiday' },
 ];
@@ -88,7 +89,7 @@ export default function AttendanceEmployeeCard({ employee, disabled, variant = '
     dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: newNotes }));
   };
 
-  const handleStandardAttendanceType = (type: 'Present' | 'Weekend') => {
+  const handleStandardAttendanceType = (type: 'Present' | 'Weekend' | 'Half Day AM' | 'Half Day PM') => {
     if (disabled) return;
     const newNotes = formatNotes(type, projectsText, userNote);
     dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: newNotes }));
@@ -165,6 +166,34 @@ export default function AttendanceEmployeeCard({ employee, disabled, variant = '
                   <span className="inline-flex items-center gap-1.5">
                     {attendanceType === 'Weekend' && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
                     Weekend
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleStandardAttendanceType(attendanceType === 'Half Day AM' ? 'Present' : 'Half Day AM')}
+                  aria-pressed={attendanceType === 'Half Day AM'}
+                  className={`min-h-[40px] px-3 py-2 rounded-theme-card text-white text-sm font-medium touch-manipulation ${
+                    attendanceType === 'Half Day AM' ? `bg-orange-500 ${selectedRing}` : 'bg-orange-500/60 hover:bg-orange-500/80'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    {attendanceType === 'Half Day AM' && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                    Half Day AM
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleStandardAttendanceType(attendanceType === 'Half Day PM' ? 'Present' : 'Half Day PM')}
+                  aria-pressed={attendanceType === 'Half Day PM'}
+                  className={`min-h-[40px] px-3 py-2 rounded-theme-card text-white text-sm font-medium touch-manipulation ${
+                    attendanceType === 'Half Day PM' ? `bg-orange-500 ${selectedRing}` : 'bg-orange-500/60 hover:bg-orange-500/80'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    {attendanceType === 'Half Day PM' && <span className="text-white drop-shadow-sm" aria-hidden>✓</span>}
+                    Half Day PM
                   </span>
                 </button>
               </div>

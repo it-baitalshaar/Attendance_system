@@ -136,7 +136,7 @@ export function buildAttendanceReport(
     // Notes "Attendance type: Weekend/Holiday-Work" override status_attendance.
     // Some records have status_attendance='Present' but the real type is in notes.
     const saRaw = att.status_attendance?.trim() ?? '';
-    const notesType = (att.notes ?? '').match(/Attendance\s+type:\s*([\w-]+)/i)?.[1] ?? '';
+    const notesType = (att.notes ?? '').match(/Attendance\s+type:\s*(.+?)(?:\n|$)/i)?.[1]?.trim() ?? '';
     const sa = notesType || saRaw;
 
     const { overtime_normal, overtime_holiday, overtime_public_holiday } = addOvertimeToBuckets(
@@ -166,15 +166,22 @@ export function buildAttendanceReport(
     }
   }
 
-  // Apply 8hr default only when the day has actual project rows (the employee uses
-  // project-hour tracking). Employees with no project entries (e.g. Al Saqia) keep 0.
+  // Apply hour defaults:
+  // - Weekend/Holiday-Work: 8hr default only when project rows exist (Construction/Maintenance track per-project).
+  // - Half Day AM: 4.5hr for all employees (7:30–12:00), regardless of project rows.
+  // - Half Day PM: 3.5hr for all employees (13:00–16:30), regardless of project rows.
   dayDataByKey.forEach((v) => {
-    if (
-      v.working_hours === 0 &&
-      v.projectParts.length > 0 &&
-      (v.status_attendance === 'Weekend' || v.status_attendance === 'Holiday-Work')
-    ) {
-      v.working_hours = 8;
+    if (v.working_hours === 0) {
+      if (
+        v.projectParts.length > 0 &&
+        (v.status_attendance === 'Weekend' || v.status_attendance === 'Holiday-Work')
+      ) {
+        v.working_hours = 8;
+      } else if (v.status_attendance === 'Half Day AM') {
+        v.working_hours = 4.5;
+      } else if (v.status_attendance === 'Half Day PM') {
+        v.working_hours = 3.5;
+      }
     }
   });
 

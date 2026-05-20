@@ -52,6 +52,8 @@ export function statusToCode(
     if (sa === 'Present') return 'P';
     if (sa === 'Weekend') return 'W';
     if (sa === 'Holiday-Work') return 'H';
+    if (sa === 'Half Day AM') return 'HDAM';
+    if (sa === 'Half Day PM') return 'HDPM';
     return 'P';
   }
   if (s === 'absent') {

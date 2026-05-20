@@ -97,7 +97,7 @@ export async function loadAttendanceForDateAndDepartment(
         const lineEnd = note.indexOf('\n');
         subtype = lineEnd === -1 ? note.slice(18).trim() : note.slice(18, lineEnd).trim();
       }
-      const validSubtypes = ['Present', 'Weekend', 'Holiday-Work', 'Sick Leave', 'Absence with excuse', 'Absence without excuse', 'vacation'];
+      const validSubtypes = ['Present', 'Weekend', 'Holiday-Work', 'Half Day AM', 'Half Day PM', 'Sick Leave', 'Absence with excuse', 'Absence without excuse', 'vacation'];
       if (subtype && validSubtypes.includes(subtype)) {
         dispatch(setEmployeesStatus({ status: subtype, employee_id: r.employee_id }));
       } else if (dbStatusAttendance && validSubtypes.includes(dbStatusAttendance)) {

@@ -36,13 +36,15 @@ function csvEscape(val: string | number | null | undefined): string {
 }
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  P:   { label: 'Present',              color: 'text-emerald-700', bg: 'bg-emerald-50',  dot: 'bg-emerald-500' },
-  W:   { label: 'Weekend',              color: 'text-slate-500',   bg: 'bg-slate-50',    dot: 'bg-slate-400' },
-  H:   { label: 'Holiday-Work',         color: 'text-amber-700',   bg: 'bg-amber-50',    dot: 'bg-amber-500' },
-  AWO: { label: 'Absent (no excuse)',   color: 'text-red-700',     bg: 'bg-red-50',      dot: 'bg-red-500' },
-  SL:  { label: 'Sick Leave',           color: 'text-orange-700',  bg: 'bg-orange-50',   dot: 'bg-orange-500' },
-  A:   { label: 'Absent (excused)',     color: 'text-purple-700',  bg: 'bg-purple-50',   dot: 'bg-purple-500' },
-  V:   { label: 'Vacation',             color: 'text-blue-700',    bg: 'bg-blue-50',     dot: 'bg-blue-500' },
+  P:    { label: 'Present',              color: 'text-emerald-700', bg: 'bg-emerald-50',  dot: 'bg-emerald-500' },
+  W:    { label: 'Weekend',              color: 'text-slate-500',   bg: 'bg-slate-50',    dot: 'bg-slate-400' },
+  H:    { label: 'Holiday-Work',         color: 'text-amber-700',   bg: 'bg-amber-50',    dot: 'bg-amber-500' },
+  HDAM: { label: 'Half Day AM',          color: 'text-teal-700',    bg: 'bg-teal-50',     dot: 'bg-teal-500' },
+  HDPM: { label: 'Half Day PM',          color: 'text-teal-600',    bg: 'bg-teal-50',     dot: 'bg-teal-400' },
+  AWO:  { label: 'Absent (no excuse)',   color: 'text-red-700',     bg: 'bg-red-50',      dot: 'bg-red-500' },
+  SL:   { label: 'Sick Leave',           color: 'text-orange-700',  bg: 'bg-orange-50',   dot: 'bg-orange-500' },
+  A:    { label: 'Absent (excused)',     color: 'text-purple-700',  bg: 'bg-purple-50',   dot: 'bg-purple-500' },
+  V:    { label: 'Vacation',             color: 'text-blue-700',    bg: 'bg-blue-50',     dot: 'bg-blue-500' },
 };
 
 const ABSENT_CODES = new Set(['AWO', 'SL', 'A']);
@@ -104,6 +106,10 @@ export function AttendanceReportSection() {
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [employees, setEmployees] = useState<{ employee_id: string; name: string; department: string }[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [localReport, setLocalReport] = useState<AttendanceReportEmployeeReport[]>([]);
+  const [originalReport, setOriginalReport] = useState<AttendanceReportEmployeeReport[]>([]);
+  const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved' | 'error'>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +140,59 @@ export function AttendanceReportSection() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    setLocalReport(report);
+    setOriginalReport(report);
+    setEditMode(false);
+  }, [report]);
+
+  const updateDay = (empId: string, date: string, patch: (day: AttendanceReportDay) => AttendanceReportDay) => {
+    setLocalReport(prev =>
+      prev.map(emp =>
+        emp.employee.id !== empId ? emp : {
+          ...emp,
+          days: emp.days.map(day => day.date !== date ? day : patch(day)),
+        }
+      )
+    );
+  };
+
+  const resetEdits = () => {
+    setLocalReport(originalReport);
+    setSaveStatus({});
+  };
+
+  const saveDay = async (empId: string, date: string, day: AttendanceReportDay) => {
+    const key = `${empId}__${date}`;
+    setSaveStatus(prev => ({ ...prev, [key]: 'saving' }));
+    try {
+      const res = await fetch('/api/attendance-report-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: empId,
+          date,
+          status_code: day.status_code,
+          working_hours: day.working_hours,
+          overtime_normal: day.overtime.normal,
+          overtime_holiday: day.overtime.holiday,
+          overtime_public_holiday: day.overtime.public_holiday,
+          notes: day.notes,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((json as { error?: string }).error || `HTTP ${res.status}`);
+      setSaveStatus(prev => ({ ...prev, [key]: 'saved' }));
+      setTimeout(() => setSaveStatus(prev => {
+        const next = { ...prev };
+        if (next[key] === 'saved') delete next[key];
+        return next;
+      }), 2500);
+    } catch {
+      setSaveStatus(prev => ({ ...prev, [key]: 'error' }));
+    }
+  };
+
   const employeesInDepartment =
     department === ALL
       ? employees
@@ -147,7 +206,7 @@ export function AttendanceReportSection() {
     );
   };
 
-  const hasReport = report.length > 0;
+  const hasReport = localReport.length > 0;
 
   // ── Summary page computations ──
   const calFrom = reportFrom || fromDate;
@@ -169,7 +228,7 @@ export function AttendanceReportSection() {
     ? `${formatDateShort(calFrom)} – ${formatDateShort(calTo)}`
     : '';
   const summaryCalFrom = calFrom;
-  const employeeSummaries = report.map((emp) => {
+  const employeeSummaries = localReport.map((emp) => {
     const s = computeSummary(emp.days);
     const awo = s.absentDays.filter(d => d.status_code === 'AWO').length;
     const sl  = s.absentDays.filter(d => d.status_code === 'SL').length;
@@ -220,7 +279,7 @@ export function AttendanceReportSection() {
       'Project', 'Notes',
     ];
     const rows: string[] = [header.join(',')];
-    report.forEach((emp) => {
+    localReport.forEach((emp) => {
       emp.days.forEach((day) => {
         rows.push([
           csvEscape(emp.employee.id), csvEscape(emp.employee.name),
@@ -285,6 +344,8 @@ export function AttendanceReportSection() {
           .att-table tr.row-absent { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           /* section banners */
           .missing-banner { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 2px 8px !important; font-size: 6.5pt !important; }
+          /* make edit inputs invisible in print */
+          .att-table input, .att-table select { -webkit-appearance: none; appearance: none; border: none !important; background: transparent !important; padding: 0 !important; font-size: inherit !important; color: inherit !important; outline: none !important; box-shadow: none !important; width: auto !important; }
           /* header signature column */
           .emp-hdr-sig { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; min-height: 22mm !important; width: 50mm !important; border: 1.5pt solid #94a3b8 !important; }
           .emp-hdr-sig span { color: #e2e8f0 !important; font-size: 14pt !important; }
@@ -366,8 +427,31 @@ export function AttendanceReportSection() {
             >
               Print / Save as PDF
             </button>
+            {hasReport && (
+              <button
+                type="button"
+                onClick={() => setEditMode(m => !m)}
+                className={`px-4 py-2 text-sm rounded border font-medium ${editMode ? 'bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
+              >
+                {editMode ? 'Done Editing' : 'Edit Report'}
+              </button>
+            )}
+            {editMode && (
+              <button
+                type="button"
+                onClick={resetEdits}
+                className="px-4 py-2 text-sm rounded border border-red-300 bg-white text-red-600 hover:bg-red-50"
+              >
+                Reset Changes
+              </button>
+            )}
           </div>
 
+          {editMode && hasReport && (
+            <p className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+              Editing mode — changes are local only and not saved to the database. Print or Download CSV to export with your edits.
+            </p>
+          )}
           {error && <p className="mt-3 text-red-500 text-sm">{error}</p>}
           {projectsWarning && !error && <p className="mt-3 text-amber-600 text-sm">{projectsWarning}</p>}
         </div>
@@ -375,7 +459,7 @@ export function AttendanceReportSection() {
 
       {/* Printable report area */}
       <div id="attendance-print-area">
-        {report.map((empReport: AttendanceReportEmployeeReport) => {
+        {localReport.map((empReport: AttendanceReportEmployeeReport) => {
           const deptTheme = getDeptTheme(empReport.employee.department);
           const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, absentDays } = computeSummary(empReport.days);
           const recordedDays = empReport.days.length;
@@ -425,13 +509,13 @@ export function AttendanceReportSection() {
             salarySummary = { monthDays, hourlyRate, effectiveBaseHours, baseSalary, otAmount, totalSalary };
           }
 
-          // Dynamic column visibility — hide columns that are all empty for this employee
-          const showWorkHours = empReport.days.some(d => d.working_hours > 0);
-          const showOtNormal = empReport.days.some(d => d.overtime.normal > 0);
-          const showOtHoliday = empReport.days.some(d => d.overtime.holiday > 0);
-          const showOtPublicHoliday = empReport.days.some(d => d.overtime.public_holiday > 0);
-          const showProjects = empReport.days.some(d => d.projects && d.projects !== '—');
-          const showNotes = empReport.days.some(d => d.notes && d.notes !== '—');
+          // Dynamic column visibility — hide columns that are all empty for this employee (always show all in edit mode)
+          const showWorkHours = editMode || empReport.days.some(d => d.working_hours > 0);
+          const showOtNormal = editMode || empReport.days.some(d => d.overtime.normal > 0);
+          const showOtHoliday = editMode || empReport.days.some(d => d.overtime.holiday > 0);
+          const showOtPublicHoliday = editMode || empReport.days.some(d => d.overtime.public_holiday > 0);
+          const showProjects = editMode || empReport.days.some(d => d.projects && d.projects !== '—');
+          const showNotes = editMode || empReport.days.some(d => d.notes && d.notes !== '—');
 
 
 
@@ -587,6 +671,7 @@ export function AttendanceReportSection() {
                     {empReport.days.map((day) => {
                       const meta = getMeta(day.status_code);
                       const isAbsent = ABSENT_CODES.has(day.status_code);
+                      const eid = empReport.employee.id;
                       return (
                         <tr key={day.date} className={`row-absent ${isAbsent ? meta.bg : 'hover:bg-gray-50'} transition-colors`}>
                           <td className="px-2 py-1.5 whitespace-nowrap">
@@ -596,45 +681,129 @@ export function AttendanceReportSection() {
                             <div className="date-wd text-xs text-gray-400 leading-tight">
                               {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
                             </div>
+                            {editMode && (() => {
+                              const st = saveStatus[`${eid}__${day.date}`];
+                              if (st === 'saving') return <div className="text-xs text-amber-500 leading-tight">saving…</div>;
+                              if (st === 'saved')  return <div className="text-xs text-emerald-600 leading-tight">saved ✓</div>;
+                              if (st === 'error')  return <div className="text-xs text-red-500 leading-tight">save failed!</div>;
+                              return null;
+                            })()}
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <span className={`status-badge inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
-                              <span className={`badge-dot w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                              {day.status_code}
-                            </span>
+                            {editMode ? (
+                              <select
+                                value={day.status_code}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  updateDay(eid, day.date, d => ({ ...d, status_code: val }));
+                                  saveDay(eid, day.date, { ...day, status_code: val });
+                                }}
+                                className="text-xs border rounded px-1 py-0.5 w-full max-w-[72px]"
+                              >
+                                {['P','W','H','HDAM','HDPM','AWO','SL','A','V'].map(c => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className={`status-badge inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
+                                <span className={`badge-dot w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                                {day.status_code}
+                              </span>
+                            )}
                           </td>
                           {showWorkHours && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                              {day.working_hours > 0 ? day.working_hours : <span className="text-gray-300">—</span>}
+                              {editMode ? (
+                                <input
+                                  type="number" min="0" step="0.5"
+                                  value={day.working_hours}
+                                  onChange={e => updateDay(eid, day.date, d => ({ ...d, working_hours: parseFloat(e.target.value) || 0 }))}
+                                  onBlur={e => saveDay(eid, day.date, { ...day, working_hours: parseFloat(e.target.value) || 0 })}
+                                  className="w-14 text-right border rounded px-1 py-0.5 text-xs"
+                                />
+                              ) : (
+                                day.working_hours > 0 ? day.working_hours : <span className="text-gray-300">—</span>
+                              )}
                             </td>
                           )}
                           {showOtNormal && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                              {day.overtime.normal > 0 ? day.overtime.normal : <span className="text-gray-300">—</span>}
+                              {editMode ? (
+                                <input
+                                  type="number" min="0" step="0.5"
+                                  value={day.overtime.normal}
+                                  onChange={e => updateDay(eid, day.date, d => ({ ...d, overtime: { ...d.overtime, normal: parseFloat(e.target.value) || 0 } }))}
+                                  onBlur={e => saveDay(eid, day.date, { ...day, overtime: { ...day.overtime, normal: parseFloat(e.target.value) || 0 } })}
+                                  className="w-14 text-right border rounded px-1 py-0.5 text-xs"
+                                />
+                              ) : (
+                                day.overtime.normal > 0 ? day.overtime.normal : <span className="text-gray-300">—</span>
+                              )}
                             </td>
                           )}
                           {showOtHoliday && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                              {day.overtime.holiday > 0 ? day.overtime.holiday : <span className="text-gray-300">—</span>}
+                              {editMode ? (
+                                <input
+                                  type="number" min="0" step="0.5"
+                                  value={day.overtime.holiday}
+                                  onChange={e => updateDay(eid, day.date, d => ({ ...d, overtime: { ...d.overtime, holiday: parseFloat(e.target.value) || 0 } }))}
+                                  onBlur={e => saveDay(eid, day.date, { ...day, overtime: { ...day.overtime, holiday: parseFloat(e.target.value) || 0 } })}
+                                  className="w-14 text-right border rounded px-1 py-0.5 text-xs"
+                                />
+                              ) : (
+                                day.overtime.holiday > 0 ? day.overtime.holiday : <span className="text-gray-300">—</span>
+                              )}
                             </td>
                           )}
                           {showOtPublicHoliday && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                              {day.overtime.public_holiday > 0 ? day.overtime.public_holiday : <span className="text-gray-300">—</span>}
+                              {editMode ? (
+                                <input
+                                  type="number" min="0" step="0.5"
+                                  value={day.overtime.public_holiday}
+                                  onChange={e => updateDay(eid, day.date, d => ({ ...d, overtime: { ...d.overtime, public_holiday: parseFloat(e.target.value) || 0 } }))}
+                                  onBlur={e => saveDay(eid, day.date, { ...day, overtime: { ...day.overtime, public_holiday: parseFloat(e.target.value) || 0 } })}
+                                  className="w-14 text-right border rounded px-1 py-0.5 text-xs"
+                                />
+                              ) : (
+                                day.overtime.public_holiday > 0 ? day.overtime.public_holiday : <span className="text-gray-300">—</span>
+                              )}
                             </td>
                           )}
                           {showProjects && (
                             <td className="px-3 py-2 text-gray-600 text-xs">
-                              {day.projects && day.projects !== '—'
-                                ? <span className="cell-project line-clamp-2">{day.projects}</span>
-                                : <span className="text-gray-300">—</span>}
+                              {editMode ? (
+                                <input
+                                  type="text"
+                                  value={day.projects === '—' ? '' : day.projects}
+                                  onChange={e => updateDay(eid, day.date, d => ({ ...d, projects: e.target.value || '—' }))}
+                                  className="w-full border rounded px-1 py-0.5 text-xs"
+                                  placeholder="Project info"
+                                />
+                              ) : (
+                                day.projects && day.projects !== '—'
+                                  ? <span className="cell-project line-clamp-2">{day.projects}</span>
+                                  : <span className="text-gray-300">—</span>
+                              )}
                             </td>
                           )}
                           {showNotes && (
                             <td className="px-3 py-2 text-gray-500 italic text-xs">
-                              {day.notes && day.notes !== '—'
-                                ? <span className="cell-notes line-clamp-1 not-italic">{day.notes}</span>
-                                : <span className="not-italic text-gray-300">—</span>}
+                              {editMode ? (
+                                <input
+                                  type="text"
+                                  value={day.notes ?? ''}
+                                  onChange={e => updateDay(eid, day.date, d => ({ ...d, notes: e.target.value || null }))}
+                                  onBlur={e => saveDay(eid, day.date, { ...day, notes: e.target.value || null })}
+                                  className="w-full border rounded px-1 py-0.5 text-xs not-italic"
+                                  placeholder="Notes"
+                                />
+                              ) : (
+                                day.notes && day.notes !== '—'
+                                  ? <span className="cell-notes line-clamp-1 not-italic">{day.notes}</span>
+                                  : <span className="not-italic text-gray-300">—</span>
+                              )}
                             </td>
                           )}
                         </tr>
@@ -659,7 +828,7 @@ export function AttendanceReportSection() {
                 <div>
                   <h2 className="text-xl font-bold tracking-wide leading-tight">Overall Summary</h2>
                   <div className="text-indigo-200 text-sm mt-1">
-                    {department !== ALL ? department : 'All Departments'} · {report.length} employee{report.length !== 1 ? 's' : ''}
+                    {department !== ALL ? department : 'All Departments'} · {localReport.length} employee{localReport.length !== 1 ? 's' : ''}
                   </div>
                 </div>
                 <div className="text-right text-indigo-200 text-sm">
@@ -679,7 +848,7 @@ export function AttendanceReportSection() {
                   { label: 'Calendar Days',  value: summaryCalendarDays,                         color: 'text-slate-700' },
                   { label: 'Weekend Days',   value: summaryPeriodWeekends,                        color: 'text-slate-500' },
                   { label: 'Work Days',      value: summaryCalendarDays - summaryPeriodWeekends,  color: 'text-emerald-600' },
-                  { label: 'Employees',      value: report.length,                                color: 'text-indigo-600' },
+                  { label: 'Employees',      value: localReport.length,                                color: 'text-indigo-600' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="sum-card p-3 text-center">
                     <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
@@ -756,7 +925,7 @@ export function AttendanceReportSection() {
                 </tbody>
                 <tfoot>
                   <tr className="footer-bar bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
-                    <td className="px-4 py-2.5">TOTAL — {report.length} employee{report.length !== 1 ? 's' : ''}</td>
+                    <td className="px-4 py-2.5">TOTAL — {localReport.length} employee{localReport.length !== 1 ? 's' : ''}</td>
                     <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{grandTotals.workedDays}</td>
                     <td className="px-3 py-2.5 text-center text-emerald-600">{grandTotals.present      || '—'}</td>
                     <td className="px-3 py-2.5 text-center text-amber-600">{grandTotals.holidayWork    || '—'}</td>
@@ -778,7 +947,7 @@ export function AttendanceReportSection() {
         )}
       </div>
 
-      {!loading && report.length === 0 && !error && fromDate && toDate && (
+      {!loading && localReport.length === 0 && !error && fromDate && toDate && (
         <p className="mt-6 p-4 text-center text-gray-500 no-print">
           No attendance data for the selected date range.
         </p>

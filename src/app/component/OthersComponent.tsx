@@ -89,9 +89,10 @@ const tt = useSelector((state: RootState) =>
 );
 
 const employees_statis = useSelector((state: RootState) => state.project.employees);
-// const the_employee = employees_statis.find(employee_id => employee_id.employee_status)
 
-// console.log("this is the what i want or not ", the_employee?.employee_status![0].status_employee)
+  const statusEmployee = employee1?.employee_status?.[0]?.status_employee ?? '';
+  const baseHours = statusEmployee === 'Half Day AM' ? 4.5 : statusEmployee === 'Half Day PM' ? 3.5 : 8;
+
 console.log("this is the employee _id" , employee_id)
 // useEffect(() => {
 //   // const the_employee = employees_statis.find(employee_id => employee_id.employee_status)
@@ -134,38 +135,29 @@ console.log("this is the employee _id" , employee_id)
   const hoursAtInputIndex = employee1?.projects?.projectId?.[input_index]?.hours;
   useEffect(() => {
     const project = employee1?.projects?.projectId?.[input_index]; // Safely access the project
-    // // // console.log("the field Effect ", project?.hours, input_index)
     if (project && project.hours === -1) {
-      // Only execute the code if hours is defined
-
       let change_total = 0
       for(let index = 0; index < input_index; index++)
       {
         change_total += employee1.projects!.projectId[index].hours
       }
 
-      // employee1.projects!.projectId[input_index + 1].hours = -1
       if (input_index + 1 ===  totalProjects)
       {
-        // // // console.log("this is the input index",left_Hours) 
-        let reach = 8 - change_total
-        setHours(reach);  
+        let reach = baseHours - change_total
+        setHours(reach);
       }
       else
       {
-        let reach = 8 - change_total
-        const newHours = Array.from({ length: reach - 1 }, (_, i) => i + 1);
+        let reach = baseHours - change_total
+        const newHours = Array.from({ length: Math.floor(reach - 1) }, (_, i) => i + 1);
         setHours(newHours);
       }
       if ((input_index+1 === totalProjects && project.hours === -1) || (employee1.projects?.projectId[0].hours === 6))
       {
-          // // // console.log("this is the value and index ", input_index, employee1?.projects?.projectId[input_index].hours)
-          // employee1!.projects!.projectId[input_index].hours = hours
-           // // // console.log("this is the change totoal ", change_total, input_index)
-          let reach = 8 - change_total
+          let reach = baseHours - change_total
           dispatch(addHours({hours:reach, project_index:input_index, employee_id}))
       }
-      // // // console.log("This is the field", input_index, project.hours, change_total);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- narrow deps intentional
   }, [hoursAtInputIndex]);
@@ -205,36 +197,37 @@ console.log("this is the employee _id" , employee_id)
     console.log("this is the input index ", input_index, "and this is the total project ", totalProjects)
     if (input_index + 1 === totalProjects)
       setOvertimeInput(true)
-    // // // // console.log("call the useEffect total hours ", employee1?.projects?.tthour)
-    // setOvertime(3)
     if (totalProjects === 1) {
-      setHours(8)
+      setHours(baseHours)
+      // Only dispatch when the stored hours differ from the expected base hours,
+      // to avoid an infinite loop (dispatch → tthour changes → effect re-runs → dispatch…).
+      const currentProjectHours = employee1?.projects?.projectId?.[input_index]?.hours ?? 0;
+      if (currentProjectHours !== baseHours) {
+        dispatch(addHours({hours: baseHours, project_index: input_index, employee_id}))
+        setSelectedHours(baseHours);
+      }
       return ;
     }
     if (input_index === 0)
     {
-      const newHours = Array.from({ length: (8 - totalProjects) + 1 }, (_, i) => i + 1);
+      const newHours = Array.from({ length: Math.floor(baseHours - totalProjects) + 1 }, (_, i) => i + 1);
       setHours(newHours);
     }
     else{
-      // // // console.log("this is the selected ", left_Hours + remaining)
-      // // // console.log(8 - remaining)
-
         if (input_index + 1 ===  totalProjects)
         {
-          // // // console.log("this is the input index",employee1!.projects!.tthour) 
-          let reach = 8 - employee1!.projects!.tthour
-          setHours(reach);  
+          let reach = baseHours - employee1!.projects!.tthour
+          setHours(reach);
         }
         else
         {
-          let reach = 8 - employee1!.projects!.tthour
-          const newHours = Array.from({ length: reach - 1 }, (_, i) => i + 1);
+          let reach = baseHours - employee1!.projects!.tthour
+          const newHours = Array.from({ length: Math.floor(reach - 1) }, (_, i) => i + 1);
           setHours(newHours);
         }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- init on mount; deps omitted to run once
-  }, [input_index, totalProjects, employee1?.projects?.tthour]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input_index, totalProjects, employee1?.projects?.tthour, baseHours]);
 
 
   const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>, index: number) => {
@@ -271,7 +264,7 @@ console.log("this is the employee _id" , employee_id)
   
 const handleHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
 
-  const hours = parseInt(e.target.value, 10);
+  const hours = parseFloat(e.target.value);
   
   dispatch(setRemainingHours(hours))
   
@@ -288,17 +281,13 @@ const handleHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
 };
 
   const renderHours = () => {
-    // If it's an array, map through it
-    // // // // console.log(Array.isArray(hours))
-
     if (Array.isArray(hours)) {
       return hours.map((hour, index) => (
         <option key={hour} value={hour}>{hour} hours</option>
       ));
     }
-
     // If it's a single number, handle it as such
-    return <option>{hours} hours</option>;
+    return <option value={hours}>{hours} hours</option>;
   };
 
   const renderOvertime = () => {

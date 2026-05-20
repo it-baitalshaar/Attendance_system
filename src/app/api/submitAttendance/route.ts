@@ -414,12 +414,16 @@ export async function POST(request: Request) {
         const notes = entry.notes ?? '';
 
         if (notes.startsWith('Attendance type: ')) {
-          const rest = notes.slice(18);
+          const rest = notes.slice('Attendance type: '.length);
           const firstLineEnd = rest.indexOf('\n');
           const attendanceType = firstLineEnd === -1 ? rest.trim() : rest.slice(0, firstLineEnd).trim();
           if (attendanceType) {
             if (attendanceType === 'Weekend' || attendanceType === 'Holiday-Work') {
               status_attendance = attendanceType;
+            } else if (attendanceType === 'Half Day AM') {
+              status_attendance = 'Half Day AM';
+            } else if (attendanceType === 'Half Day PM') {
+              status_attendance = 'Half Day PM';
             } else if (attendanceType === 'Half Day') {
               status_attendance = 'half-day';
             } else if (attendanceType === 'Sick Leave' || attendanceType === 'Absence with excuse' || attendanceType === 'Absence without excuse') {
@@ -480,6 +484,7 @@ export async function POST(request: Request) {
     isPresent: boolean
   ): string {
     if (status_employee === 'Weekend' || status_employee === 'Holiday-Work') return status_employee;
+    if (status_employee === 'Half Day AM' || status_employee === 'Half Day PM') return status_employee;
     if (status_employee === 'Sick Leave' || status_employee === 'Absence with excuse' || status_employee === 'Absence without excuse') return status_employee;
     if (isPresent) return 'Present';
     if (status_attendance === 'vacation') return 'vacation';
