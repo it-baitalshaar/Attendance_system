@@ -17,7 +17,6 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 // Permissive type for the service-role client when used with dynamic table names
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = { from: (table: string) => any };
 
 // ── Reverse map: report status_code → DB columns ──────────────────────────────
