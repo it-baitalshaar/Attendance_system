@@ -275,7 +275,7 @@ export function AttendanceReportSection() {
       'Employee ID', 'Employee Name', 'Department', 'Salary',
       'Date', 'Status',
       'Work Hrs', 'OT (×1.25)',
-      'W.OT (×1.5)', 'H.OT (×1.5)',
+      'W.OT (×1.5)', 'H.OT (×2.5)',
       'Project', 'Notes',
     ];
     const rows: string[] = [header.join(',')];
@@ -660,7 +660,7 @@ export function AttendanceReportSection() {
                       )}
                       {showOtPublicHoliday && (
                         <th className="px-3 py-2.5 text-right font-semibold">
-                          H.OT<span className="ot-rate block text-gray-400 font-normal normal-case tracking-normal">×1.5</span>
+                          H.OT<span className="ot-rate block text-gray-400 font-normal normal-case tracking-normal">×2.5</span>
                         </th>
                       )}
                       {showProjects && <th className="px-3 py-2.5 text-left font-semibold">Project</th>}
@@ -866,7 +866,7 @@ export function AttendanceReportSection() {
               {[
                 ['P', 'Present'], ['H', 'Holiday-Work'], ['W', 'Weekend'], ['V', 'Vacation'],
                 ['AWO', 'Absent – no excuse'], ['SL', 'Sick Leave'], ['A', 'Absent – excused'],
-                ['OT', '×1.25 normal'], ['W.OT', '×1.5 weekend'], ['H.OT', '×1.5 holiday'],
+                ['OT', '×1.25 normal'], ['W.OT', '×1.5 weekend'], ['H.OT', '×2.5 public holiday'],
               ].map(([code, desc]) => (
                 <span key={code}>
                   <span className="font-semibold text-gray-700">{code}</span>
