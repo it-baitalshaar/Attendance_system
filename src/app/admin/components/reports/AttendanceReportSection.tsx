@@ -56,6 +56,7 @@ function getMeta(code: string) {
 function computeSummary(days: AttendanceReportDay[]) {
   let present = 0, absent = 0, vacation = 0, weekend = 0, holidayWork = 0;
   let totalHours = 0, totalOT = 0;
+  let otNormal = 0, otHoliday = 0, otPublicHoliday = 0;
   const absentDays: AttendanceReportDay[] = [];
 
   for (const d of days) {
@@ -67,11 +68,13 @@ function computeSummary(days: AttendanceReportDay[]) {
     else if (c === 'W') weekend++;
 
     totalHours += d.working_hours ?? 0;
+    otNormal        += d.overtime.normal         ?? 0;
+    otHoliday       += d.overtime.holiday        ?? 0;
+    otPublicHoliday += d.overtime.public_holiday ?? 0;
     totalOT += (d.overtime.normal ?? 0) + (d.overtime.holiday ?? 0) + (d.overtime.public_holiday ?? 0);
   }
-  // Worked days = regular present + holiday-work days
   const workedDays = present + holidayWork;
-  return { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, absentDays };
+  return { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, otNormal, otHoliday, otPublicHoliday, absentDays };
 }
 
 function toLocalIso(d: Date): string {
@@ -233,23 +236,22 @@ export function AttendanceReportSection() {
     const awo = s.absentDays.filter(d => d.status_code === 'AWO').length;
     const sl  = s.absentDays.filter(d => d.status_code === 'SL').length;
     const a   = s.absentDays.filter(d => d.status_code === 'A').length;
-    // Salary for summary column
     const sal = emp.employee.salary;
     let totalSalary: number | null = null;
+    let otNormalAmt = 0, otHolidayAmt = 0, otPublicHolidayAmt = 0, awoDeductionAmt = 0;
     if (sal != null && sal > 0 && summaryCalFrom) {
       const [sy, sm] = summaryCalFrom.split('-').map(Number);
       const md = new Date(sy, sm, 0).getDate();
       const hr = sal / (md * 8);
-      const baseH = Math.max(0, emp.days.length * 8 - awo * 8);
-      let ot = 0;
       emp.days.forEach((day) => {
-        ot += day.overtime.normal        * 1.25 * hr;
-        ot += day.overtime.holiday       * 1.5  * hr;
-        ot += day.overtime.public_holiday * 1.5  * hr;
+        otNormalAmt        += day.overtime.normal         * 1.25 * hr;
+        otHolidayAmt       += day.overtime.holiday        * 1.5  * hr;
+        otPublicHolidayAmt += day.overtime.public_holiday * 2.5  * hr;
       });
-      totalSalary = Math.round(baseH * hr + ot);
+      awoDeductionAmt = awo * 8 * hr;
+      totalSalary = Math.round(s.totalHours * hr + otNormalAmt + otHolidayAmt + otPublicHolidayAmt);
     }
-    return { employee: emp.employee, ...s, awo, sl, a, totalSalary };
+    return { employee: emp.employee, ...s, awo, sl, a, totalSalary, otNormalAmt, otHolidayAmt, otPublicHolidayAmt, awoDeductionAmt };
   });
   const grandTotals = employeeSummaries.reduce(
     (acc, s) => ({
@@ -263,10 +265,17 @@ export function AttendanceReportSection() {
       sl: acc.sl + s.sl,
       a: acc.a + s.a,
       totalHours: acc.totalHours + s.totalHours,
+      otNormal: acc.otNormal + s.otNormal,
+      otHoliday: acc.otHoliday + s.otHoliday,
+      otPublicHoliday: acc.otPublicHoliday + s.otPublicHoliday,
       totalOT: acc.totalOT + s.totalOT,
+      otNormalAmt: acc.otNormalAmt + s.otNormalAmt,
+      otHolidayAmt: acc.otHolidayAmt + s.otHolidayAmt,
+      otPublicHolidayAmt: acc.otPublicHolidayAmt + s.otPublicHolidayAmt,
+      awoDeductionAmt: acc.awoDeductionAmt + s.awoDeductionAmt,
       totalSalary: acc.totalSalary + (s.totalSalary ?? 0),
     }),
-    { workedDays: 0, present: 0, holidayWork: 0, weekend: 0, vacation: 0, absent: 0, awo: 0, sl: 0, a: 0, totalHours: 0, totalOT: 0, totalSalary: 0 }
+    { workedDays: 0, present: 0, holidayWork: 0, weekend: 0, vacation: 0, absent: 0, awo: 0, sl: 0, a: 0, totalHours: 0, otNormal: 0, otHoliday: 0, otPublicHoliday: 0, totalOT: 0, otNormalAmt: 0, otHolidayAmt: 0, otPublicHolidayAmt: 0, awoDeductionAmt: 0, totalSalary: 0 }
   );
 
   const handleDownloadCsv = () => {
@@ -461,7 +470,7 @@ export function AttendanceReportSection() {
       <div id="attendance-print-area">
         {localReport.map((empReport: AttendanceReportEmployeeReport) => {
           const deptTheme = getDeptTheme(empReport.employee.department);
-          const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, absentDays } = computeSummary(empReport.days);
+          const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, otNormal, otHoliday, otPublicHoliday, absentDays } = computeSummary(empReport.days);
           const recordedDays = empReport.days.length;
           const calFrom = reportFrom || fromDate;
           const calTo = reportTo || toDate;
@@ -488,28 +497,33 @@ export function AttendanceReportSection() {
           let salarySummary: {
             monthDays: number;
             hourlyRate: number;
-            effectiveBaseHours: number;
             baseSalary: number;
+            otNormalAmount: number;
+            otHolidayAmount: number;
+            otPublicHolidayAmount: number;
             otAmount: number;
+            awoDeduction: number;
             totalSalary: number;
           } | null = null;
           if (empSalary != null && empSalary > 0 && calFrom) {
             const [sy, sm] = calFrom.split('-').map(Number);
             const monthDays = new Date(sy, sm, 0).getDate();
             const hourlyRate = empSalary / (monthDays * 8);
-            const effectiveBaseHours = Math.max(0, recordedDays * 8 - awoCount * 8);
-            const baseSalary = effectiveBaseHours * hourlyRate;
-            let otAmount = 0;
+            const awoDeduction = awoCount * 8 * hourlyRate;
+            const baseSalary = totalHours * hourlyRate;
+            let otNormalAmount = 0, otHolidayAmount = 0, otPublicHolidayAmount = 0;
             empReport.days.forEach((day) => {
-              otAmount += day.overtime.normal       * 1.25 * hourlyRate;
-              otAmount += day.overtime.holiday      * 1.5  * hourlyRate;
-              otAmount += day.overtime.public_holiday * 1.5  * hourlyRate;
+              otNormalAmount        += day.overtime.normal         * 1.25 * hourlyRate;
+              otHolidayAmount       += day.overtime.holiday        * 1.5  * hourlyRate;
+              otPublicHolidayAmount += day.overtime.public_holiday * 2.5  * hourlyRate;
             });
+            const otAmount = otNormalAmount + otHolidayAmount + otPublicHolidayAmount;
             const totalSalary = Math.round(baseSalary + otAmount);
-            salarySummary = { monthDays, hourlyRate, effectiveBaseHours, baseSalary, otAmount, totalSalary };
+            salarySummary = { monthDays, hourlyRate, baseSalary, otNormalAmount, otHolidayAmount, otPublicHolidayAmount, otAmount, awoDeduction, totalSalary };
           }
 
           // Dynamic column visibility — hide columns that are all empty for this employee (always show all in edit mode)
+          const showDailySalary = salarySummary !== null;
           const showWorkHours = editMode || empReport.days.some(d => d.working_hours > 0);
           const showOtNormal = editMode || empReport.days.some(d => d.overtime.normal > 0);
           const showOtHoliday = editMode || empReport.days.some(d => d.overtime.holiday > 0);
@@ -547,16 +561,25 @@ export function AttendanceReportSection() {
                         <span>
                           <strong className="text-white">{empReport.employee.salary.toLocaleString('en-US')}</strong>/mo
                           {salarySummary && (
-                            <span className="font-mono text-slate-400 text-xs ml-1">@{salarySummary.hourlyRate.toFixed(2)}/h</span>
+                            <>
+                              <span className="font-mono text-slate-400 text-xs ml-1">@{salarySummary.hourlyRate.toFixed(2)}/h</span>
+                              <span className="text-slate-300 text-xs ml-1">· 8hrs: <strong className="text-white">{Math.round(salarySummary.hourlyRate * 8).toLocaleString('en-US')}</strong></span>
+                            </>
                           )}
                         </span>
                         {salarySummary && (
                           <>
-                            {salarySummary.otAmount > 0 && (
-                              <span className="text-amber-300 text-xs">· OT +{Math.round(salarySummary.otAmount).toLocaleString('en-US')}</span>
+                            {salarySummary.otNormalAmount > 0 && (
+                              <span className="text-amber-300 text-xs">· OT {otNormal}h +{Math.round(salarySummary.otNormalAmount).toLocaleString('en-US')}</span>
                             )}
-                            {awoCount > 0 && (
-                              <span className="text-red-400 text-xs">· AWO −{awoCount}d</span>
+                            {salarySummary.otHolidayAmount > 0 && (
+                              <span className="text-amber-200 text-xs">· W.OT {otHoliday}h +{Math.round(salarySummary.otHolidayAmount).toLocaleString('en-US')}</span>
+                            )}
+                            {salarySummary.otPublicHolidayAmount > 0 && (
+                              <span className="text-yellow-300 text-xs">· H.OT {otPublicHoliday}h +{Math.round(salarySummary.otPublicHolidayAmount).toLocaleString('en-US')}</span>
+                            )}
+                            {salarySummary.awoDeduction > 0 && (
+                              <span className="text-red-400 text-xs">· AWO −{Math.round(salarySummary.awoDeduction).toLocaleString('en-US')} <span className="text-red-500 opacity-70">({awoCount}d)</span></span>
                             )}
                             <span className="text-slate-400 text-xs">·</span>
                             <span className="font-bold text-white tabular-nums">
@@ -640,6 +663,7 @@ export function AttendanceReportSection() {
                     {showOtNormal         && <col style={{ width: '36px' }} />}
                     {showOtHoliday        && <col style={{ width: '40px' }} />}
                     {showOtPublicHoliday  && <col style={{ width: '40px' }} />}
+                    {showDailySalary      && <col style={{ width: '60px' }} />}
                     {showProjects         && <col />}
                     {showNotes            && <col style={{ width: '150px' }} />}
                   </colgroup>
@@ -663,6 +687,7 @@ export function AttendanceReportSection() {
                           H.OT<span className="ot-rate block text-gray-400 font-normal normal-case tracking-normal">×2.5</span>
                         </th>
                       )}
+                      {showDailySalary && <th className="px-3 py-2.5 text-right font-semibold">Pay</th>}
                       {showProjects && <th className="px-3 py-2.5 text-left font-semibold">Project</th>}
                       {showNotes && <th className="px-3 py-2.5 text-left font-semibold">Notes</th>}
                     </tr>
@@ -771,6 +796,30 @@ export function AttendanceReportSection() {
                               )}
                             </td>
                           )}
+                          {showDailySalary && (() => {
+                            const hr = salarySummary!.hourlyRate;
+                            const isAwo = day.status_code === 'AWO';
+                            const isOtherAbsent = !isAwo && ABSENT_CODES.has(day.status_code);
+                            const dayPay = isOtherAbsent
+                              ? null
+                              : isAwo
+                                ? -Math.round(8 * hr)
+                                : Math.round(
+                                    day.working_hours * hr +
+                                    day.overtime.normal * 1.25 * hr +
+                                    day.overtime.holiday * 1.5 * hr +
+                                    day.overtime.public_holiday * 2.5 * hr
+                                  );
+                            return (
+                              <td className="px-3 py-2 text-right tabular-nums text-xs font-medium">
+                                {dayPay == null
+                                  ? <span className="text-gray-300">—</span>
+                                  : dayPay < 0
+                                    ? <span className="text-red-500">−{Math.abs(dayPay).toLocaleString('en-US')}</span>
+                                    : <span className="text-slate-600">{dayPay.toLocaleString('en-US')}</span>}
+                              </td>
+                            );
+                          })()}
                           {showProjects && (
                             <td className="px-3 py-2 text-gray-600 text-xs">
                               {editMode ? (
@@ -890,7 +939,10 @@ export function AttendanceReportSection() {
                     <th className="px-3 py-2.5 text-center font-semibold text-orange-600">SL</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-purple-600">A</th>
                     <th className="px-3 py-2.5 text-right font-semibold">Work Hrs</th>
-                    <th className="px-3 py-2.5 text-right font-semibold">OT</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-amber-600">OT ×1.25</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-amber-600">W.OT ×1.5</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-amber-600">H.OT ×2.5</th>
+                    <th className="px-3 py-2.5 text-right font-semibold text-red-600">Deduction</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-indigo-700">Total Salary</th>
                   </tr>
                 </thead>
@@ -913,7 +965,24 @@ export function AttendanceReportSection() {
                         {s.totalHours > 0 ? `${s.totalHours}h` : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-amber-600">
-                        {s.totalOT > 0 ? `${s.totalOT}h` : <span className="text-gray-300">—</span>}
+                        {s.otNormal > 0
+                          ? <><span className="font-medium">{s.otNormal}h</span>{s.otNormalAmt > 0 && <span className="text-xs text-amber-400 ml-1">+{Math.round(s.otNormalAmt).toLocaleString('en-US')}</span>}</>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-600">
+                        {s.otHoliday > 0
+                          ? <><span className="font-medium">{s.otHoliday}h</span>{s.otHolidayAmt > 0 && <span className="text-xs text-amber-400 ml-1">+{Math.round(s.otHolidayAmt).toLocaleString('en-US')}</span>}</>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-600">
+                        {s.otPublicHoliday > 0
+                          ? <><span className="font-medium">{s.otPublicHoliday}h</span>{s.otPublicHolidayAmt > 0 && <span className="text-xs text-amber-400 ml-1">+{Math.round(s.otPublicHolidayAmt).toLocaleString('en-US')}</span>}</>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-red-600">
+                        {s.awoDeductionAmt > 0
+                          ? <>−{Math.round(s.awoDeductionAmt).toLocaleString('en-US')}</>
+                          : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold text-indigo-700">
                         {s.totalSalary != null
@@ -935,7 +1004,18 @@ export function AttendanceReportSection() {
                     <td className="px-3 py-2.5 text-center text-orange-600">{grandTotals.sl            || '—'}</td>
                     <td className="px-3 py-2.5 text-center text-purple-600">{grandTotals.a             || '—'}</td>
                     <td className="px-3 py-2.5 text-right">{grandTotals.totalHours > 0 ? `${grandTotals.totalHours}h` : '—'}</td>
-                    <td className="px-3 py-2.5 text-right text-amber-600">{grandTotals.totalOT > 0 ? `${grandTotals.totalOT}h` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-amber-600">
+                      {grandTotals.otNormal > 0 ? <>{grandTotals.otNormal}h{grandTotals.otNormalAmt > 0 && <span className="text-xs ml-1">+{Math.round(grandTotals.otNormalAmt).toLocaleString('en-US')}</span>}</> : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-amber-600">
+                      {grandTotals.otHoliday > 0 ? <>{grandTotals.otHoliday}h{grandTotals.otHolidayAmt > 0 && <span className="text-xs ml-1">+{Math.round(grandTotals.otHolidayAmt).toLocaleString('en-US')}</span>}</> : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-amber-600">
+                      {grandTotals.otPublicHoliday > 0 ? <>{grandTotals.otPublicHoliday}h{grandTotals.otPublicHolidayAmt > 0 && <span className="text-xs ml-1">+{Math.round(grandTotals.otPublicHolidayAmt).toLocaleString('en-US')}</span>}</> : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-red-600">
+                      {grandTotals.awoDeductionAmt > 0 ? <>−{Math.round(grandTotals.awoDeductionAmt).toLocaleString('en-US')}</> : '—'}
+                    </td>
                     <td className="px-3 py-2.5 text-right text-indigo-700">
                       {grandTotals.totalSalary > 0 ? grandTotals.totalSalary.toLocaleString('en-US') : '—'}
                     </td>
