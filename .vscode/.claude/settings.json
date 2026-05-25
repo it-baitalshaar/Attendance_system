@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"d:\\\\source\\\\bait_al_shaar\\\\Attendance_system\" && ls -la)",
+      "Read(//d/source/bait_al_shaar/Attendance_system/**)"
+    ],
+    "additionalDirectories": [
+      "d:\\source\\bait_al_shaar\\Attendance_system\\src\\app\\component"
+    ]
+  }
+}

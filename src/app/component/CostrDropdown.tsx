@@ -90,7 +90,10 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
   );
 
   console.log("this is the employee status from the constructoons ", employee1?.employee_status![0].status_employee)
-  
+
+  const statusEmployee = employee1?.employee_status?.[0]?.status_employee ?? '';
+  const baseHours = statusEmployee === 'Half Day AM' ? 4.5 : statusEmployee === 'Half Day PM' ? 3.5 : 8;
+
   useEffect(() => {
     async function getProjects() {
       const data = await fetchProjects('Construction');
@@ -133,17 +136,17 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
       // employee1.projects!.projectId[input_index + 1].hours = -1
       if (input_index + 1 ===  totalProjects)
       {
-        // console.log("this is the input index",left_Hours) 
-        let reach = 8 - change_total
+        // console.log("this is the input index",left_Hours)
+        let reach = baseHours - change_total
         console.log("this is from reach one", reach)
-        setHours(reach);  
+        setHours(reach);
         dispatch(addHours({hours:reach, project_index:input_index, employee_id}))
       }
       else
       {
-        let reach = 8 - change_total
+        let reach = baseHours - change_total
         console.log("this is from reach two", reach)
-        const newHours = Array.from({ length: reach - 1 }, (_, i) => i + 1);
+        const newHours = Array.from({ length: Math.floor(reach - 1) }, (_, i) => i + 1);
         setHours(newHours);
         dispatch(addHours({hours:reach - 1, project_index:input_index, employee_id}))
       }
@@ -186,19 +189,19 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
     if (input_index + 1 === totalProjects)
       setOvertimeInput(true);
     if (totalProjects === 1) {
-      setHours(8);
+      setHours(baseHours);
       return;
     }
     if (input_index === 0) {
-      const newHours = Array.from({ length: (8 - totalProjects) + 1 }, (_, i) => i + 1);
+      const newHours = Array.from({ length: Math.floor(baseHours - totalProjects) + 1 }, (_, i) => i + 1);
       setHours(newHours);
     } else {
       const tthour = employee1?.projects?.tthour ?? 0;
       if (input_index + 1 === totalProjects) {
-        setHours(8 - tthour);
+        setHours(baseHours - tthour);
       } else {
-        const reach = 8 - tthour;
-        const newHours = Array.from({ length: reach - 1 }, (_, i) => i + 1);
+        const reach = baseHours - tthour;
+        const newHours = Array.from({ length: Math.floor(reach - 1) }, (_, i) => i + 1);
         setHours(newHours);
       }
     }
@@ -206,7 +209,7 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
     return () => {
       console.log('Component is being unmounted or cleaned up.');
     };
-  }, [input_index, totalProjects, employee1?.projects?.tthour]);
+  }, [input_index, totalProjects, employee1?.projects?.tthour, baseHours]);
   // useEffect(() => {
 
   //   return () => {
@@ -219,7 +222,7 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
 
   const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>, index: number) => {
     const selected_project = e.target.value;
-    const hours = parseInt("8", 10);
+    const hours = baseHours;
 
     setProject(selected_project);
     setOvertimeInput(true);
