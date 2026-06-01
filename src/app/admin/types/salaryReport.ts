@@ -20,14 +20,15 @@ export interface SalaryReportEmployee {
     salary: number | null;
   };
   // Period metadata
-  monthDays: number;
-  totalMonthHours: number;
+  periodDays: number;         // inclusive days in selected from–to range
+  monthDays: number;          // calendar month days (hourly rate divisor — same as attendance report)
+  totalMonthHours: number;    // monthDays × 8
   hourlyRate: number;
-  // Base salary calculation
-  workedDays: number;        // count of unique dates in attendance records
-  awoDeductions: number;     // count of unique AWO dates (each subtracts 8 extra hours)
-  effectiveBaseHours: number; // max(0, workedDays*8 - awoDeductions*8)
-  baseSalary: number;        // effectiveBaseHours * hourlyRate
+  // Base salary (attendance report rules)
+  workedDays: number;         // Present + Holiday-Work days
+  totalHours: number;         // sum of daily working_hours
+  awoDeductions: number;      // AWO day count (informational; same as attendance report)
+  baseSalary: number;         // totalHours × hourlyRate
   // Overtime
   overtimeAmount: number;    // sum of all daily OT earned
   // Final

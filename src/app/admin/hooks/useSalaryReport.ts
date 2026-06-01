@@ -16,7 +16,7 @@ export function useSalaryReport() {
       employeeId?: string | null
     ) => {
       if (!fromDate || !toDate) {
-        setError('Please select a month.');
+        setError('Please select a date range.');
         return;
       }
       setLoading(true);

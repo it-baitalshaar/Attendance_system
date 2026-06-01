@@ -193,6 +193,7 @@ export async function GET(request: Request) {
       projectNameById,
       employees,
       fromDate: from,
+      toDate: to,
     });
 
     return NextResponse.json({ report, from, to });

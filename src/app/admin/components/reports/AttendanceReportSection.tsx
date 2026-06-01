@@ -5,6 +5,7 @@ import { useAttendanceReport } from '../../hooks/useAttendanceReport';
 import { fetchDepartmentsService } from '../../services/departmentService';
 import { fetchEmployeesService } from '../../services/employeeService';
 import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../types/attendanceReport';
+import { computePayrollFromDays } from '../../services/payrollCalculation';
 
 function getDeptTheme(dept: string) {
   const d = (dept ?? '').toLowerCase();
@@ -233,25 +234,22 @@ export function AttendanceReportSection() {
   const summaryCalFrom = calFrom;
   const employeeSummaries = localReport.map((emp) => {
     const s = computeSummary(emp.days);
-    const awo = s.absentDays.filter(d => d.status_code === 'AWO').length;
-    const sl  = s.absentDays.filter(d => d.status_code === 'SL').length;
-    const a   = s.absentDays.filter(d => d.status_code === 'A').length;
-    const sal = emp.employee.salary;
-    let totalSalary: number | null = null;
-    let otNormalAmt = 0, otHolidayAmt = 0, otPublicHolidayAmt = 0, awoDeductionAmt = 0;
-    if (sal != null && sal > 0 && summaryCalFrom) {
-      const [sy, sm] = summaryCalFrom.split('-').map(Number);
-      const md = new Date(sy, sm, 0).getDate();
-      const hr = sal / (md * 8);
-      emp.days.forEach((day) => {
-        otNormalAmt        += day.overtime.normal         * 1.25 * hr;
-        otHolidayAmt       += day.overtime.holiday        * 1.5  * hr;
-        otPublicHolidayAmt += day.overtime.public_holiday * 2.5  * hr;
-      });
-      awoDeductionAmt = awo * 8 * hr;
-      totalSalary = Math.round(s.totalHours * hr + otNormalAmt + otHolidayAmt + otPublicHolidayAmt);
-    }
-    return { employee: emp.employee, ...s, awo, sl, a, totalSalary, otNormalAmt, otHolidayAmt, otPublicHolidayAmt, awoDeductionAmt };
+    const payroll =
+      emp.employee.salary != null && emp.employee.salary > 0 && summaryCalFrom
+        ? computePayrollFromDays(emp.days, emp.employee.salary, summaryCalFrom)
+        : null;
+    return {
+      employee: emp.employee,
+      ...s,
+      awo: s.absentDays.filter((d) => d.status_code === 'AWO').length,
+      sl: s.absentDays.filter((d) => d.status_code === 'SL').length,
+      a: s.absentDays.filter((d) => d.status_code === 'A').length,
+      totalSalary: payroll ? payroll.totalSalary : null,
+      otNormalAmt: payroll?.otNormalAmount ?? 0,
+      otHolidayAmt: payroll?.otHolidayAmount ?? 0,
+      otPublicHolidayAmt: payroll?.otPublicHolidayAmount ?? 0,
+      awoDeductionAmt: payroll?.awoDeductionAmount ?? 0,
+    };
   });
   const grandTotals = employeeSummaries.reduce(
     (acc, s) => ({
@@ -506,20 +504,18 @@ export function AttendanceReportSection() {
             totalSalary: number;
           } | null = null;
           if (empSalary != null && empSalary > 0 && calFrom) {
-            const [sy, sm] = calFrom.split('-').map(Number);
-            const monthDays = new Date(sy, sm, 0).getDate();
-            const hourlyRate = empSalary / (monthDays * 8);
-            const awoDeduction = awoCount * 8 * hourlyRate;
-            const baseSalary = totalHours * hourlyRate;
-            let otNormalAmount = 0, otHolidayAmount = 0, otPublicHolidayAmount = 0;
-            empReport.days.forEach((day) => {
-              otNormalAmount        += day.overtime.normal         * 1.25 * hourlyRate;
-              otHolidayAmount       += day.overtime.holiday        * 1.5  * hourlyRate;
-              otPublicHolidayAmount += day.overtime.public_holiday * 2.5  * hourlyRate;
-            });
-            const otAmount = otNormalAmount + otHolidayAmount + otPublicHolidayAmount;
-            const totalSalary = Math.round(baseSalary + otAmount);
-            salarySummary = { monthDays, hourlyRate, baseSalary, otNormalAmount, otHolidayAmount, otPublicHolidayAmount, otAmount, awoDeduction, totalSalary };
+            const payroll = computePayrollFromDays(empReport.days, empSalary, calFrom);
+            salarySummary = {
+              monthDays: payroll.monthDays,
+              hourlyRate: payroll.hourlyRate,
+              baseSalary: payroll.baseSalary,
+              otNormalAmount: payroll.otNormalAmount,
+              otHolidayAmount: payroll.otHolidayAmount,
+              otPublicHolidayAmount: payroll.otPublicHolidayAmount,
+              otAmount: payroll.overtimeAmount,
+              awoDeduction: payroll.awoDeductionAmount,
+              totalSalary: payroll.totalSalary,
+            };
           }
 
           // Dynamic column visibility — hide columns that are all empty for this employee (always show all in edit mode)

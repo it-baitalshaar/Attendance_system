@@ -8,8 +8,8 @@ import type {
   AttendanceReportDay,
 } from '../types/attendanceReport';
 import { statusToCode } from '../types/attendanceReport';
-import { normalizeOvertimeType } from '@/app/constants/overtime';
 import { resolveProjectDisplayName } from '@/lib/projectDisplayName';
+import { bucketOvertimeHours } from './payrollCalculation';
 
 export interface RawAttendanceRow {
   id: string;
@@ -91,33 +91,12 @@ export function buildAttendanceReport(
     projRows: RawAttendanceProjectRow[],
     sa: string
   ) => {
-    let overtime_normal = 0;
-    let overtime_holiday = 0;
-    let overtime_public_holiday = 0;
-    for (const p of projRows) {
-      const ot = Number(p.overtime_hours ?? 0);
-      if (ot === 0) continue;
-      const typeRaw = p.overtime_type;
-      const t =
-        typeRaw != null && String(typeRaw).trim() !== ''
-          ? normalizeOvertimeType(typeRaw)
-          : null;
-
-      // Explicit payroll types from the app (holiday / public holiday) always win.
-      if (t === 'holiday') {
-        overtime_holiday += ot;
-      } else if (t === 'public_holiday') {
-        overtime_public_holiday += ot;
-      } else {
-        // `normal`, missing type, or legacy backfill: bucket by day status so migrated
-        // rows (all defaulted to 'normal') still match weekend/holiday OT columns.
-        if (sa === 'Present') overtime_normal += ot;
-        else if (sa === 'Weekend') overtime_holiday += ot;
-        else if (sa === 'Holiday-Work') overtime_public_holiday += ot;
-        else overtime_normal += ot;
-      }
-    }
-    return { overtime_normal, overtime_holiday, overtime_public_holiday };
+    const b = bucketOvertimeHours(projRows, sa);
+    return {
+      overtime_normal: b.normal,
+      overtime_holiday: b.holiday,
+      overtime_public_holiday: b.public_holiday,
+    };
   };
 
   for (const att of attRows) {
