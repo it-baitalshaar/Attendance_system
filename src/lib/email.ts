@@ -5,11 +5,18 @@
 
 import nodemailer from 'nodemailer';
 
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+}
+
 export interface SendMailOptions {
   to: string | string[];
   subject: string;
   html: string;
   from?: string;
+  attachments?: MailAttachment[];
 }
 
 let transporter: nodemailer.Transporter | null = null;
@@ -52,6 +59,11 @@ export async function sendMail(options: SendMailOptions): Promise<{ ok: boolean;
       to: normalizeTo(options.to),
       subject: options.subject,
       html: options.html,
+      attachments: (options.attachments ?? []).map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType ?? 'application/pdf',
+      })),
     });
     return { ok: true };
   } catch (err) {

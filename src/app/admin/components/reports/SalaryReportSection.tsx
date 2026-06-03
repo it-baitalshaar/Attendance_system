@@ -14,6 +14,7 @@ import {
   formatPeriodLabel,
   payrollMonthLabel,
 } from '@/lib/payrollPeriod';
+import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -821,6 +822,20 @@ export function SalaryReportSection() {
           </div>
 
           {error && <p className="mt-3 text-red-500 text-sm">{error}</p>}
+
+          <PayrollReportDeliveryPanel
+            reportKind="salary"
+            hasReport={hasReport}
+            disabled={loading}
+            from={displayFrom}
+            to={displayTo}
+            department={department === ALL ? null : department}
+            employeeId={employeeId === ALL ? null : employeeId}
+            viewMode={viewMode}
+            filterLabel={filterLabel}
+            reconciliationSummary={reconciliationSummary}
+            printAreaId="salary-print-area"
+          />
         </div>
       </div>
 

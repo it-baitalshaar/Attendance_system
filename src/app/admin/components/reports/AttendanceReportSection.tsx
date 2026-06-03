@@ -6,6 +6,8 @@ import { fetchDepartmentsService } from '../../services/departmentService';
 import { fetchEmployeesService } from '../../services/employeeService';
 import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../types/attendanceReport';
 import { computePayrollFromDays } from '../../services/payrollCalculation';
+import { buildAttendanceReportWhatsAppMessage } from '@/lib/attendanceReportEmailHtml';
+import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
 
 function getDeptTheme(dept: string) {
   const d = (dept ?? '').toLowerCase();
@@ -461,6 +463,36 @@ export function AttendanceReportSection() {
           )}
           {error && <p className="mt-3 text-red-500 text-sm">{error}</p>}
           {projectsWarning && !error && <p className="mt-3 text-amber-600 text-sm">{projectsWarning}</p>}
+
+          <PayrollReportDeliveryPanel
+            reportKind="attendance"
+            hasReport={hasReport}
+            disabled={loading}
+            from={reportFrom || fromDate}
+            to={reportTo || toDate}
+            printAreaId="attendance-print-area"
+            department={department === ALL ? null : department}
+            employeeId={employeeId === ALL ? null : employeeId}
+            filterLabel={
+              department !== ALL
+                ? department
+                : employeeId !== ALL
+                  ? employees.find((e) => e.employee_id === employeeId)?.name ?? employeeId
+                  : 'All Departments'
+            }
+            onBuildAttendanceWhatsAppMessage={() =>
+              buildAttendanceReportWhatsAppMessage({
+                from: reportFrom || fromDate,
+                to: reportTo || toDate,
+                filterLabel:
+                  department !== ALL
+                    ? department
+                    : 'All Departments',
+                employeeCount: localReport.length,
+                grandTotalSalary: grandTotals.totalSalary,
+              })
+            }
+          />
         </div>
       </div>
 
