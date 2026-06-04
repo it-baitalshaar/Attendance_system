@@ -471,6 +471,7 @@ export function AttendanceReportSection() {
             from={reportFrom || fromDate}
             to={reportTo || toDate}
             printAreaId="attendance-print-area"
+            company={getDeptTheme(department).company}
             department={department === ALL ? null : department}
             employeeId={employeeId === ALL ? null : employeeId}
             filterLabel={

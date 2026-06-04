@@ -41,6 +41,7 @@ interface PayrollReportDeliveryPanelProps {
   onBuildAttendanceWhatsAppMessage?: () => string;
   /** DOM id of printable report (same as Print / Save as PDF) */
   printAreaId?: string;
+  company?: string | null;
 }
 
 export function PayrollReportDeliveryPanel({
@@ -57,6 +58,7 @@ export function PayrollReportDeliveryPanel({
   attendanceWhatsApp,
   onBuildAttendanceWhatsAppMessage,
   printAreaId,
+  company = null,
 }: PayrollReportDeliveryPanelProps) {
   const [emails, setEmails] = useState<PayrollReportEmailRow[]>([]);
   const [whatsappNumber, setWhatsappNumber] = useState('+971527249586');
@@ -123,7 +125,7 @@ export function PayrollReportDeliveryPanel({
     if (!printAreaId) {
       throw new Error('Print area not configured.');
     }
-    const filename = printAreaPdfFilename(reportKind, from, to);
+    const filename = printAreaPdfFilename(reportKind, from, to, company, department);
     return capturePrintAreaAsPdf(printAreaId, filename, {
       landscape: reportKind === 'attendance',
     });

@@ -73,7 +73,14 @@ function blobToBase64(blob: Blob): Promise<string> {
 export function printAreaPdfFilename(
   kind: 'salary' | 'attendance',
   from: string,
-  to: string
+  to: string,
+  company?: string | null,
+  department?: string | null,
 ): string {
-  return `${kind}_report_${from}_${to}.pdf`;
+  const sanitize = (s: string) => s.trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const parts: string[] = [];
+  if (company) parts.push(sanitize(company));
+  if (department) parts.push(sanitize(department));
+  parts.push(from, to);
+  return `${parts.join('_')}.pdf`;
 }
