@@ -500,7 +500,7 @@ export function AttendanceReportSection() {
       <div id="attendance-print-area">
         {localReport.map((empReport: AttendanceReportEmployeeReport) => {
           const deptTheme = getDeptTheme(empReport.employee.department);
-          const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, otNormal, otHoliday, otPublicHoliday, absentDays } = computeSummary(empReport.days);
+          const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, otNormal, otHoliday, otPublicHoliday, absentDays } = computeSummary(empReport.days);
           const recordedDays = empReport.days.length;
           const calFrom = reportFrom || fromDate;
           const calTo = reportTo || toDate;
@@ -640,12 +640,12 @@ export function AttendanceReportSection() {
                 </div>
               </div>
 
-              {/* ── Summary Strip — single row of 6 ── */}
+              {/* ── Summary Strip ── */}
               <div
                 className="emp-summary border-b"
                 style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
               >
-                <div className="grid grid-cols-6 divide-x divide-gray-100">
+                <div className="grid grid-cols-8 divide-x divide-gray-100">
                   {[
                     {
                       label: 'Worked',
@@ -653,11 +653,13 @@ export function AttendanceReportSection() {
                       color: 'text-emerald-600',
                       sub: holidayWork > 0 ? `${present}P + ${holidayWork}H` : present > 0 ? `${present}P` : undefined,
                     },
-                    { label: 'Weekend',  value: weekend,          color: weekend > 0   ? 'text-slate-600'  : 'text-gray-300' },
-                    { label: 'Vacation', value: vacation,         color: vacation > 0  ? 'text-blue-600'   : 'text-gray-300' },
-                    { label: 'Absent',   value: absent,           color: absent > 0    ? 'text-red-600'    : 'text-gray-300', sub: absentSub },
-                    { label: 'Work Hrs', value: `${totalHours}h`, color: totalHours > 0 ? 'text-slate-700' : 'text-gray-300' },
-                    { label: 'Overtime', value: `${totalOT}h`,    color: totalOT > 0   ? deptTheme.accentText : 'text-gray-300' },
+                    { label: 'Weekend',    value: weekend,                  color: weekend > 0          ? 'text-slate-600'     : 'text-gray-300' },
+                    { label: 'Vacation',   value: vacation,                 color: vacation > 0         ? 'text-blue-600'      : 'text-gray-300' },
+                    { label: 'Absent',     value: absent,                   color: absent > 0           ? 'text-red-600'       : 'text-gray-300', sub: absentSub },
+                    { label: 'Work Hrs',   value: `${totalHours}h`,         color: totalHours > 0       ? 'text-slate-700'     : 'text-gray-300' },
+                    { label: 'OT ×1.25',  value: `${otNormal}h`,           color: otNormal > 0         ? deptTheme.accentText : 'text-gray-300' },
+                    { label: 'W.OT ×1.5', value: `${otHoliday}h`,          color: otHoliday > 0        ? 'text-amber-500'     : 'text-gray-300' },
+                    { label: 'P.H OT ×2', value: `${otPublicHoliday}h`,    color: otPublicHoliday > 0  ? 'text-rose-500'      : 'text-gray-300' },
                   ].map(({ label, value, color, sub }) => (
                     <div key={label} className="sum-card p-3 text-center">
                       <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
