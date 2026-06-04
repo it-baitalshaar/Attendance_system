@@ -317,6 +317,8 @@ export function AttendanceReportSection() {
       <style>{`
         @media print {
           @page { size: A4 portrait; margin: 10mm 12mm; }
+          @page landscape-page { size: A4 landscape; margin: 10mm 12mm; }
+          .overall-summary-print { page: landscape-page; }
           body.print-attendance * { visibility: hidden; }
           body.print-attendance #attendance-print-area,
           body.print-attendance #attendance-print-area * { visibility: visible; }
@@ -599,13 +601,13 @@ export function AttendanceReportSection() {
                         {salarySummary && (
                           <>
                             {salarySummary.otNormalAmount > 0 && (
-                              <span className="text-amber-300 text-xs">· OT {otNormal}h +{Math.round(salarySummary.otNormalAmount).toLocaleString('en-US')}</span>
+                              <span className="text-amber-300 text-xs">· OT +{Math.round(salarySummary.otNormalAmount).toLocaleString('en-US')}</span>
                             )}
                             {salarySummary.otHolidayAmount > 0 && (
-                              <span className="text-amber-200 text-xs">· W.OT {otHoliday}h +{Math.round(salarySummary.otHolidayAmount).toLocaleString('en-US')}</span>
+                              <span className="text-amber-200 text-xs">· W.OT +{Math.round(salarySummary.otHolidayAmount).toLocaleString('en-US')}</span>
                             )}
                             {salarySummary.otPublicHolidayAmount > 0 && (
-                              <span className="text-yellow-300 text-xs">· H.OT {otPublicHoliday}h +{Math.round(salarySummary.otPublicHolidayAmount).toLocaleString('en-US')}</span>
+                              <span className="text-yellow-300 text-xs">· H.OT +{Math.round(salarySummary.otPublicHolidayAmount).toLocaleString('en-US')}</span>
                             )}
                             {salarySummary.awoDeduction > 0 && (
                               <span className="text-red-400 text-xs">· AWO −{Math.round(salarySummary.awoDeduction).toLocaleString('en-US')} <span className="text-red-500 opacity-70">({awoCount}d)</span></span>
@@ -899,7 +901,7 @@ export function AttendanceReportSection() {
 
         {/* ── Overall Summary Page ── */}
         {hasReport && (
-          <div className="emp-card bg-white rounded-lg shadow mt-6 overflow-hidden">
+          <div className="emp-card overall-summary-print bg-white rounded-lg shadow mt-6 overflow-hidden">
             <div
               className="emp-hdr bg-gradient-to-r from-indigo-900 to-indigo-800 text-white px-6 py-4"
               style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
@@ -996,19 +998,13 @@ export function AttendanceReportSection() {
                         {s.totalHours > 0 ? `${s.totalHours}h` : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-amber-600">
-                        {s.otNormal > 0
-                          ? <><span className="font-medium">{s.otNormal}h</span>{s.otNormalAmt > 0 && <span className="text-xs text-amber-400 ml-1">+{Math.round(s.otNormalAmt).toLocaleString('en-US')}</span>}</>
-                          : <span className="text-gray-300">—</span>}
+                        {s.otNormal > 0 ? <span className="font-medium">{s.otNormal}h</span> : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-amber-600">
-                        {s.otHoliday > 0
-                          ? <><span className="font-medium">{s.otHoliday}h</span>{s.otHolidayAmt > 0 && <span className="text-xs text-amber-400 ml-1">+{Math.round(s.otHolidayAmt).toLocaleString('en-US')}</span>}</>
-                          : <span className="text-gray-300">—</span>}
+                        {s.otHoliday > 0 ? <span className="font-medium">{s.otHoliday}h</span> : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-amber-600">
-                        {s.otPublicHoliday > 0
-                          ? <><span className="font-medium">{s.otPublicHoliday}h</span>{s.otPublicHolidayAmt > 0 && <span className="text-xs text-amber-400 ml-1">+{Math.round(s.otPublicHolidayAmt).toLocaleString('en-US')}</span>}</>
-                          : <span className="text-gray-300">—</span>}
+                        {s.otPublicHoliday > 0 ? <span className="font-medium">{s.otPublicHoliday}h</span> : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-red-600">
                         {s.awoDeductionAmt > 0
@@ -1036,13 +1032,13 @@ export function AttendanceReportSection() {
                     <td className="px-3 py-2.5 text-center text-purple-600">{grandTotals.a             || '—'}</td>
                     <td className="px-3 py-2.5 text-right">{grandTotals.totalHours > 0 ? `${grandTotals.totalHours}h` : '—'}</td>
                     <td className="px-3 py-2.5 text-right text-amber-600">
-                      {grandTotals.otNormal > 0 ? <>{grandTotals.otNormal}h{grandTotals.otNormalAmt > 0 && <span className="text-xs ml-1">+{Math.round(grandTotals.otNormalAmt).toLocaleString('en-US')}</span>}</> : '—'}
+                      {grandTotals.otNormal > 0 ? `${grandTotals.otNormal}h` : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-right text-amber-600">
-                      {grandTotals.otHoliday > 0 ? <>{grandTotals.otHoliday}h{grandTotals.otHolidayAmt > 0 && <span className="text-xs ml-1">+{Math.round(grandTotals.otHolidayAmt).toLocaleString('en-US')}</span>}</> : '—'}
+                      {grandTotals.otHoliday > 0 ? `${grandTotals.otHoliday}h` : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-right text-amber-600">
-                      {grandTotals.otPublicHoliday > 0 ? <>{grandTotals.otPublicHoliday}h{grandTotals.otPublicHolidayAmt > 0 && <span className="text-xs ml-1">+{Math.round(grandTotals.otPublicHolidayAmt).toLocaleString('en-US')}</span>}</> : '—'}
+                      {grandTotals.otPublicHoliday > 0 ? `${grandTotals.otPublicHoliday}h` : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-right text-red-600">
                       {grandTotals.awoDeductionAmt > 0 ? <>−{Math.round(grandTotals.awoDeductionAmt).toLocaleString('en-US')}</> : '—'}
