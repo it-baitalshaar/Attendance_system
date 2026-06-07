@@ -834,7 +834,6 @@ export function SalaryReportSection() {
             viewMode={viewMode}
             filterLabel={filterLabel}
             reconciliationSummary={reconciliationSummary}
-            printAreaId="salary-print-area"
           />
         </div>
       </div>

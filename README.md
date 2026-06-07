@@ -101,8 +101,8 @@ Shared by **Attendance Report** and **Salary & Project Cost Report**.
 
 - **Saved recipient emails** — add once, reused every month
 - **WhatsApp recipient** — default `+971527249586`; change and **Save number**
-- **Send email with PDF** — HTML summary plus full report PDF attached (Gmail)
-- **Share PDF on WhatsApp** — generates the same PDF; on mobile uses the system share sheet (attach to WhatsApp); on desktop downloads the PDF and opens WhatsApp with a summary so you can attach the file
+- **Open email** — opens your email app with saved recipients, subject, and a short summary (you attach the PDF from **Print / Save as PDF**)
+- **Open WhatsApp** — opens `wa.me` with a pre-filled summary (you attach the PDF yourself)
 
 **API:**
 
@@ -110,10 +110,10 @@ Shared by **Attendance Report** and **Salary & Project Cost Report**.
 - `PATCH /api/payroll-report/delivery` — save WhatsApp number
 - `POST /api/payroll-report/emails` — add email
 - `DELETE /api/payroll-report/emails?id=` — remove email
-- `POST /api/payroll-report/send-email` — body: `{ "reportType": "salary" | "attendance", "from", "to", "department?", "employeeId?", "viewMode?", "filterLabel?" }` — attaches PDF
-- `POST /api/payroll-report/pdf` — same body; returns PDF binary for download or WhatsApp share
+- `POST /api/payroll-report/send-email` — optional server-side Gmail send (not used by the admin UI; UI opens the local email app instead)
+- `POST /api/payroll-report/pdf` — optional server-side PDF (not used by the admin UI; use **Print / Save as PDF**)
 
-**WhatsApp note:** Automated send from your personal number requires Meta WhatsApp Business API. **Share PDF on WhatsApp** uses the Web Share API when available (mobile); otherwise it downloads the PDF and opens `wa.me` with instructions to attach the file.
+**Note:** Email and WhatsApp buttons only open compose windows. Save the PDF with **Print / Save as PDF**, then attach it before sending.
 
 ### 7) Employee auto schedule
 
@@ -194,7 +194,7 @@ After pulling new code, run new SQL files in the Supabase SQL editor (or your mi
 2. Select **payroll month** (or custom dates) and filters → **Generate Salary Report**
 3. Review **Overall Summary** — salary total should match attendance report; fix project hours in attendance if variance shows
 4. **Send email now** to saved recipients, or **Open in WhatsApp** and send from your phone
-5. Optional: **Send email with PDF** / **Share PDF on WhatsApp**, or **Print / Save as PDF** for local archives
+5. **Print / Save as PDF**, then **Open email** or **Open WhatsApp** and attach the file
 
 ## Deploy notes
 

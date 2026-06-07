@@ -6,26 +6,19 @@ import {
   addPayrollReportEmail,
   deletePayrollReportEmail,
   savePayrollReportWhatsApp,
-  sendPayrollReportEmail,
-  fetchReportPdfBlob,
   EMAIL_REGEX,
   type PayrollReportEmailRow,
 } from '../../services/payrollReportDeliveryService';
 import { buildWhatsAppUrl } from '@/lib/payrollReportWhatsApp';
-import {
-  buildSalaryReportWhatsAppMessage,
-} from '@/lib/salaryReportEmailHtml';
-import {
-  capturePrintAreaAsPdf,
-  printAreaPdfFilename,
-} from '@/lib/capturePrintAreaPdf';
+import { openMailtoCompose } from '@/lib/payrollReportMailto';
+import { buildSalaryReportWhatsAppMessage } from '@/lib/salaryReportEmailHtml';
+import { formatPeriodLabel } from '@/lib/payrollPeriod';
 import type { SalaryReconciliationSummary } from '../../types/projectCostReport';
 
 interface PayrollReportDeliveryPanelProps {
   reportKind: 'salary' | 'attendance';
   hasReport: boolean;
   disabled?: boolean;
-  /** Salary report send / WhatsApp */
   from?: string;
   to?: string;
   department?: string | null;
@@ -33,15 +26,11 @@ interface PayrollReportDeliveryPanelProps {
   viewMode?: 'employee' | 'project';
   filterLabel?: string;
   reconciliationSummary?: SalaryReconciliationSummary | null;
-  /** Attendance WhatsApp */
   attendanceWhatsApp?: {
     employeeCount: number;
     grandTotalSalary: number;
   };
   onBuildAttendanceWhatsAppMessage?: () => string;
-  /** DOM id of printable report (same as Print / Save as PDF) */
-  printAreaId?: string;
-  company?: string | null;
 }
 
 export function PayrollReportDeliveryPanel({
@@ -50,15 +39,9 @@ export function PayrollReportDeliveryPanel({
   disabled,
   from = '',
   to = '',
-  department = null,
-  employeeId = null,
-  viewMode = 'employee',
   filterLabel = 'All Departments',
   reconciliationSummary = null,
-  attendanceWhatsApp,
   onBuildAttendanceWhatsAppMessage,
-  printAreaId,
-  company = null,
 }: PayrollReportDeliveryPanelProps) {
   const [emails, setEmails] = useState<PayrollReportEmailRow[]>([]);
   const [whatsappNumber, setWhatsappNumber] = useState('+971527249586');
@@ -121,121 +104,49 @@ export function PayrollReportDeliveryPanel({
     setTimeout(() => setSaveWaStatus(''), 2500);
   };
 
-  const buildPrintPdf = async () => {
-    if (!printAreaId) {
-      throw new Error('Print area not configured.');
+  const buildSummaryMessage = (): string | null => {
+    if (reportKind === 'salary' && reconciliationSummary) {
+      return buildSalaryReportWhatsAppMessage({ from, to, filterLabel, summary: reconciliationSummary });
     }
-    const filename = printAreaPdfFilename(reportKind, from, to, company, department);
-    return capturePrintAreaAsPdf(printAreaId, filename, {
-      landscape: reportKind === 'attendance',
-    });
+    if (reportKind === 'attendance' && onBuildAttendanceWhatsAppMessage) {
+      return onBuildAttendanceWhatsAppMessage();
+    }
+    return null;
   };
 
-  const handleSendEmail = async () => {
-    if (!from || !to) return;
-    setSendStatus('Generating PDF (same as Print)…');
-    try {
-      let pdfBase64: string | undefined;
-      let pdfFilename: string | undefined;
-      if (printAreaId) {
-        const captured = await buildPrintPdf();
-        pdfBase64 = captured.base64;
-        pdfFilename = captured.filename;
-      }
-      setSendStatus('Sending email…');
-      const result = await sendPayrollReportEmail({
-        reportType: reportKind,
-        from,
-        to,
-        department,
-        employeeId,
-        viewMode: reportKind === 'salary' ? viewMode : undefined,
-        filterLabel,
-        pdfBase64,
-        pdfFilename,
-      });
-      setSendStatus(
-        result.ok
-          ? `Email sent with PDF attached to ${result.sent ?? emails.length} recipient(s).`
-          : result.error ?? 'Failed to send.'
-      );
-    } catch (err) {
-      setSendStatus(err instanceof Error ? err.message : 'Failed to generate or send PDF.');
+  const handleOpenEmail = () => {
+    if (!from || !to || emails.length === 0) return;
+    const message = buildSummaryMessage();
+    if (!message) {
+      setSendStatus('Generate the report first.');
+      return;
     }
+
+    const periodLabel = formatPeriodLabel(from, to);
+    const subject =
+      reportKind === 'salary'
+        ? `Salary & Project Cost Report — ${periodLabel}`
+        : `Attendance Report — ${periodLabel}`;
+
+    openMailtoCompose(
+      emails.map((e) => e.email),
+      subject,
+      message
+    );
+    setSendStatus('Email app opened — attach the PDF you saved from Print / Save as PDF.');
     setTimeout(() => setSendStatus(''), 6000);
   };
 
-  const handleWhatsApp = async () => {
-    if (!from || !to) return;
-    setSendStatus('Generating PDF (same as Print)…');
-    try {
-      let message = '';
-      if (reportKind === 'salary' && reconciliationSummary) {
-        message = buildSalaryReportWhatsAppMessage({
-          from,
-          to,
-          filterLabel,
-          summary: reconciliationSummary,
-        });
-      } else if (reportKind === 'attendance' && onBuildAttendanceWhatsAppMessage) {
-        message = onBuildAttendanceWhatsAppMessage();
-      } else if (attendanceWhatsApp) {
-        message = [
-          'Attendance Report',
-          `Period: ${from} – ${to}`,
-          `Scope: ${filterLabel}`,
-          `Employees: ${attendanceWhatsApp.employeeCount}`,
-        ].join('\n');
-      } else {
-        setSendStatus('Generate the report first.');
-        return;
-      }
-
-      const { blob, filename } = printAreaId
-        ? await buildPrintPdf()
-        : await fetchReportPdfBlob({
-            reportType: reportKind,
-            from,
-            to,
-            department,
-            employeeId,
-            viewMode: reportKind === 'salary' ? viewMode : undefined,
-            filterLabel,
-          });
-      const file = new File([blob], filename, { type: 'application/pdf' });
-      const shareText = `${message}\n\n(PDF attached)`;
-
-      if (
-        typeof navigator !== 'undefined' &&
-        navigator.share &&
-        (typeof navigator.canShare !== 'function' || navigator.canShare({ files: [file] }))
-      ) {
-        await navigator.share({
-          title: filename,
-          text: shareText,
-          files: [file],
-        });
-        setSendStatus('Shared to WhatsApp (or another app) with PDF attached.');
-      } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.click();
-        URL.revokeObjectURL(url);
-        window.open(
-          buildWhatsAppUrl(
-            whatsappNumber,
-            `${message}\n\nPDF downloaded (${filename}). Attach it in WhatsApp before sending.`
-          ),
-          '_blank',
-          'noopener,noreferrer'
-        );
-        setSendStatus('PDF downloaded. WhatsApp opened — attach the file from Downloads.');
-      }
-    } catch (err) {
-      setSendStatus(err instanceof Error ? err.message : 'WhatsApp share failed.');
+  const handleOpenWhatsApp = () => {
+    if (!from || !to || !whatsappNumber.trim()) return;
+    const message = buildSummaryMessage();
+    if (!message) {
+      setSendStatus('Generate the report first.');
+      return;
     }
+
+    window.open(buildWhatsAppUrl(whatsappNumber, message), '_blank', 'noopener,noreferrer');
+    setSendStatus('WhatsApp opened — attach the PDF you saved from Print / Save as PDF.');
     setTimeout(() => setSendStatus(''), 6000);
   };
 
@@ -243,10 +154,10 @@ export function PayrollReportDeliveryPanel({
     <div className="mt-6 p-4 rounded-lg border border-gray-200 bg-gray-50/80">
       <h3 className="text-sm font-semibold text-gray-800 mb-1">Send report (Email &amp; WhatsApp)</h3>
       <p className="text-xs text-gray-500 mb-4">
-        Recipients are saved permanently for monthly sends. Email and WhatsApp use the{' '}
-        <strong>same PDF as Print / Save as PDF</strong> (full on-screen report). Email uses Gmail (
-        <code className="text-[11px]">GMAIL_USER</code>). WhatsApp shares the PDF on mobile when
-        supported; on desktop it downloads the PDF and opens WhatsApp for you to attach it.
+        <strong>1.</strong> Use <strong>Print / Save as PDF</strong> to save the report.{' '}
+        <strong>2.</strong> Click Open email or Open WhatsApp below.{' '}
+        <strong>3.</strong> Attach the PDF in your email or chat before sending. Recipient emails and
+        the WhatsApp number are saved here for reuse each month.
       </p>
 
       <div className="mb-4">
@@ -323,20 +234,20 @@ export function PayrollReportDeliveryPanel({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={handleSendEmail}
+          onClick={handleOpenEmail}
           disabled={!hasReport || disabled || emails.length === 0 || loadingSettings}
           className="px-4 py-2 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 font-medium"
         >
-            Send email with PDF
-          </button>
-          <button
-            type="button"
-            onClick={handleWhatsApp}
-            disabled={!hasReport || disabled || !whatsappNumber.trim()}
-            className="px-4 py-2 text-sm rounded bg-[#25D366] text-white hover:opacity-90 disabled:opacity-40 font-medium"
-          >
-            Share PDF on WhatsApp
-          </button>
+          Open email
+        </button>
+        <button
+          type="button"
+          onClick={handleOpenWhatsApp}
+          disabled={!hasReport || disabled || !whatsappNumber.trim()}
+          className="px-4 py-2 text-sm rounded bg-[#25D366] text-white hover:opacity-90 disabled:opacity-40 font-medium"
+        >
+          Open WhatsApp
+        </button>
       </div>
       {sendStatus && <p className="mt-2 text-sm text-gray-700">{sendStatus}</p>}
       {!hasReport && (

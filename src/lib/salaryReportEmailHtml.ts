@@ -135,7 +135,7 @@ export function buildSalaryReportWhatsAppMessage(input: {
       : `Variance: ${fmt(input.summary.grandVariance, 2)} (check attendance project hours)`,
     `Employees: ${input.summary.employeeCount}`,
     ``,
-    `PDF report is attached when you use Send email now, or Share via WhatsApp in the admin screen.`,
+    `Please attach the report PDF (saved from Print / Save as PDF in the admin app).`,
   ];
   return lines.join('\n');
 }

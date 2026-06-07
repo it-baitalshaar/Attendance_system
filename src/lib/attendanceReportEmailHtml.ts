@@ -74,7 +74,7 @@ export function buildAttendanceReportWhatsAppMessage(input: {
     `Employees: ${input.employeeCount}`,
     input.grandTotalSalary > 0 ? `Total Salary: ${fmt(input.grandTotalSalary)}` : '',
     '',
-    'PDF report attached via Send email now, or Share via WhatsApp in Admin → Reports.',
+    'Please attach the report PDF (saved from Print / Save as PDF in the admin app).',
   ]
     .filter(Boolean)
     .join('\n');
