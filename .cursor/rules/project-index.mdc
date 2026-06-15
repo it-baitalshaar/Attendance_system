@@ -1,22 +1,30 @@
 ---
-description: Load project index before any task — maps routes, tables, services, and edit conventions
+description: Read project index before tasks; update it after every task
 alwaysApply: true
 ---
 
-# Project index first
+# Project index — before and after every task
 
-Before planning or editing code in this repo, read **`docs/PROJECT_INDEX.md`**.
+## Before (required)
 
-## Workflow
+Read **`docs/PROJECT_INDEX.md`** first. Use §0 quick nav to open only the 1–3 files you need.
 
-1. Read `docs/PROJECT_INDEX.md` (use §0 quick nav to find the 1–3 files you need).
-2. Open only those target files — do not scan the whole codebase unless the index is insufficient.
-3. After adding routes, tables, migrations, or major features, update the relevant section in `docs/PROJECT_INDEX.md` plus one changelog row (§16).
+## After (required — do not skip)
 
-## Hard rules (from index — do not duplicate logic elsewhere)
+**Every task must end with an index check.** Before marking work done:
 
-- **Payroll math:** `src/app/admin/services/payrollCalculation.ts` + `attendanceReportService.ts` only.
-- **Office punches:** insert `office_attendance_logs` first, then reconcile RPC — never set `worked_hours` manually.
-- **Email:** all features use `GMAIL_USER` / `GMAIL_APP_PASSWORD` (`src/lib/email.ts`).
-- **Supabase clients:** browser → `lib/supabase.ts`; API routes → `lib/supabaseAppRouterClient.ts`; middleware → `lib/supabaseReqResClient.ts`; RLS bypass → service role in API routes.
-- **User workflows:** see `README.md`; architecture map stays in `docs/PROJECT_INDEX.md`.
+1. **Did anything change?** (files added/moved/renamed, routes, APIs, tables, env vars, hooks, services, business rules, or behavior)
+2. **If yes** → update `docs/PROJECT_INDEX.md`:
+   - Edit the matching section (see §20 map: route→§5, table→§6, hook→§9, etc.)
+   - Add one row to **§16 Changelog** (date + what changed)
+   - Bump **Last indexed** date at the top
+3. **If no structural change** (e.g. typo, comment, pure CSS) → still bump **Last indexed** if you read stale sections, or add a one-line §16 note if useful for the next agent.
+4. **Tell the user** in your final message which index sections you updated (or "index unchanged — no structural changes").
+
+## Hard rules (do not duplicate logic elsewhere)
+
+- **Payroll math:** `payrollCalculation.ts` + `attendanceReportService.ts` only.
+- **Office punches:** `office_attendance_logs` first → reconcile RPC — never set `worked_hours` manually.
+- **Email:** `GMAIL_USER` / `GMAIL_APP_PASSWORD` (`src/lib/email.ts`).
+- **Supabase clients:** browser → `lib/supabase.ts`; API → `lib/supabaseAppRouterClient.ts`; middleware → `lib/supabaseReqResClient.ts`.
+- **User workflows:** `README.md`; architecture map stays in `docs/PROJECT_INDEX.md`.

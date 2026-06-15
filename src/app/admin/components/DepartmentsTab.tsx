@@ -5,6 +5,9 @@ import type { Department } from '../services/departmentService';
 import { getEmployeeCountByDepartment } from '../services/departmentService';
 import { THEME_OPTIONS } from '@/app/constants/themes';
 import type { DepartmentThemeId } from '@/app/constants/themes';
+import { DepartmentHolidaysSection } from './DepartmentHolidaysSection';
+import { WeekendDaysPicker } from './WeekendDaysPicker';
+import { resolveWeekendDaysForDepartment, formatWeekendDaysSummary } from '@/app/lib/overtimeCalendar';
 
 interface DepartmentsTabProps {
   departments: Department[];
@@ -16,7 +19,8 @@ interface DepartmentsTabProps {
     themeId: DepartmentThemeId,
     allowFutureAttendance: boolean,
     allowHolidayOvertime: boolean,
-    allowPublicHolidayOvertime: boolean
+    allowPublicHolidayOvertime: boolean,
+    weekendDays: number[]
   ) => Promise<void>;
   onUpdateDepartment: (
     id: string,
@@ -25,7 +29,8 @@ interface DepartmentsTabProps {
     themeId?: DepartmentThemeId,
     allowFutureAttendance?: boolean,
     allowHolidayOvertime?: boolean,
-    allowPublicHolidayOvertime?: boolean
+    allowPublicHolidayOvertime?: boolean,
+    weekendDays?: number[]
   ) => Promise<void>;
   onDeleteDepartment: (id: string, name: string, confirmName: string) => Promise<void>;
   onClearMessage: () => void;
@@ -46,12 +51,14 @@ export function DepartmentsTab({
   const [newAllowFutureAttendance, setNewAllowFutureAttendance] = useState(false);
   const [newAllowHolidayOvertime, setNewAllowHolidayOvertime] = useState(true);
   const [newAllowPublicHolidayOvertime, setNewAllowPublicHolidayOvertime] = useState(true);
+  const [newWeekendDays, setNewWeekendDays] = useState<number[]>([]);
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [editName, setEditName] = useState('');
   const [editThemeId, setEditThemeId] = useState<DepartmentThemeId>('default');
   const [editAllowFutureAttendance, setEditAllowFutureAttendance] = useState(false);
   const [editAllowHolidayOvertime, setEditAllowHolidayOvertime] = useState(true);
   const [editAllowPublicHolidayOvertime, setEditAllowPublicHolidayOvertime] = useState(true);
+  const [editWeekendDays, setEditWeekendDays] = useState<number[]>([]);
   const [deletingDept, setDeletingDept] = useState<Department | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
   const [employeeCounts, setEmployeeCounts] = useState<Record<string, number>>({});
@@ -76,6 +83,7 @@ export function DepartmentsTab({
     setEditAllowFutureAttendance(Boolean(d.allow_future_attendance));
     setEditAllowHolidayOvertime(d.allow_holiday_overtime !== false);
     setEditAllowPublicHolidayOvertime(d.allow_public_holiday_overtime !== false);
+    setEditWeekendDays(resolveWeekendDaysForDepartment(d.name, d.weekend_days));
     onClearMessage();
   };
 
@@ -95,13 +103,15 @@ export function DepartmentsTab({
         newThemeId,
         newAllowFutureAttendance,
         newAllowHolidayOvertime,
-        newAllowPublicHolidayOvertime
+        newAllowPublicHolidayOvertime,
+        newWeekendDays
       );
       setNewName('');
       setNewThemeId('default');
       setNewAllowFutureAttendance(false);
       setNewAllowHolidayOvertime(true);
       setNewAllowPublicHolidayOvertime(true);
+      setNewWeekendDays([]);
     } finally {
       setSubmitting(false);
     }
@@ -119,7 +129,17 @@ export function DepartmentsTab({
     const publicHolidayOvertimeUnchanged =
       Boolean(editAllowPublicHolidayOvertime) ===
       (editingDept.allow_public_holiday_overtime !== false);
-    if (nameUnchanged && themeUnchanged && futureUnchanged && holidayOvertimeUnchanged && publicHolidayOvertimeUnchanged) {
+    const weekendUnchanged =
+      JSON.stringify([...editWeekendDays].sort()) ===
+      JSON.stringify(resolveWeekendDaysForDepartment(editingDept.name, editingDept.weekend_days));
+    if (
+      nameUnchanged &&
+      themeUnchanged &&
+      futureUnchanged &&
+      holidayOvertimeUnchanged &&
+      publicHolidayOvertimeUnchanged &&
+      weekendUnchanged
+    ) {
       setEditingDept(null);
       return;
     }
@@ -132,7 +152,8 @@ export function DepartmentsTab({
         editThemeId,
         editAllowFutureAttendance,
         editAllowHolidayOvertime,
-        editAllowPublicHolidayOvertime
+        editAllowPublicHolidayOvertime,
+        editWeekendDays
       );
       setEditingDept(null);
     } finally {
@@ -217,6 +238,9 @@ export function DepartmentsTab({
               <span>Enable public holiday overtime type (x2.5)</span>
             </label>
           </div>
+          <div className="w-full">
+            <WeekendDaysPicker value={newWeekendDays} onChange={setNewWeekendDays} />
+          </div>
           <button
             type="submit"
             disabled={submitting || !newName.trim()}
@@ -264,6 +288,9 @@ export function DepartmentsTab({
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Employees
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Weekend days
+                  </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                     Actions
                   </th>
@@ -280,6 +307,11 @@ export function DepartmentsTab({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {employeeCounts[d.id] ?? '—'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-600 text-sm">
+                      {formatWeekendDaysSummary(
+                        resolveWeekendDaysForDepartment(d.name, d.weekend_days)
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
@@ -375,6 +407,7 @@ export function DepartmentsTab({
                     <span>Enable public holiday overtime type (x2.5)</span>
                   </label>
                 </div>
+                <WeekendDaysPicker value={editWeekendDays} onChange={setEditWeekendDays} />
               </div>
               <p className="text-xs text-gray-500 mt-2">
                 Name change will update all employees and projects. Theme applies to the attendance UI.
@@ -455,6 +488,8 @@ export function DepartmentsTab({
           </div>
         </div>
       )}
+
+      <DepartmentHolidaysSection departments={departments} />
     </>
   );
 }

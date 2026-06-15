@@ -9,6 +9,7 @@ import { setTotalProject, setLeftHours, setAttendanceStatus, setEmployeesStatus,
 import OthersComponents from './OthersComponent';
 import debounce from 'lodash/debounce';
 import { OVERTIME_TYPE_LABELS, normalizeOvertimeType } from '@/app/constants/overtime';
+import { useOptionalOvertimeCalendarContext } from '@/app/context/OvertimeCalendarContext';
 
 interface Employee {
   id: string;
@@ -84,6 +85,7 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
     state.project.leftHours
   );
   const department = useSelector((state: RootState) => state.project.department);
+  const calendar = useOptionalOvertimeCalendarContext();
 
   useEffect(() => {
     if (department === 'Construction') {
@@ -204,6 +206,31 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
       setAttendance(undefined);
     }
   };
+
+  useEffect(() => {
+    if (disabled || !calendar || calendar.loading || !isAttend || isAbsent || isHold) return;
+    if (weekendSelected || holidaySelected || halfDayAMSelected || halfDayPMSelected) return;
+
+    const suggested = calendar.suggestedAttendanceStatus;
+    if (suggested === 'Weekend') {
+      handleDropDownAttendance('Weekend');
+    } else if (suggested === 'Holiday-Work') {
+      handleDropDownAttendance('Holiday-Work');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- calendar default once per date when no type selected
+  }, [
+    calendar?.selectedDate,
+    calendar?.suggestedAttendanceStatus,
+    calendar?.loading,
+    disabled,
+    isAttend,
+    isAbsent,
+    isHold,
+    weekendSelected,
+    holidaySelected,
+    halfDayAMSelected,
+    halfDayPMSelected,
+  ]);
 
   const handleinputChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
 

@@ -223,7 +223,12 @@
 
 import { NextResponse } from 'next/server';
 import { createSupabaseServerComponentClient } from '@/lib/supabaseAppRouterClient';
-import { getOvertimeRate, normalizeOvertimeType } from '@/app/constants/overtime';
+import { getOvertimeRate, normalizeOvertimeType, type OvertimeType } from '@/app/constants/overtime';
+import {
+  resolveDefaultOvertimeType,
+  resolveWeekendDaysForDepartment,
+  type OvertimeCalendarConfig,
+} from '@/app/lib/overtimeCalendar';
 
 type SimpleStatus = 'present' | 'absent' | 'vacation';
 
@@ -339,6 +344,92 @@ interface AttendanceProject {
 }
 
 const MAX_FUTURE_DAYS = 10;
+
+async function getDepartmentCalendarConfig(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
+  department: string,
+  targetDate: string
+): Promise<
+  OvertimeCalendarConfig & { allowHoliday: boolean; allowPublicHoliday: boolean }
+> {
+  const fallbackWeekend = resolveWeekendDaysForDepartment(department, null);
+  let weekendDays = fallbackWeekend;
+  let allowHoliday = true;
+  let allowPublicHoliday = true;
+  let deptId: string | undefined;
+
+  const { data: deptData, error: deptError } = await supabase
+    .from('departments')
+    .select('id, name, allow_holiday_overtime, allow_public_holiday_overtime, weekend_days')
+    .ilike('name', department.trim())
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (!deptError && deptData?.[0]) {
+    const row = deptData[0] as {
+      id: string;
+      name?: string;
+      allow_holiday_overtime?: boolean;
+      allow_public_holiday_overtime?: boolean;
+      weekend_days?: number[] | null;
+    };
+    deptId = row.id;
+    weekendDays = resolveWeekendDaysForDepartment(row.name ?? department, row.weekend_days);
+    allowHoliday = row.allow_holiday_overtime !== false;
+    allowPublicHoliday = row.allow_public_holiday_overtime !== false;
+  }
+
+  const dateKey = targetDate.includes('T') ? targetDate.split('T')[0] : targetDate;
+  const holidayDates = new Set<string>();
+
+  const { data: holidayRows, error: holidayError } = await supabase
+    .from('department_holidays')
+    .select('holiday_date, department_id')
+    .eq('is_active', true)
+    .eq('holiday_date', dateKey);
+
+  if (!holidayError && holidayRows) {
+    for (const row of holidayRows) {
+      const r = row as { holiday_date: string; department_id: string | null };
+      if (r.department_id === null || (deptId && r.department_id === deptId)) {
+        holidayDates.add(String(r.holiday_date).slice(0, 10));
+      }
+    }
+  }
+
+  return {
+    weekendDays,
+    holidayDates: Array.from(holidayDates),
+    allowHolidayOvertime: allowHoliday,
+    allowPublicHolidayOvertime: allowPublicHoliday,
+    allowHoliday,
+    allowPublicHoliday,
+  };
+}
+
+function finalizeOvertimeType(
+  clientType: unknown,
+  calendar: OvertimeCalendarConfig & { allowHoliday: boolean; allowPublicHoliday: boolean },
+  targetDate: string,
+  statusEmployee: string | null | undefined
+): OvertimeType {
+  let otType = normalizeOvertimeType(clientType);
+  const calendarDefault = resolveDefaultOvertimeType({
+    dateStr: targetDate,
+    config: calendar,
+    attendanceStatus: statusEmployee,
+  });
+  if (otType === 'normal' && calendarDefault !== 'normal') {
+    otType = calendarDefault;
+  }
+  if (
+    (otType === 'holiday' && !calendar.allowHoliday) ||
+    (otType === 'public_holiday' && !calendar.allowPublicHoliday)
+  ) {
+    otType = 'normal';
+  }
+  return otType;
+}
 
 async function getDepartmentOvertimeTypeSettings(
   supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
@@ -541,7 +632,11 @@ export async function POST(request: Request) {
         ]
       )
     );
-    const overtimeTypeSettings = await getDepartmentOvertimeTypeSettings(supabase, department);
+    const calendarConfig = await getDepartmentCalendarConfig(supabase, department, targetDate);
+    const overtimeTypeSettings = {
+      allowHoliday: calendarConfig.allowHoliday,
+      allowPublicHoliday: calendarConfig.allowPublicHoliday,
+    };
 
     console.log("legacy submit: length ", employees.length, " department ", department, " date ", targetDate, " isEditTrack ", isEditTrack)
     if (employees.length > 0)
@@ -624,13 +719,13 @@ export async function POST(request: Request) {
               const allow =
                 fromDb !== false && employees[i].overtime_enabled !== false;
               const projRow = employees[i].projects.projectId[projectIdx];
-              let otType = normalizeOvertimeType(projRow.overtime_type);
-              if (
-                (otType === 'holiday' && !overtimeTypeSettings.allowHoliday) ||
-                (otType === 'public_holiday' && !overtimeTypeSettings.allowPublicHoliday)
-              ) {
-                otType = 'normal';
-              }
+              const statusEmployee = employees[i].employee_status?.[0]?.status_employee;
+              let otType = finalizeOvertimeType(
+                projRow.overtime_type,
+                calendarConfig,
+                targetDate,
+                statusEmployee
+              );
               const otHours = allow ? projRow.overtime || 0 : 0;
               await supabase.from('Attendance_projects').insert({
                 attendance_id: attendanceId,

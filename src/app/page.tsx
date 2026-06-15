@@ -13,6 +13,7 @@ import { HomeLockedBanner } from './components/home/HomeLockedBanner';
 import { HomeEmployeeGrid } from './components/home/HomeEmployeeGrid';
 import { HomeModals } from './components/home/HomeModals';
 import { GeometricDivider } from './components/theme';
+import { OvertimeCalendarProvider } from './context/OvertimeCalendarContext';
 
 export default function Home() {
   const { userDisplay, userDepartment, handleLogout } = useHomeAuth();
@@ -105,31 +106,36 @@ export default function Home() {
             You are editing an already submitted attendance.
           </p>
         )}
-        <HomeEmployeeGrid
-          loading={state.loading}
-          displayList={state.displayList}
-          showEntryMode={state.showEntryMode}
-          entryMode={state.entryMode}
-          attendanceEntries={state.attendanceEntries}
-          cardsLocked={state.cardsLocked}
-          theme={theme}
-        />
-        {state.selectedDepartment && state.employeeList.length > 0 && (
-          <div className="mt-6 sm:mt-8 w-full flex justify-center">
-            <button
-              type="button"
-              onClick={submit.handleSubmitClick}
-              disabled={state.cardsLocked}
-              className={`w-full sm:w-auto min-h-[48px] px-6 py-3 text-theme-white rounded-theme-card disabled:opacity-50 touch-manipulation font-medium ${
-                isSaqiya
-                  ? 'bg-theme-primary hover:opacity-90'
-                  : 'bg-red-600 hover:bg-red-700'
-              }`}
-            >
-              Submit Attendance
-            </button>
-          </div>
-        )}
+        <OvertimeCalendarProvider
+          department={state.departmentForFetch}
+          selectedDate={state.selectedDate}
+        >
+          <HomeEmployeeGrid
+            loading={state.loading}
+            displayList={state.displayList}
+            showEntryMode={state.showEntryMode}
+            entryMode={state.entryMode}
+            attendanceEntries={state.attendanceEntries}
+            cardsLocked={state.cardsLocked}
+            theme={theme}
+          />
+          {state.selectedDepartment && state.employeeList.length > 0 && (
+            <div className="mt-6 sm:mt-8 w-full flex justify-center">
+              <button
+                type="button"
+                onClick={submit.handleSubmitClick}
+                disabled={state.cardsLocked}
+                className={`w-full sm:w-auto min-h-[48px] px-6 py-3 text-theme-white rounded-theme-card disabled:opacity-50 touch-manipulation font-medium ${
+                  isSaqiya
+                    ? 'bg-theme-primary hover:opacity-90'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                Submit Attendance
+              </button>
+            </div>
+          )}
+        </OvertimeCalendarProvider>
       </div>
 
       <HomeModals

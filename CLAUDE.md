@@ -1,7 +1,17 @@
 # Claude — project context
 
-Read **`docs/PROJECT_INDEX.md`** at the start of every session before editing this repo.
+## Start of session
 
-Use §0 (quick nav) to jump to the minimal file set. Update `docs/PROJECT_INDEX.md` when you add routes, tables, migrations, or major features.
+Read **`docs/PROJECT_INDEX.md`** before editing. Use §0 quick nav.
 
-Full agent instructions: see **`AGENTS.md`**.
+## End of every task (required)
+
+Update **`docs/PROJECT_INDEX.md`** if the codebase changed (routes, tables, services, rules, etc.):
+
+- Edit the relevant section (§20 has the section map)
+- Add a row to §16 Changelog
+- Bump **Last indexed** date at the top
+
+Say in your reply which sections you updated, or "index unchanged."
+
+Full rules: **`AGENTS.md`**

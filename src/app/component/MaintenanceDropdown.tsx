@@ -34,6 +34,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/redux/store';
 import { addProjectToEmployee, addHours, setRemainingHours, setLeftHours, sum_hours, overtime_hours } from '@/redux/slice';
 import { OvertimeHoursFields } from '@/app/component/OvertimeHoursFields';
+import { useOptionalOvertimeCalendarContext } from '@/app/context/OvertimeCalendarContext';
+import { DEFAULT_OVERTIME_TYPE } from '@/app/constants/overtime';
 import { cpSync } from 'fs';
 
 async function fetchProjects(department: string) {
@@ -80,6 +82,7 @@ const MaintenanceDropdown = ({employee_id, input_index, departments}:Maintenance
   
   // const dispatch = useDispatch();
   const dispatch = useDispatch<AppDispatch>();
+  const calendar = useOptionalOvertimeCalendarContext();
   
   const employee1 = useSelector((state: RootState) =>
     state.project.employees.find(emp => emp.employee_id === employee_id)
@@ -278,7 +281,18 @@ console.log("this is the employee _id" , employee_id)
     
     // Dispatch the selected project and its index
     // let the_num = atten_status[0].attendance_status
-    dispatch(addProjectToEmployee({ employee_id, selected_project, project_index: input_index }));
+    const statusEmployee = employee1?.employee_status?.[0]?.status_employee ?? null;
+    const defaultOt =
+      calendar?.resolveDefault(statusEmployee) ?? DEFAULT_OVERTIME_TYPE;
+
+    dispatch(
+      addProjectToEmployee({
+        employee_id,
+        selected_project,
+        project_index: input_index,
+        overtime_type: defaultOt,
+      })
+    );
     if (departments === 'Construction' || employee1?.employee_status![0].status_employee === 'Sick Leave' ||
            employee1?.employee_status![0].status_employee === 'Holiday-Work' || employee1?.employee_status![0].status_employee === 'Weekend'
     )
@@ -286,7 +300,14 @@ console.log("this is the employee _id" , employee_id)
       const hours = parseInt("8", 10);
       dispatch(addHours({hours, project_index:input_index, employee_id}))
     }
-    
+    dispatch(
+      overtime_hours({
+        overtime_Hours: 0,
+        employee_id,
+        project_index: input_index,
+        overtime_type: defaultOt,
+      })
+    );
 
   };
 

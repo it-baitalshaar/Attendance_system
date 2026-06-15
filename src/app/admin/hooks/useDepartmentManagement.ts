@@ -37,7 +37,8 @@ export function useDepartmentManagement() {
     themeId: DepartmentThemeId = 'default',
     allowFutureAttendance: boolean = false,
     allowHolidayOvertime: boolean = true,
-    allowPublicHolidayOvertime: boolean = true
+    allowPublicHolidayOvertime: boolean = true,
+    weekendDays: number[] = []
   ) => {
     setMessage('');
     try {
@@ -46,7 +47,8 @@ export function useDepartmentManagement() {
         themeId,
         allowFutureAttendance,
         allowHolidayOvertime,
-        allowPublicHolidayOvertime
+        allowPublicHolidayOvertime,
+        weekendDays
       );
       setMessage('Department created successfully');
       setMessageType('success');
@@ -64,7 +66,8 @@ export function useDepartmentManagement() {
     themeId?: DepartmentThemeId,
     allowFutureAttendance?: boolean,
     allowHolidayOvertime?: boolean,
-    allowPublicHolidayOvertime?: boolean
+    allowPublicHolidayOvertime?: boolean,
+    weekendDays?: number[]
   ) => {
     setMessage('');
     try {
@@ -75,7 +78,8 @@ export function useDepartmentManagement() {
         themeId,
         allowFutureAttendance,
         allowHolidayOvertime,
-        allowPublicHolidayOvertime
+        allowPublicHolidayOvertime,
+        weekendDays
       );
       setMessage('Department updated successfully');
       setMessageType('success');

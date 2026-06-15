@@ -195,8 +195,8 @@ const projectSlice = createSlice({
       }
     },
 
-    addProjectToEmployee: (state, action: PayloadAction<{ employee_id: string; selected_project: string, project_index: number }>) => {
-    const { employee_id, selected_project ,project_index } = action.payload;
+    addProjectToEmployee: (state, action: PayloadAction<{ employee_id: string; selected_project: string, project_index: number; overtime_type?: string }>) => {
+    const { employee_id, selected_project ,project_index, overtime_type } = action.payload;
     const employee = state.employees.find(emp => emp.employee_id === employee_id);
     if (employee) 
       {
@@ -214,7 +214,7 @@ const projectSlice = createSlice({
               projectName: [],  // Create a new project array with the selected project
               hours: 0,  // You can set hours later
               overtime:0,
-              overtime_type: 'normal',
+              overtime_type: overtime_type ?? 'normal',
               note:null,
             };
             employee.projects!.projectId[project_index].projectName[project_index] = selected_project

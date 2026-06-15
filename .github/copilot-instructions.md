@@ -1,8 +1,7 @@
 # Copilot instructions — Attendance System
 
-Before suggesting or generating code, read **`docs/PROJECT_INDEX.md`**.
+**Before coding:** read `docs/PROJECT_INDEX.md` (§0 quick nav).
 
-- Use §0 quick nav to find target files; avoid reading the entire codebase.
-- Payroll logic lives in `src/app/admin/services/payrollCalculation.ts` — do not duplicate.
-- Office attendance: logs first, then reconcile RPC.
-- See `AGENTS.md` for conventions and `README.md` for feature workflows.
+**After every task:** update `docs/PROJECT_INDEX.md` if anything structural changed — matching section + §16 changelog + bump Last indexed date. Say which sections you updated in your reply.
+
+Conventions: `AGENTS.md`. Payroll math: `payrollCalculation.ts` only. Office: logs → reconcile RPC.

@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '@/redux/store';
 import { overtime_hours } from '@/redux/slice';
 import { fetchDepartmentsService } from '@/app/admin/services/departmentService';
+import { useOptionalOvertimeCalendarContext } from '@/app/context/OvertimeCalendarContext';
 import {
   OVERTIME_TYPE_LABELS,
   type OvertimeType,
@@ -32,6 +33,7 @@ export function OvertimeHoursFields({
   hoursPlaceholder,
 }: OvertimeHoursFieldsProps) {
   const dispatch = useDispatch<AppDispatch>();
+  const calendar = useOptionalOvertimeCalendarContext();
   const department = useSelector((s: RootState) => s.project.department);
   const [allowedTypesByDepartment, setAllowedTypesByDepartment] = React.useState<
     Record<string, { holiday: boolean; publicHoliday: boolean }>
@@ -40,6 +42,7 @@ export function OvertimeHoursFields({
     s.project.employees.find((e) => e.employee_id === employee_id)
   );
   const proj = employee1?.projects?.projectId?.[project_index];
+  const statusEmployee = employee1?.employee_status?.[0]?.status_employee ?? null;
   const deptKey = (department ?? '').trim().toLowerCase();
   const deptOptions = allowedTypesByDepartment[deptKey];
   const allowHoliday = deptOptions ? deptOptions.holiday : true;
@@ -59,6 +62,13 @@ export function OvertimeHoursFields({
   const hoursNum = proj?.overtime;
   const hoursSelectValue =
     hoursNum === undefined || hoursNum === null ? '' : String(hoursNum);
+
+  const resolvedDefault = React.useMemo(() => {
+    if (calendar) {
+      return calendar.resolveDefault(statusEmployee);
+    }
+    return DEFAULT_OVERTIME_TYPE;
+  }, [calendar, statusEmployee]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -83,19 +93,70 @@ export function OvertimeHoursFields({
     };
   }, []);
 
+  /** When calendar/disabled types change, clamp to an allowed type. */
   React.useEffect(() => {
     if (!proj) return;
     if (typeVal === persistedType) return;
+    const h = typeof proj.overtime === 'number' ? proj.overtime : 0;
+    const fallback = allowedTypes.includes(resolvedDefault)
+      ? resolvedDefault
+      : DEFAULT_OVERTIME_TYPE;
+    dispatch(
+      overtime_hours({
+        overtime_Hours: h,
+        employee_id,
+        project_index,
+        overtime_type: fallback,
+      })
+    );
+  }, [
+    dispatch,
+    employee_id,
+    project_index,
+    proj,
+    persistedType,
+    typeVal,
+    resolvedDefault,
+    allowedTypes,
+  ]);
+
+  /** Auto-default weekend / holiday overtime from calendar or attendance status. */
+  React.useEffect(() => {
+    if (!proj || !show || !calendar) return;
+    const target = resolvedDefault;
+    if (!allowedTypes.includes(target)) return;
+    if (persistedType === target) return;
+
+    const status = (statusEmployee ?? '').trim();
+
+    const shouldSync =
+      persistedType === 'normal' ||
+      status === 'Weekend' ||
+      status === 'Holiday-Work';
+
+    if (!shouldSync) return;
+
     const h = typeof proj.overtime === 'number' ? proj.overtime : 0;
     dispatch(
       overtime_hours({
         overtime_Hours: h,
         employee_id,
         project_index,
-        overtime_type: DEFAULT_OVERTIME_TYPE,
+        overtime_type: target,
       })
     );
-  }, [dispatch, employee_id, project_index, proj, persistedType, typeVal]);
+  }, [
+    proj,
+    show,
+    calendar,
+    resolvedDefault,
+    allowedTypes,
+    persistedType,
+    statusEmployee,
+    dispatch,
+    employee_id,
+    project_index,
+  ]);
 
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const t = normalizeOvertimeType(e.target.value);
@@ -124,6 +185,13 @@ export function OvertimeHoursFields({
 
   if (!show) return null;
 
+  const calendarHint =
+    calendar && resolvedDefault !== 'normal' && typeVal === resolvedDefault
+      ? resolvedDefault === 'public_holiday'
+        ? 'Default: holiday overtime for this date'
+        : 'Default: weekend overtime for this date'
+      : null;
+
   return (
     <div className="w-full mt-5 space-y-2">
       {showTypeSelector && (
@@ -142,6 +210,11 @@ export function OvertimeHoursFields({
               </option>
             ))}
           </select>
+          {calendarHint && (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+              {calendarHint}
+            </p>
+          )}
         </>
       )}
       <select

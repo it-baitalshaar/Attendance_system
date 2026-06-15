@@ -8,6 +8,8 @@ export interface Department {
   allow_future_attendance?: boolean | null;
   allow_holiday_overtime?: boolean | null;
   allow_public_holiday_overtime?: boolean | null;
+  /** 0=Sun … 6=Sat — weekend days for automatic weekend OT default. */
+  weekend_days?: number[] | null;
   created_at?: string;
 }
 
@@ -17,7 +19,7 @@ export async function fetchDepartmentsService(): Promise<Department[]> {
   const { data: dataWithTheme, error: errorWithTheme } = await supabase
     .from('departments')
     .select(
-      'id, name, theme_id, allow_future_attendance, allow_holiday_overtime, allow_public_holiday_overtime, created_at'
+      'id, name, theme_id, allow_future_attendance, allow_holiday_overtime, allow_public_holiday_overtime, weekend_days, created_at'
     )
     .order('name');
 
@@ -38,7 +40,8 @@ export async function createDepartmentService(
   themeId: DepartmentThemeId = 'default',
   allowFutureAttendance: boolean = false,
   allowHolidayOvertime: boolean = true,
-  allowPublicHolidayOvertime: boolean = true
+  allowPublicHolidayOvertime: boolean = true,
+  weekendDays: number[] = []
 ): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = name.trim();
@@ -52,6 +55,7 @@ export async function createDepartmentService(
       allow_future_attendance: allowFutureAttendance,
       allow_holiday_overtime: allowHolidayOvertime,
       allow_public_holiday_overtime: allowPublicHolidayOvertime,
+      weekend_days: weekendDays,
     });
   if (!error) return;
 
@@ -65,6 +69,11 @@ export async function createDepartmentService(
   if (msg.includes('allow_holiday_overtime') || msg.includes('allow_public_holiday_overtime')) {
     throw new Error(
       'Overtime type settings could not be saved. Add columns by running migration: supabase/migrations/add_department_overtime_type_toggles.sql in Supabase SQL editor.'
+    );
+  }
+  if (msg.includes('weekend_days')) {
+    throw new Error(
+      'Weekend days could not be saved. Run migration: supabase/migrations/add_department_weekend_days.sql in the Supabase SQL editor.'
     );
   }
 
@@ -84,7 +93,8 @@ export async function updateDepartmentService(
   themeId?: DepartmentThemeId,
   allowFutureAttendance?: boolean,
   allowHolidayOvertime?: boolean,
-  allowPublicHolidayOvertime?: boolean
+  allowPublicHolidayOvertime?: boolean,
+  weekendDays?: number[]
 ): Promise<void> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = newName.trim();
@@ -113,6 +123,9 @@ export async function updateDepartmentService(
   if (allowPublicHolidayOvertime !== undefined) {
     updates.allow_public_holiday_overtime = allowPublicHolidayOvertime;
   }
+  if (weekendDays !== undefined) {
+    updates.weekend_days = weekendDays;
+  }
 
   if (Object.keys(updates).length > 0) {
     const { error: updateError } = await supabase
@@ -129,6 +142,11 @@ export async function updateDepartmentService(
       if (msg.includes('allow_holiday_overtime') || msg.includes('allow_public_holiday_overtime')) {
         throw new Error(
           'Overtime type settings could not be saved. Add columns by running migration: supabase/migrations/add_department_overtime_type_toggles.sql in Supabase SQL editor.'
+        );
+      }
+      if (msg.includes('weekend_days')) {
+        throw new Error(
+          'Weekend days could not be saved. Run migration: supabase/migrations/add_department_weekend_days.sql in the Supabase SQL editor.'
         );
       }
       if (msg.includes('theme_id') || updateError.code === '42703') {
