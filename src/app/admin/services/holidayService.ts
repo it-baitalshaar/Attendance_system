@@ -64,9 +64,9 @@ export async function fetchDepartmentHolidaysService(options?: {
     });
 }
 
-export async function fetchHolidayDatesForDepartment(
+export async function fetchHolidaysForDepartment(
   departmentName: string
-): Promise<string[]> {
+): Promise<DepartmentHoliday[]> {
   const supabase = createSupabbaseFrontendClient();
   const trimmed = departmentName.trim();
   if (!trimmed) return [];
@@ -81,20 +81,29 @@ export async function fetchHolidayDatesForDepartment(
 
   const { data, error } = await supabase
     .from('department_holidays')
-    .select('holiday_date, department_id')
-    .eq('is_active', true);
+    .select('id, department_id, holiday_date, name, is_active')
+    .eq('is_active', true)
+    .order('holiday_date', { ascending: true });
 
   if (error) {
     if (error.message?.includes('department_holidays')) return [];
     throw error;
   }
 
+  return (data ?? [])
+    .map((row) => normalizeHolidayRow(row as Record<string, unknown>))
+    .filter(
+      (h) => h.department_id === null || (deptId != null && h.department_id === deptId)
+    );
+}
+
+export async function fetchHolidayDatesForDepartment(
+  departmentName: string
+): Promise<string[]> {
+  const holidays = await fetchHolidaysForDepartment(departmentName);
   const dates = new Set<string>();
-  for (const row of data ?? []) {
-    const r = row as { holiday_date: string; department_id: string | null };
-    if (r.department_id === null || (deptId && r.department_id === deptId)) {
-      dates.add(String(r.holiday_date).slice(0, 10));
-    }
+  for (const h of holidays) {
+    dates.add(h.holiday_date);
   }
   return Array.from(dates).sort();
 }

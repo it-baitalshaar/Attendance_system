@@ -11,7 +11,7 @@
 | Task | Start here |
 |------|------------|
 | Field worker attendance submit | `src/app/page.tsx` → `useHomeSubmit` → `Track_Attendance` + `Attendance` |
-| Weekend / holiday OT defaults | `OvertimeCalendarContext` + `overtimeCalendar.ts` + Admin → Departments tab |
+| Weekend / holiday OT defaults | `OvertimeCalendarContext` + `overtimeCalendar.ts` + `HomeCalendarDayBanner` + Admin → Departments tab |
 | Admin dashboard tab | `src/app/admin/page.tsx` → tab via `?tab=` |
 | Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `ReportsTab` |
 | Office BioTime sync | `src/app/api/office/biotime/sync/route.ts` + `scripts/office-biotime-sync.js` |
@@ -382,6 +382,8 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-06-15 | OT defaults fixed: holiday → public holiday OT, weekend → weekend OT | `resolveDefaultOvertimeType`, `CalendarOvertimeDefaultsSync` |
+| 2026-06-15 | Holiday name shown on attendance home when admin date matches | `HomeCalendarDayBanner`, `holidayNameForDate` in calendar context |
 | 2026-06-15 | Weekend/holiday calendar → auto OT defaults + admin holidays | `overtimeCalendar.ts`, `OvertimeCalendarContext`, `department_holidays`, Departments tab |
 | 2026-06-15 | AI project index + post-task update rules | `docs/PROJECT_INDEX.md`, `.cursor/rules/`, `AGENTS.md`, `CLAUDE.md` |
 | 2026-06 | Email + WhatsApp share for reports | `PayrollReportDeliveryPanel`, payroll APIs |

@@ -8,12 +8,14 @@ import { useDepartmentFutureAttendance } from './hooks/useDepartmentFutureAttend
 import { HomeHeader } from './components/home/HomeHeader';
 import { HomeDepartmentDate } from './components/home/HomeDepartmentDate';
 import { HomeAttendanceBanner } from './components/home/HomeAttendanceBanner';
+import { HomeCalendarDayBanner } from './components/home/HomeCalendarDayBanner';
 import { HomeEntryModeSection } from './components/home/HomeEntryModeSection';
 import { HomeLockedBanner } from './components/home/HomeLockedBanner';
 import { HomeEmployeeGrid } from './components/home/HomeEmployeeGrid';
 import { HomeModals } from './components/home/HomeModals';
 import { GeometricDivider } from './components/theme';
 import { OvertimeCalendarProvider } from './context/OvertimeCalendarContext';
+import { CalendarOvertimeDefaultsSync } from './components/home/CalendarOvertimeDefaultsSync';
 
 export default function Home() {
   const { userDisplay, userDepartment, handleLogout } = useHomeAuth();
@@ -83,33 +85,35 @@ export default function Home() {
           DEPARTMENTS={state.DEPARTMENTS}
           theme={theme}
         />
-        <HomeEntryModeSection
-          selectedDepartment={state.selectedDepartment}
-          showEntryMode={state.showEntryMode}
-          entryMode={state.entryMode}
-          setEntryMode={state.setEntryMode}
-          showOnlyExceptions={state.showOnlyExceptions}
-          setShowOnlyExceptions={state.setShowOnlyExceptions}
-          theme={theme}
-        />
-        <HomeLockedBanner
-          existingSubmission={state.existingSubmission}
-          cardsLocked={state.cardsLocked}
-          onEditAttendance={submit.handleEditAttendance}
-          onOpenReport={submit.openReportModal}
-          selectedDepartment={state.selectedDepartment}
-          onOpenReportOnly={submit.openReportModal}
-          theme={theme}
-        />
-        {state.editMode && !state.cardsLocked && (
-          <p className={`mt-2 text-sm ${isSaqiya ? 'text-theme-accent' : 'text-amber-700'}`}>
-            You are editing an already submitted attendance.
-          </p>
-        )}
         <OvertimeCalendarProvider
           department={state.departmentForFetch}
           selectedDate={state.selectedDate}
         >
+          <CalendarOvertimeDefaultsSync />
+          <HomeCalendarDayBanner theme={theme} />
+          <HomeEntryModeSection
+            selectedDepartment={state.selectedDepartment}
+            showEntryMode={state.showEntryMode}
+            entryMode={state.entryMode}
+            setEntryMode={state.setEntryMode}
+            showOnlyExceptions={state.showOnlyExceptions}
+            setShowOnlyExceptions={state.setShowOnlyExceptions}
+            theme={theme}
+          />
+          <HomeLockedBanner
+            existingSubmission={state.existingSubmission}
+            cardsLocked={state.cardsLocked}
+            onEditAttendance={submit.handleEditAttendance}
+            onOpenReport={submit.openReportModal}
+            selectedDepartment={state.selectedDepartment}
+            onOpenReportOnly={submit.openReportModal}
+            theme={theme}
+          />
+          {state.editMode && !state.cardsLocked && (
+            <p className={`mt-2 text-sm ${isSaqiya ? 'text-theme-accent' : 'text-amber-700'}`}>
+              You are editing an already submitted attendance.
+            </p>
+          )}
           <HomeEmployeeGrid
             loading={state.loading}
             displayList={state.displayList}

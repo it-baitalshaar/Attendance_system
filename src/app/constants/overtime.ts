@@ -13,7 +13,7 @@ export const OVERTIME_RATE_BY_TYPE: Record<OvertimeType, number> = {
 export const OVERTIME_TYPE_LABELS: Record<OvertimeType, string> = {
   normal: 'Normal overtime (×1.25)',
   holiday: 'Weekend overtime (×1.5)',
-  public_holiday: 'Holiday overtime (×2.5)',
+  public_holiday: 'Public holiday overtime (×2.5)',
 };
 
 export function normalizeOvertimeType(value: unknown): OvertimeType {

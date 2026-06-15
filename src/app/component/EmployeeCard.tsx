@@ -666,6 +666,17 @@ const EmployeeCard: React.FC<EmployeeCardProps> = ({ employee, hideModeToggle = 
           <p className={`text-xs mb-1 ${isSaqiya ? 'text-theme-accent/80' : 'text-white/80'}`}>
             Select one: Weekend, Holiday, Half Day AM or Half Day PM (or neither).
           </p>
+          {calendar?.holidayNameForDate && (
+            <p
+              className={`text-xs sm:text-sm mb-2 px-2 py-1.5 rounded-md border ${
+                isSaqiya
+                  ? 'bg-amber-100/90 border-amber-300 text-amber-950'
+                  : 'bg-amber-100/95 border-amber-300/80 text-amber-950'
+              }`}
+            >
+              Holiday reason: <span className="font-semibold">{calendar.holidayNameForDate}</span>
+            </p>
+          )}
           {hideModeToggle ? (
             <div className="flex flex-wrap gap-2 justify-center">
               <button

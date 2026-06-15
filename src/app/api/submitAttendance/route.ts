@@ -226,6 +226,8 @@ import { createSupabaseServerComponentClient } from '@/lib/supabaseAppRouterClie
 import { getOvertimeRate, normalizeOvertimeType, type OvertimeType } from '@/app/constants/overtime';
 import {
   resolveDefaultOvertimeType,
+  isPublicHolidayDate,
+  isWeekendForDepartment,
   resolveWeekendDaysForDepartment,
   type OvertimeCalendarConfig,
 } from '@/app/lib/overtimeCalendar';
@@ -419,13 +421,18 @@ function finalizeOvertimeType(
     config: calendar,
     attendanceStatus: statusEmployee,
   });
-  if (otType === 'normal' && calendarDefault !== 'normal') {
+
+  if (calendarDefault !== 'normal') {
     otType = calendarDefault;
   }
-  if (
-    (otType === 'holiday' && !calendar.allowHoliday) ||
-    (otType === 'public_holiday' && !calendar.allowPublicHoliday)
-  ) {
+
+  const onAdminHoliday = isPublicHolidayDate(targetDate, calendar.holidayDates);
+  const onDeptWeekend = isWeekendForDepartment(targetDate, calendar.weekendDays);
+
+  if (otType === 'public_holiday' && !calendar.allowPublicHoliday && !onAdminHoliday) {
+    otType = 'normal';
+  }
+  if (otType === 'holiday' && !calendar.allowHoliday && !onDeptWeekend) {
     otType = 'normal';
   }
   return otType;

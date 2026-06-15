@@ -2,10 +2,14 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { fetchDepartmentsService } from '@/app/admin/services/departmentService';
-import { fetchHolidayDatesForDepartment } from '@/app/admin/services/holidayService';
+import {
+  fetchHolidaysForDepartment,
+  type DepartmentHoliday,
+} from '@/app/admin/services/holidayService';
 import {
   type OvertimeCalendarConfig,
   resolveDefaultOvertimeType,
+  resolveHolidayNameForDate,
   resolveSuggestedAttendanceStatus,
   resolveWeekendDaysForDepartment,
   type SuggestedAttendanceStatus,
@@ -18,6 +22,8 @@ interface OvertimeCalendarContextValue {
   department: string;
   config: OvertimeCalendarConfig;
   suggestedAttendanceStatus: SuggestedAttendanceStatus;
+  /** Admin-configured holiday name for selected date, e.g. "Eid ul Adha". */
+  holidayNameForDate: string | null;
   resolveDefault: (attendanceStatus?: string | null) => OvertimeType;
   refresh: () => Promise<void>;
 }
@@ -35,33 +41,33 @@ export function OvertimeCalendarProvider({
 }) {
   const [loading, setLoading] = useState(true);
   const [weekendDays, setWeekendDays] = useState<number[]>([]);
-  const [holidayDates, setHolidayDates] = useState<string[]>([]);
+  const [holidays, setHolidays] = useState<DepartmentHoliday[]>([]);
   const [allowHolidayOvertime, setAllowHolidayOvertime] = useState(true);
   const [allowPublicHolidayOvertime, setAllowPublicHolidayOvertime] = useState(true);
 
   const load = useCallback(async () => {
     if (!department?.trim()) {
       setWeekendDays([]);
-      setHolidayDates([]);
+      setHolidays([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const [depts, holidays] = await Promise.all([
+      const [depts, holidayRows] = await Promise.all([
         fetchDepartmentsService(),
-        fetchHolidayDatesForDepartment(department),
+        fetchHolidaysForDepartment(department),
       ]);
       const deptRow = depts.find(
         (d) => d.name.trim().toLowerCase() === department.trim().toLowerCase()
       );
       setWeekendDays(resolveWeekendDaysForDepartment(department, deptRow?.weekend_days));
-      setHolidayDates(holidays);
+      setHolidays(holidayRows);
       setAllowHolidayOvertime(deptRow?.allow_holiday_overtime !== false);
       setAllowPublicHolidayOvertime(deptRow?.allow_public_holiday_overtime !== false);
     } catch {
       setWeekendDays(resolveWeekendDaysForDepartment(department, null));
-      setHolidayDates([]);
+      setHolidays([]);
     } finally {
       setLoading(false);
     }
@@ -70,6 +76,11 @@ export function OvertimeCalendarProvider({
   useEffect(() => {
     void load();
   }, [load, selectedDate]);
+
+  const holidayDates = useMemo(
+    () => holidays.map((h) => h.holiday_date),
+    [holidays]
+  );
 
   const config = useMemo<OvertimeCalendarConfig>(
     () => ({
@@ -91,6 +102,11 @@ export function OvertimeCalendarProvider({
     [selectedDate, weekendDays, holidayDates]
   );
 
+  const holidayNameForDate = useMemo(
+    () => resolveHolidayNameForDate(selectedDate, holidays),
+    [selectedDate, holidays]
+  );
+
   const resolveDefault = useCallback(
     (attendanceStatus?: string | null) =>
       resolveDefaultOvertimeType({
@@ -108,10 +124,11 @@ export function OvertimeCalendarProvider({
       department,
       config,
       suggestedAttendanceStatus,
+      holidayNameForDate,
       resolveDefault,
       refresh: load,
     }),
-    [loading, selectedDate, department, config, suggestedAttendanceStatus, resolveDefault, load]
+    [loading, selectedDate, department, config, suggestedAttendanceStatus, holidayNameForDate, resolveDefault, load]
   );
 
   return (

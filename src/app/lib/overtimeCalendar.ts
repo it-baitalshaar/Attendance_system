@@ -60,6 +60,20 @@ export function isPublicHolidayDate(
   return holidayDates.includes(key);
 }
 
+/** Admin holiday name(s) for a date, e.g. "Eid ul Adha". */
+export function resolveHolidayNameForDate(
+  dateStr: string,
+  holidays: { holiday_date: string; name: string }[]
+): string | null {
+  const key = normalizeDateKey(dateStr);
+  const names = holidays
+    .filter((h) => normalizeDateKey(h.holiday_date) === key)
+    .map((h) => h.name.trim())
+    .filter(Boolean);
+  if (!names.length) return null;
+  return names.join(' · ');
+}
+
 export type SuggestedAttendanceStatus = 'Present' | 'Weekend' | 'Holiday-Work';
 
 export function resolveSuggestedAttendanceStatus(params: {
@@ -76,6 +90,7 @@ export function resolveSuggestedAttendanceStatus(params: {
 /**
  * Default payroll overtime type for a project row on a given date.
  * `holiday` = weekend OT (×1.5); `public_holiday` = named holiday OT (×2.5).
+ * Admin calendar dates always drive the default (toggles only limit manual pick on regular days).
  */
 export function resolveDefaultOvertimeType(params: {
   dateStr: string;
@@ -85,17 +100,11 @@ export function resolveDefaultOvertimeType(params: {
   const { dateStr, config, attendanceStatus } = params;
   const status = (attendanceStatus ?? '').trim();
 
-  if (
-    config.allowPublicHolidayOvertime &&
-    (status === 'Holiday-Work' || isPublicHolidayDate(dateStr, config.holidayDates))
-  ) {
+  if (isPublicHolidayDate(dateStr, config.holidayDates) || status === 'Holiday-Work') {
     return 'public_holiday';
   }
 
-  if (
-    config.allowHolidayOvertime &&
-    (status === 'Weekend' || isWeekendForDepartment(dateStr, config.weekendDays))
-  ) {
+  if (isWeekendForDepartment(dateStr, config.weekendDays) || status === 'Weekend') {
     return 'holiday';
   }
 

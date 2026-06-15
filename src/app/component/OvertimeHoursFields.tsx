@@ -47,7 +47,16 @@ export function OvertimeHoursFields({
   const deptOptions = allowedTypesByDepartment[deptKey];
   const allowHoliday = deptOptions ? deptOptions.holiday : true;
   const allowPublicHoliday = deptOptions ? deptOptions.publicHoliday : true;
+
+  const resolvedDefault = React.useMemo(() => {
+    if (calendar && !calendar.loading) {
+      return calendar.resolveDefault(statusEmployee);
+    }
+    return DEFAULT_OVERTIME_TYPE;
+  }, [calendar, calendar?.loading, statusEmployee]);
+
   const allowedTypes = OVERTIME_TYPES.filter((type) => {
+    if (type === resolvedDefault) return true;
     if (type === 'holiday') return allowHoliday;
     if (type === 'public_holiday') return allowPublicHoliday;
     return true;
@@ -58,17 +67,12 @@ export function OvertimeHoursFields({
   const persistedType = normalizeOvertimeType(proj?.overtime_type);
   const typeVal = allowedTypes.includes(persistedType)
     ? persistedType
-    : DEFAULT_OVERTIME_TYPE;
+    : allowedTypes.includes(resolvedDefault)
+      ? resolvedDefault
+      : DEFAULT_OVERTIME_TYPE;
   const hoursNum = proj?.overtime;
   const hoursSelectValue =
     hoursNum === undefined || hoursNum === null ? '' : String(hoursNum);
-
-  const resolvedDefault = React.useMemo(() => {
-    if (calendar) {
-      return calendar.resolveDefault(statusEmployee);
-    }
-    return DEFAULT_OVERTIME_TYPE;
-  }, [calendar, statusEmployee]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -93,48 +97,13 @@ export function OvertimeHoursFields({
     };
   }, []);
 
-  /** When calendar/disabled types change, clamp to an allowed type. */
+  /** Apply calendar default (weekend / public holiday OT) when date or status requires it. */
   React.useEffect(() => {
-    if (!proj) return;
-    if (typeVal === persistedType) return;
-    const h = typeof proj.overtime === 'number' ? proj.overtime : 0;
-    const fallback = allowedTypes.includes(resolvedDefault)
-      ? resolvedDefault
-      : DEFAULT_OVERTIME_TYPE;
-    dispatch(
-      overtime_hours({
-        overtime_Hours: h,
-        employee_id,
-        project_index,
-        overtime_type: fallback,
-      })
-    );
-  }, [
-    dispatch,
-    employee_id,
-    project_index,
-    proj,
-    persistedType,
-    typeVal,
-    resolvedDefault,
-    allowedTypes,
-  ]);
-
-  /** Auto-default weekend / holiday overtime from calendar or attendance status. */
-  React.useEffect(() => {
-    if (!proj || !show || !calendar) return;
+    if (!proj || !show || !calendar || calendar.loading) return;
     const target = resolvedDefault;
+    if (target === 'normal') return;
     if (!allowedTypes.includes(target)) return;
     if (persistedType === target) return;
-
-    const status = (statusEmployee ?? '').trim();
-
-    const shouldSync =
-      persistedType === 'normal' ||
-      status === 'Weekend' ||
-      status === 'Holiday-Work';
-
-    if (!shouldSync) return;
 
     const h = typeof proj.overtime === 'number' ? proj.overtime : 0;
     dispatch(
@@ -149,10 +118,10 @@ export function OvertimeHoursFields({
     proj,
     show,
     calendar,
+    calendar?.loading,
     resolvedDefault,
     allowedTypes,
     persistedType,
-    statusEmployee,
     dispatch,
     employee_id,
     project_index,
@@ -186,9 +155,9 @@ export function OvertimeHoursFields({
   if (!show) return null;
 
   const calendarHint =
-    calendar && resolvedDefault !== 'normal' && typeVal === resolvedDefault
+    calendar && !calendar.loading && resolvedDefault !== 'normal' && typeVal === resolvedDefault
       ? resolvedDefault === 'public_holiday'
-        ? 'Default: holiday overtime for this date'
+        ? 'Default: public holiday overtime for this date'
         : 'Default: weekend overtime for this date'
       : null;
 
