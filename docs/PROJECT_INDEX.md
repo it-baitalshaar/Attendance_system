@@ -382,6 +382,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-06-15 | Fix OT reset on loadAttendance + per-project calendar sync hook | `loadAttendanceForDateAndDepartment`, `useProjectOvertimeCalendarSync` |
 | 2026-06-15 | OT defaults fixed: holiday → public holiday OT, weekend → weekend OT | `resolveDefaultOvertimeType`, `CalendarOvertimeDefaultsSync` |
 | 2026-06-15 | Holiday name shown on attendance home when admin date matches | `HomeCalendarDayBanner`, `holidayNameForDate` in calendar context |
 | 2026-06-15 | Weekend/holiday calendar → auto OT defaults + admin holidays | `overtimeCalendar.ts`, `OvertimeCalendarContext`, `department_holidays`, Departments tab |

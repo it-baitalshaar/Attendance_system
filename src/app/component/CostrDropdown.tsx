@@ -9,6 +9,7 @@ import { addProjectToEmployee, addHours, setRemainingHours, setLeftHours, sum_ho
 import { OvertimeHoursFields } from '@/app/component/OvertimeHoursFields';
 import { useOptionalOvertimeCalendarContext } from '@/app/context/OvertimeCalendarContext';
 import { DEFAULT_OVERTIME_TYPE } from '@/app/constants/overtime';
+import { useProjectOvertimeCalendarSync } from '@/app/hooks/useProjectOvertimeCalendarSync';
 
 async function fetchProjects(department: string) {
 
@@ -55,6 +56,7 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
   // const dispatch = useDispatch();
   const dispatch = useDispatch<AppDispatch>();
   const calendar = useOptionalOvertimeCalendarContext();
+  useProjectOvertimeCalendarSync(employee_id, input_index);
 
   const employee1 = useSelector((state: RootState) =>
     state.project.employees.find((emp) => emp.employee_id === employee_id)
@@ -238,7 +240,9 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
     // let the_num = atten_status[0].attendance_status
     const statusEmployee = employee1?.employee_status?.[0]?.status_employee ?? null;
     const defaultOt =
-      calendar?.resolveDefault(statusEmployee) ?? DEFAULT_OVERTIME_TYPE;
+      calendar && !calendar.loading
+        ? calendar.resolveDefault(statusEmployee)
+        : DEFAULT_OVERTIME_TYPE;
 
     dispatch(
       addProjectToEmployee({

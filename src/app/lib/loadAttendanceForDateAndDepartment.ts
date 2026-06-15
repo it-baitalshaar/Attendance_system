@@ -12,6 +12,9 @@ import {
 import { HomeEmployee } from '../types/home';
 import { buildProjectNameLookup, resolveProjectDisplayName } from '@/lib/projectDisplayName';
 import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
+import { fetchCalendarConfigForDepartment } from '@/app/lib/fetchCalendarConfigForDepartment';
+import { resolveDefaultOvertimeType } from '@/app/lib/overtimeCalendar';
+import { normalizeOvertimeType } from '@/app/constants/overtime';
 
 export interface LoadAttendanceParams {
   date: string;
@@ -105,6 +108,25 @@ export async function loadAttendanceForDateAndDepartment(
       }
     });
 
+    const subtypeByEmployee = new Map<string, string>();
+    attRows.forEach((r) => {
+      const dbStatusAttendance = (r as { status_attendance?: string | null }).status_attendance;
+      const note = r.notes ?? '';
+      let subtype = dbStatusAttendance ?? null;
+      if (note.startsWith('Attendance type: ')) {
+        const lineEnd = note.indexOf('\n');
+        subtype = lineEnd === -1 ? note.slice(18).trim() : note.slice(18, lineEnd).trim();
+      }
+      const validSubtypes = ['Present', 'Weekend', 'Holiday-Work', 'Half Day AM', 'Half Day PM', 'Sick Leave', 'Absence with excuse', 'Absence without excuse', 'vacation'];
+      if (subtype && validSubtypes.includes(subtype)) {
+        subtypeByEmployee.set(r.employee_id, subtype);
+      } else if (dbStatusAttendance && validSubtypes.includes(dbStatusAttendance)) {
+        subtypeByEmployee.set(r.employee_id, dbStatusAttendance);
+      } else {
+        subtypeByEmployee.set(r.employee_id, 'Present');
+      }
+    });
+
     const attendanceIdByEmployee = new Map<string, string>();
     const attendanceIds: string[] = [];
     attRows.forEach((r) => {
@@ -141,6 +163,7 @@ export async function loadAttendanceForDateAndDepartment(
       }
 
       if (!attProjErr && attProjRows) {
+        const calendarConfig = await fetchCalendarConfigForDepartment(department);
         const projectIds = Array.from(new Set(attProjRows.map((r) => r.project_id).filter(Boolean)));
         let projectNameById = new Map<string, string>();
         if (projectIds.length > 0) {
@@ -164,13 +187,22 @@ export async function loadAttendanceForDateAndDepartment(
             dispatch(setEmployeeProjectsFromServer({ employee_id, projects: { projectId: [], tthour: 0 } }));
             return;
           }
+          const statusForOt = subtypeByEmployee.get(employee_id) ?? 'Present';
+          const calendarDefault = resolveDefaultOvertimeType({
+            dateStr: loadDate,
+            config: calendarConfig,
+            attendanceStatus: statusForOt,
+          });
           const projectId = rows.map((row) => {
             const label = resolveProjectDisplayName(row.project_id, projectNameById);
+            const savedType = normalizeOvertimeType(row.overtime_type);
+            const overtime_type =
+              calendarDefault !== 'normal' ? calendarDefault : savedType;
             return {
               projectName: [label],
               hours: Number(row.working_hours ?? 0),
               overtime: Number(row.overtime_hours ?? 0),
-              overtime_type: row.overtime_type ?? 'normal',
+              overtime_type,
               note: null,
             };
           });

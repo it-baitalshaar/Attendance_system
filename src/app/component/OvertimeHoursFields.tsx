@@ -6,6 +6,7 @@ import { AppDispatch, RootState } from '@/redux/store';
 import { overtime_hours } from '@/redux/slice';
 import { fetchDepartmentsService } from '@/app/admin/services/departmentService';
 import { useOptionalOvertimeCalendarContext } from '@/app/context/OvertimeCalendarContext';
+import { useProjectOvertimeCalendarSync } from '@/app/hooks/useProjectOvertimeCalendarSync';
 import {
   OVERTIME_TYPE_LABELS,
   type OvertimeType,
@@ -34,6 +35,7 @@ export function OvertimeHoursFields({
 }: OvertimeHoursFieldsProps) {
   const dispatch = useDispatch<AppDispatch>();
   const calendar = useOptionalOvertimeCalendarContext();
+  useProjectOvertimeCalendarSync(employee_id, project_index);
   const department = useSelector((s: RootState) => s.project.department);
   const [allowedTypesByDepartment, setAllowedTypesByDepartment] = React.useState<
     Record<string, { holiday: boolean; publicHoliday: boolean }>

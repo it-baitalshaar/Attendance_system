@@ -206,9 +206,12 @@ const projectSlice = createSlice({
         }
         if ( project_index >= 0)
         {
-          if (employee.projects?.projectId[project_index]) 
+          if (employee.projects?.projectId[project_index]) {
             employee.projects.projectId[project_index].projectName[project_index] = selected_project;
-          else {
+            if (overtime_type !== undefined) {
+              employee.projects.projectId[project_index].overtime_type = overtime_type;
+            }
+          } else {
             // Otherwise, add the new project to the array
             employee.projects!.projectId[project_index] = {
               projectName: [],  // Create a new project array with the selected project

@@ -9,7 +9,7 @@ import { DEFAULT_OVERTIME_TYPE, normalizeOvertimeType } from '@/app/constants/ov
 
 /**
  * When the calendar finishes loading (or date changes), apply weekend / public-holiday
- * overtime defaults to all project rows that are still on normal OT.
+ * overtime defaults to all project rows.
  */
 export function CalendarOvertimeDefaultsSync() {
   const calendar = useOvertimeCalendarContext();
@@ -28,7 +28,6 @@ export function CalendarOvertimeDefaultsSync() {
       emp.projects.projectId.forEach((proj, project_index) => {
         const current = normalizeOvertimeType(proj.overtime_type);
         if (current === target) return;
-        if (current !== 'normal' && status !== 'Weekend' && status !== 'Holiday-Work') return;
 
         dispatch(
           overtime_hours({
