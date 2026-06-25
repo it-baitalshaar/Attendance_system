@@ -7,6 +7,7 @@ import { fetchEmployeesService } from '../../services/employeeService';
 import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../types/attendanceReport';
 import { computePayrollFromDays } from '../../services/payrollCalculation';
 import { buildAttendanceReportWhatsAppMessage } from '@/lib/attendanceReportEmailHtml';
+import { getCurrentPayrollYearMonth, getPayrollPeriodBounds } from '@/lib/payrollPeriod';
 import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
 
 function getDeptTheme(dept: string) {
@@ -22,12 +23,20 @@ function getDeptTheme(dept: string) {
 
 function formatDateShort(dateStr: string) {
   try {
-    return new Date(dateStr + 'Z').toLocaleDateString('en-US', {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
     });
   } catch {
     return dateStr;
+  }
+}
+
+function formatWeekdayShort(dateStr: string) {
+  try {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+  } catch {
+    return '';
   }
 }
 
@@ -103,10 +112,14 @@ function getMissingDates(days: AttendanceReportDay[], calFrom: string, calTo: st
 
 const ALL = '';
 
+function getDefaultPayrollDates(): { from: string; to: string } {
+  return getPayrollPeriodBounds(getCurrentPayrollYearMonth());
+}
+
 export function AttendanceReportSection() {
   const { report, from: reportFrom, to: reportTo, loading, error, projectsWarning, fetchReport } = useAttendanceReport();
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [fromDate, setFromDate] = useState(() => getDefaultPayrollDates().from);
+  const [toDate, setToDate] = useState(() => getDefaultPayrollDates().to);
   const [department, setDepartment] = useState(ALL);
   const [employeeId, setEmployeeId] = useState(ALL);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
@@ -316,50 +329,131 @@ export function AttendanceReportSection() {
     <>
       <style>{`
         @media print {
-          @page { size: A4 portrait; margin: 10mm 12mm; }
+          @page { size: A4 portrait; margin: 12mm 14mm; }
           @page landscape-page { size: A4 landscape; margin: 10mm 12mm; }
-          .overall-summary-print { page: landscape-page; }
           body.print-attendance * { visibility: hidden; }
           body.print-attendance #attendance-print-area,
           body.print-attendance #attendance-print-area * { visibility: visible; }
           body.print-attendance #attendance-print-area { position: absolute; top: 0; left: 0; width: 100%; }
           .print-page-break { page-break-after: always; break-after: page; margin: 0 !important; }
+          /* one employee per page — break before each card except the first */
+          .emp-card + .emp-card { page-break-before: always; break-before: page; }
+          .emp-card { page-break-after: auto !important; break-after: auto !important; margin-top: 0 !important; }
+          /* overall summary: landscape; flow across pages — TOTAL stays after last row when space allows */
+          .overall-summary-print {
+            page: landscape-page;
+            page-break-before: always;
+            break-before: page;
+          }
+          .overall-summary-print .summary-print-header {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .overall-summary-print .overall-summary-table-wrap {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          .overall-summary-print .att-table thead {
+            display: table-header-group;
+          }
+          .overall-summary-print .att-table tbody tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .overall-summary-print .att-table tr.summary-total-row {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            break-before: avoid;
+            page-break-before: avoid;
+          }
+          .overall-summary-print .att-table th,
+          .overall-summary-print .att-table td {
+            padding: 2px 3px !important;
+            font-size: 6.5pt !important;
+            line-height: 1.2 !important;
+          }
+          .overall-summary-print .att-table th { font-size: 6pt !important; padding: 1.5px 3px !important; }
+          .overall-summary-print .emp-hdr { padding: 3px 10px !important; }
+          .overall-summary-print .emp-hdr h2 { font-size: 10pt !important; }
+          .overall-summary-print .summary-legend { padding: 1px 8px !important; font-size: 5.5pt !important; line-height: 1.2 !important; }
           .no-print { display: none !important; }
           /* preserve background colours */
           .emp-hdr, .emp-summary { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-          /* compact card */
-          .emp-card { box-shadow: none !important; border: 1px solid #d1d5db; margin-top: 0 !important; border-radius: 0 !important; }
-          /* compact header */
-          .emp-hdr { padding: 5px 12px !important; }
-          .emp-hdr .company-name { font-size: 5.5pt !important; letter-spacing: 0.04em !important; margin-bottom: 1px !important; }
-          .emp-hdr h2 { font-size: 12pt !important; line-height: 1.2 !important; }
-          .emp-hdr .text-sm, .emp-hdr .text-base { font-size: 7.5pt !important; }
-          /* compact summary strip */
-          .sum-card { padding: 3px 6px !important; }
-          .sum-val { font-size: 11pt !important; line-height: 1.1 !important; }
+          /* portrait employee card — fill printable A4 height */
+          .emp-card:not(.overall-summary-print) {
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: calc(297mm - 24mm) !important;
+            box-shadow: none !important;
+            border: 1px solid #d1d5db;
+            margin-top: 0 !important;
+            border-radius: 0 !important;
+          }
+          .emp-hdr { padding: 4px 10px !important; }
+          .emp-hdr .company-name { font-size: 5.5pt !important; letter-spacing: 0.03em !important; margin-bottom: 0 !important; }
+          .emp-hdr h2 { font-size: 11pt !important; line-height: 1.15 !important; }
+          .emp-hdr .text-sm, .emp-hdr .text-base { font-size: 7pt !important; }
+          .sum-card { padding: 3px 5px !important; }
+          .sum-val { font-size: 10pt !important; line-height: 1.05 !important; }
           .sum-lbl { font-size: 5.5pt !important; letter-spacing: 0 !important; }
-          /* compact table — rows sized to fill page evenly */
-          .att-table { font-size: 7.5pt !important; table-layout: fixed !important; width: 100% !important; }
-          .att-table th, .att-table td { padding: 3.5px 4px !important; line-height: 1.35 !important; vertical-align: middle !important; }
-          .att-table th { font-size: 6.5pt !important; padding: 2px 4px !important; }
-          .att-table .status-badge { padding: 0 4px !important; font-size: 6.5pt !important; border-radius: 3px !important; }
+          /* daily table grows to fill remaining page — ~31 rows distributed evenly */
+          .emp-card:not(.overall-summary-print) .att-table-wrap {
+            flex: 1 1 auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-height: 0 !important;
+          }
+          .emp-card:not(.overall-summary-print) .att-table {
+            flex: 1 1 auto !important;
+            height: 100% !important;
+            font-size: 7pt !important;
+            table-layout: fixed !important;
+            width: 100% !important;
+          }
+          .emp-card:not(.overall-summary-print) .att-table tbody tr {
+            height: calc(218mm / var(--day-rows, 31));
+          }
+          .emp-card:not(.overall-summary-print) .att-table th,
+          .emp-card:not(.overall-summary-print) .att-table td {
+            padding: 2px 4px !important;
+            line-height: 1.2 !important;
+            vertical-align: middle !important;
+          }
+          .emp-card:not(.overall-summary-print) .att-table th {
+            font-size: 6.5pt !important;
+            padding: 2px 4px !important;
+            height: 6mm !important;
+          }
+          .emp-card:not(.overall-summary-print) .att-table .status-badge {
+            padding: 1px 3px !important;
+            font-size: 6.5pt !important;
+            border-radius: 2px !important;
+            gap: 0 !important;
+          }
+          .emp-card:not(.overall-summary-print) .missing-banner {
+            padding: 2px 8px !important;
+            font-size: 6pt !important;
+            line-height: 1.15 !important;
+          }
           .att-table .badge-dot { display: none !important; }
           .att-table .ot-rate { display: none !important; }
-          /* date cell: compact two-line */
-          .att-table .date-day { font-size: 7.5pt !important; }
-          .att-table .date-wd  { font-size: 6pt !important; }
+          /* date + weekday on one line */
+          .att-table .date-cell-inline { display: block !important; white-space: nowrap !important; line-height: 1.2 !important; }
+          .att-table .date-day,
+          .att-table .date-wd { display: inline !important; font-size: 7pt !important; line-height: 1.2 !important; }
+          .att-table .date-wd { margin-left: 2px !important; }
           /* project / notes: 1 line in print to guarantee row height */
           .att-table .cell-project { overflow: hidden !important; display: -webkit-box !important; -webkit-line-clamp: 1 !important; -webkit-box-orient: vertical !important; }
           .att-table .cell-notes  { overflow: hidden !important; display: -webkit-box !important; -webkit-line-clamp: 1 !important; -webkit-box-orient: vertical !important; }
           /* absent highlight must still print */
           .att-table tr.row-absent { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           /* section banners */
-          .missing-banner { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; padding: 2px 8px !important; font-size: 6.5pt !important; }
+          .missing-banner { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           /* make edit inputs invisible in print */
           .att-table input, .att-table select { -webkit-appearance: none; appearance: none; border: none !important; background: transparent !important; padding: 0 !important; font-size: inherit !important; color: inherit !important; outline: none !important; box-shadow: none !important; width: auto !important; }
           /* header signature column */
-          .emp-hdr-sig { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; min-height: 22mm !important; width: 50mm !important; border: 1.5pt solid #94a3b8 !important; }
-          .emp-hdr-sig span { color: #e2e8f0 !important; font-size: 14pt !important; }
+          .emp-hdr-sig { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; min-height: 16mm !important; width: 40mm !important; border: 1pt solid #94a3b8 !important; }
+          .emp-hdr-sig span { color: #e2e8f0 !important; font-size: 10pt !important; }
         }
       `}</style>
 
@@ -565,7 +659,7 @@ export function AttendanceReportSection() {
           return (
             <div
               key={empReport.employee.id}
-              className="emp-card bg-white rounded-lg shadow mt-6 overflow-hidden print-page-break"
+              className="emp-card bg-white rounded-lg shadow mt-6 overflow-hidden"
             >
               {/* ── Employee Header: dark-left all info + white-right empty signature box ── */}
               <div className="flex items-stretch overflow-hidden">
@@ -685,10 +779,13 @@ export function AttendanceReportSection() {
 
 
               {/* ── Daily Attendance Table ── */}
-              <div className="overflow-x-auto">
+              <div
+                className="att-table-wrap overflow-x-auto"
+                style={{ '--day-rows': empReport.days.length } as React.CSSProperties}
+              >
                 <table className="att-table w-full text-sm border-collapse table-fixed">
                   <colgroup>
-                    <col style={{ width: '88px' }} />
+                    <col style={{ width: '72px' }} />
                     <col style={{ width: '62px' }} />
                     {showWorkHours        && <col style={{ width: '40px' }} />}
                     {showOtNormal         && <col style={{ width: '36px' }} />}
@@ -730,13 +827,16 @@ export function AttendanceReportSection() {
                       const eid = empReport.employee.id;
                       return (
                         <tr key={day.date} className={`row-absent ${isAbsent ? meta.bg : 'hover:bg-gray-50'} transition-colors`}>
-                          <td className="px-2 py-1.5 whitespace-nowrap">
-                            <div className="date-day font-medium text-gray-700 leading-tight text-sm">
-                              {formatDateShort(day.date)}
-                            </div>
-                            <div className="date-wd text-xs text-gray-400 leading-tight">
-                              {new Date(day.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}
-                            </div>
+                          <td className="px-2 py-1 whitespace-nowrap">
+                            <span className="date-cell-inline text-sm leading-tight">
+                              <span className="date-day font-medium text-gray-700">
+                                {formatDateShort(day.date)}
+                              </span>
+                              <span className="date-wd text-gray-400">
+                                {' '}
+                                {formatWeekdayShort(day.date)}
+                              </span>
+                            </span>
                             {editMode && (() => {
                               const st = saveStatus[`${eid}__${day.date}`];
                               if (st === 'saving') return <div className="text-xs text-amber-500 leading-tight">saving…</div>;
@@ -900,6 +1000,7 @@ export function AttendanceReportSection() {
         {/* ── Overall Summary Page ── */}
         {hasReport && (
           <div className="emp-card overall-summary-print bg-white rounded-lg shadow mt-6 overflow-hidden">
+            <div className="summary-print-header">
             <div
               className="emp-hdr bg-gradient-to-r from-indigo-900 to-indigo-800 text-white px-6 py-4"
               style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
@@ -940,7 +1041,7 @@ export function AttendanceReportSection() {
 
             {/* Abbreviation legend */}
             <div
-              className="px-5 py-2 bg-gray-50 border-b flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500"
+              className="summary-legend px-5 py-2 bg-gray-50 border-b flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500"
               style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
             >
               {[
@@ -954,9 +1055,10 @@ export function AttendanceReportSection() {
                 </span>
               ))}
             </div>
+            </div>
 
             {/* Per-employee summary table */}
-            <div className="overflow-x-auto">
+            <div className="overall-summary-table-wrap overflow-x-auto">
               <table className="att-table w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
@@ -1016,9 +1118,7 @@ export function AttendanceReportSection() {
                       </td>
                     </tr>
                   ))}
-                </tbody>
-                <tfoot>
-                  <tr className="footer-bar bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
+                  <tr className="summary-total-row footer-bar bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
                     <td className="px-4 py-2.5">TOTAL — {localReport.length} employee{localReport.length !== 1 ? 's' : ''}</td>
                     <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{grandTotals.workedDays}</td>
                     <td className="px-3 py-2.5 text-center text-emerald-600">{grandTotals.present      || '—'}</td>
@@ -1045,7 +1145,7 @@ export function AttendanceReportSection() {
                       {grandTotals.totalSalary > 0 ? grandTotals.totalSalary.toLocaleString('en-US') : '—'}
                     </td>
                   </tr>
-                </tfoot>
+                </tbody>
               </table>
             </div>
           </div>
