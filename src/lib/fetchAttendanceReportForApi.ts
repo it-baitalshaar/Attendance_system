@@ -83,7 +83,7 @@ export async function fetchAttendanceReportForApi(
   const employeeIds = Array.from(new Set(attRows.map((r) => r.employee_id)));
   const { data: empRows, error: empErr } = await supabase
     .from('Employee')
-    .select('employee_id, name, department, salary')
+    .select('employee_id, name, department, salary, overtime_enabled')
     .in('employee_id', employeeIds);
   if (empErr) return { report: [], from, to, error: empErr.message };
 
@@ -92,6 +92,7 @@ export async function fetchAttendanceReportForApi(
     name: (e.name as string) ?? 'Unknown',
     department: (e.department as string) ?? null,
     salary: e.salary as number | null | undefined,
+    overtime_enabled: e.overtime_enabled as boolean | null | undefined,
   })) as RawEmployeeRow[];
 
   const report = buildAttendanceReport({

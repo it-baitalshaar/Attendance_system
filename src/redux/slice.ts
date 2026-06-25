@@ -1,6 +1,10 @@
 'use client'
 
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import {
+  enforceNoOvertimeRegularHoursCap,
+  maxRegularHoursForStatus,
+} from '@/app/lib/employeeRegularHours';
 
 export type AttendanceStatus = 'present' | 'absent' | 'vacation';
 
@@ -61,6 +65,16 @@ const initialState: EmployeesState = {
   department: null,
 };
 
+function applyNoOvertimeHoursCap(employee: Employee) {
+  if (employee.overtime_enabled !== false) return;
+  const list = employee.projects?.projectId;
+  if (!list?.length) return;
+  const max = maxRegularHoursForStatus(employee.employee_status?.[0]?.status_employee);
+  const { rows, tthour } = enforceNoOvertimeRegularHoursCap(list, max);
+  employee.projects!.projectId = rows;
+  employee.projects!.tthour = tthour;
+}
+
 
 const projectSlice = createSlice({
   name: 'projects',
@@ -117,6 +131,7 @@ const projectSlice = createSlice({
       } else {
         employee.projects = projects;
       }
+      applyNoOvertimeHoursCap(employee);
     }
   },
 
@@ -264,6 +279,7 @@ const projectSlice = createSlice({
         else
           employee.projects.projectId[project_index].hours = hours
         console.log("finish the function", employee.projects.projectId[project_index].hours)
+        applyNoOvertimeHoursCap(employee);
       }
     },
 
@@ -275,6 +291,7 @@ const projectSlice = createSlice({
 
       if (employee && employee.projects?.projectId && employee.projects?.projectId[project_index] !== undefined && employee.projects.tthour < 8)
         employee.projects.tthour += employee.projects.projectId[project_index].hours
+      if (employee) applyNoOvertimeHoursCap(employee);
     },
 
     overtime_hours: (

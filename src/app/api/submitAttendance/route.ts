@@ -231,6 +231,10 @@ import {
   resolveWeekendDaysForDepartment,
   type OvertimeCalendarConfig,
 } from '@/app/lib/overtimeCalendar';
+import {
+  capRegularHoursAcrossProjects,
+  maxRegularHoursForStatus,
+} from '@/app/lib/employeeRegularHours';
 
 type SimpleStatus = 'present' | 'absent' | 'vacation';
 
@@ -725,8 +729,16 @@ export async function POST(request: Request) {
               const fromDb = overtimeAllowedByEmployeeId.get(id);
               const allow =
                 fromDb !== false && employees[i].overtime_enabled !== false;
-              const projRow = employees[i].projects.projectId[projectIdx];
               const statusEmployee = employees[i].employee_status?.[0]?.status_employee;
+              const maxRegular = maxRegularHoursForStatus(statusEmployee);
+              const allProjectRows = employees[i].projects.projectId;
+              const cappedHoursList = allow
+                ? allProjectRows.map((p: { hours?: number }) => Number(p.hours) || 0)
+                : capRegularHoursAcrossProjects(
+                    allProjectRows.map((p: { hours?: number }) => Number(p.hours) || 0),
+                    maxRegular
+                  );
+              const projRow = employees[i].projects.projectId[projectIdx];
               let otType = finalizeOvertimeType(
                 projRow.overtime_type,
                 calendarConfig,
@@ -737,7 +749,7 @@ export async function POST(request: Request) {
               await supabase.from('Attendance_projects').insert({
                 attendance_id: attendanceId,
                 project_id: projData.project_id,
-                working_hours: projRow.hours || 0,
+                working_hours: cappedHoursList[projectIdx] ?? projRow.hours || 0,
                 overtime_hours: otHours,
                 overtime_type: otType,
                 overtime_rate: getOvertimeRate(otType),

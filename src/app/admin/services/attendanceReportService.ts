@@ -10,6 +10,7 @@ import type {
 import { statusToCode } from '../types/attendanceReport';
 import { resolveProjectDisplayName } from '@/lib/projectDisplayName';
 import { bucketOvertimeHours } from './payrollCalculation';
+import { maxRegularHoursForStatus } from '@/app/lib/employeeRegularHours';
 
 export interface RawAttendanceRow {
   id: string;
@@ -34,6 +35,8 @@ export interface RawEmployeeRow {
   name: string;
   department?: string | null;
   salary?: number | null;
+  /** When false, regular hours capped at 8 (or half-day) and OT excluded from report. */
+  overtime_enabled?: boolean | null;
 }
 
 export interface BuildReportInput {
@@ -161,6 +164,19 @@ export function buildAttendanceReport(
       } else if (v.status_attendance === 'Half Day PM') {
         v.working_hours = 3.5;
       }
+    }
+  });
+
+  // Employees with overtime disabled: cap regular hours, exclude OT from payroll report.
+  dayDataByKey.forEach((v, k) => {
+    const empId = k.split('|')[0];
+    const emp = employeeMap.get(empId);
+    if (emp?.overtime_enabled === false) {
+      const max = maxRegularHoursForStatus(v.status_attendance);
+      if (v.working_hours > max) v.working_hours = max;
+      v.overtime_normal = 0;
+      v.overtime_holiday = 0;
+      v.overtime_public_holiday = 0;
     }
   });
 

@@ -175,7 +175,7 @@ export async function GET(request: Request) {
     const employeeIds = Array.from(new Set(rows.map((r) => r.employee_id)));
     const { data: empRows, error: empErr } = await supabase
       .from('Employee')
-      .select('employee_id, name, department, salary')
+      .select('employee_id, name, department, salary, overtime_enabled')
       .in('employee_id', employeeIds);
 
     if (empErr) {
@@ -191,6 +191,7 @@ export async function GET(request: Request) {
       name: (e.name as string) ?? 'Unknown',
       department: (e.department as string) ?? null,
       salary: e.salary as number | null | undefined,
+      overtime_enabled: e.overtime_enabled as boolean | null | undefined,
     })) as RawEmployeeRow[];
 
     const report = buildAttendanceReport({
