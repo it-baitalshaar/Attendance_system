@@ -749,7 +749,7 @@ export async function POST(request: Request) {
               await supabase.from('Attendance_projects').insert({
                 attendance_id: attendanceId,
                 project_id: projData.project_id,
-                working_hours: cappedHoursList[projectIdx] ?? projRow.hours || 0,
+                working_hours: cappedHoursList[projectIdx] ?? (projRow.hours || 0),
                 overtime_hours: otHours,
                 overtime_type: otType,
                 overtime_rate: getOvertimeRate(otType),
