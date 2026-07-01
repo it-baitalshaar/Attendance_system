@@ -103,6 +103,20 @@ export function useHomeSubmit(state: HomeSubmitState) {
           return;
         }
       } else {
+        const missingReason = state.employeeList.filter((e) => {
+          const entry = state.attendanceEntries[e.employee_id];
+          if ((entry?.status ?? 'present') !== 'absent') return false;
+          const notes = entry?.notes ?? '';
+          return !['Sick Leave', 'Absence with excuse', 'Absence without excuse'].some((r) =>
+            notes.includes(r)
+          );
+        });
+        if (missingReason.length > 0) {
+          alert('Please select a reason for absence for all absent employees.');
+          setConfirmModal('open');
+          isSubmittingRef.current = false;
+          return;
+        }
         entries = state.employeeList.map((e) => ({
           employee_id: e.employee_id,
           status: (state.attendanceEntries[e.employee_id]?.status ?? 'present') as AttendanceStatus,

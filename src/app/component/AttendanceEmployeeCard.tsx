@@ -65,6 +65,14 @@ const attendanceTypeOptions = [
   { value: 'Holiday-Work', label: 'Holiday' },
 ];
 
+const ABSENCE_REASONS = [
+  { value: 'Sick Leave', label: 'Sick Leave' },
+  { value: 'Absence with excuse', label: 'Absence with excuse' },
+  { value: 'Absence without excuse', label: 'Absence without excuse' },
+] as const;
+
+const ABSENCE_REASON_VALUES = new Set<string>(ABSENCE_REASONS.map((r) => r.value));
+
 export default function AttendanceEmployeeCard({ employee, disabled, variant = 'standard', themeId }: AttendanceEmployeeCardProps) {
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [projectsExpanded, setProjectsExpanded] = useState(false);
@@ -80,7 +88,21 @@ export default function AttendanceEmployeeCard({ employee, disabled, variant = '
   const handleStatusChange = (value: AttendanceStatus) => {
     if (disabled) return;
     dispatch(setAttendanceEntry({ employee_id: employee.employee_id, status: value }));
+    if (value !== 'absent') {
+      const clearedNotes = formatNotes('Present', projectsText, userNote);
+      dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: clearedNotes }));
+    }
   };
+
+  const handleAbsenceReasonChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (disabled) return;
+    const reason = e.target.value;
+    const newNotes = formatNotes(reason, projectsText, userNote);
+    dispatch(setAttendanceNotes({ employee_id: employee.employee_id, notes: newNotes }));
+  };
+
+  const absenceReason =
+    status === 'absent' && ABSENCE_REASON_VALUES.has(attendanceType) ? attendanceType : '';
 
   const handleAttendanceTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (disabled) return;
@@ -148,6 +170,29 @@ export default function AttendanceEmployeeCard({ employee, disabled, variant = '
             );
           })}
         </div>
+
+        {status === 'absent' && (
+          <div className="w-full space-y-1.5">
+            <label className={`block text-sm font-medium ${isSaqiya ? 'text-theme-accent' : 'text-white'}`}>
+              Reason for absence
+            </label>
+            <select
+              value={absenceReason}
+              onChange={handleAbsenceReasonChange}
+              disabled={disabled}
+              className="w-full text-black px-3 py-2.5 rounded-lg border min-h-[44px] touch-manipulation bg-white"
+            >
+              <option value="" disabled>
+                Select reason for absence
+              </option>
+              {ABSENCE_REASONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {variant === 'standard' && status === 'present' && (
           <>

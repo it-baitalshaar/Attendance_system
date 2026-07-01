@@ -83,11 +83,22 @@ export async function loadAttendanceForDateAndDepartment(
 
   dispatch(clearAttendanceEntries());
   if (attRows && attRows.length > 0) {
-    const entries = attRows.map((r) => ({
-      employee_id: r.employee_id,
-      status: (r.status ?? 'present') as AttendanceStatus,
-      notes: r.notes ?? null,
-    }));
+    const absenceTypes = ['Sick Leave', 'Absence with excuse', 'Absence without excuse'];
+    const entries = attRows.map((r) => {
+      let notes = r.notes ?? null;
+      if (r.status === 'absent') {
+        const sa = (r as { status_attendance?: string | null }).status_attendance?.trim();
+        if (sa && absenceTypes.includes(sa) && !notes?.includes(sa)) {
+          const prefix = `Attendance type: ${sa}`;
+          notes = notes ? `${prefix}\n${notes}` : prefix;
+        }
+      }
+      return {
+        employee_id: r.employee_id,
+        status: (r.status ?? 'present') as AttendanceStatus,
+        notes,
+      };
+    });
     dispatch(setAttendanceFromServer(entries));
     empIds.forEach((id) => dispatch(setEmployeeProjectsFromServer({ employee_id: id, projects: { projectId: [], tthour: 0 } })));
     attRows.forEach((r) => {
