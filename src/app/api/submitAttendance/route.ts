@@ -544,7 +544,14 @@ export async function POST(request: Request) {
         await supabase
           .from('Attendance')
           .upsert(
-            { employee_id: entry.employee_id, date: targetDate, status: entry.status, status_attendance, notes: entry.notes },
+            {
+              employee_id: entry.employee_id,
+              date: targetDate,
+              status: entry.status,
+              status_attendance,
+              notes: entry.notes,
+              department,
+            },
             { onConflict: 'employee_id,date' }
           );
       }
@@ -692,6 +699,7 @@ export async function POST(request: Request) {
                 status: status_attendance || 'present',
                 status_attendance: final_status_attendance,
                 notes: notesVal,
+                department,
               })
               .eq('id', attendanceId);
           } else {
@@ -704,6 +712,7 @@ export async function POST(request: Request) {
                   status: status_attendance || 'present',
                   status_attendance: final_status_attendance,
                   notes: notesVal,
+                  department,
                 },
               ])
               .select()
@@ -769,7 +778,12 @@ export async function POST(request: Request) {
             const existingPresent = existingPresentRows?.[0] ?? null;
 
             const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, true);
-            const row = { status: status_attendance || 'present', status_attendance: final_status_attendance, notes: empStat.note || null };
+            const row = {
+              status: status_attendance || 'present',
+              status_attendance: final_status_attendance,
+              notes: empStat.note || null,
+              department,
+            };
 
             if (existingPresent) {
               await supabase.from('Attendance').update(row).eq('id', existingPresent.id);
@@ -792,7 +806,12 @@ export async function POST(request: Request) {
             submittedEmployees.push(employees[i].employee_id);
         } else {
           const final_status_attendance = normalizeStatusAttendance(status_employee, status_attendance, false);
-          const row = { status: status_attendance || 'absent', status_attendance: final_status_attendance, notes: empStat.note || null };
+          const row = {
+            status: status_attendance || 'absent',
+            status_attendance: final_status_attendance,
+            notes: empStat.note || null,
+            department,
+          };
 
           const { data: existingAbsentRows } = await supabase
             .from('Attendance')

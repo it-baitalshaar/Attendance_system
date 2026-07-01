@@ -6,6 +6,11 @@ import type {
 } from '@/app/admin/services/attendanceReportService';
 import { buildProjectNameLookup } from '@/lib/projectDisplayName';
 import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
+import { fetchAttendanceRowsForReport } from '@/lib/fetchAttendanceRowsForReport';
+import {
+  buildEmployeeDepartmentResolver,
+  type EmployeeDepartmentHistoryRow,
+} from '@/lib/employeeDepartmentAtDate';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export async function fetchAttendanceReportForApi(
@@ -13,30 +18,14 @@ export async function fetchAttendanceReportForApi(
   params: { from: string; to: string; department?: string | null; employeeId?: string | null }
 ) {
   const { from, to, department, employeeId } = params;
-  let filterEmployeeIds: string[] | null = null;
-  if (employeeId) {
-    filterEmployeeIds = [employeeId];
-  } else if (department) {
-    const { data: empList } = await supabase
-      .from('Employee')
-      .select('employee_id')
-      .eq('department', department);
-    filterEmployeeIds = (empList ?? []).map((e: { employee_id: string }) => e.employee_id);
-    if (filterEmployeeIds.length === 0) return { report: [], from, to, error: null as string | null };
-  }
 
-  let attQuery = supabase
-    .from('Attendance')
-    .select('id, employee_id, date, status, status_attendance, notes')
-    .gte('date', from)
-    .lte('date', to)
-    .order('date', { ascending: true });
-  if (filterEmployeeIds?.length) attQuery = attQuery.in('employee_id', filterEmployeeIds);
-
-  const { data: attData, error: attError } = await attQuery;
-  if (attError) return { report: [], from, to, error: attError.message };
-
-  const attRows = (attData ?? []) as RawAttendanceRow[];
+  const { rows: attRows, error: attError } = await fetchAttendanceRowsForReport(supabase, {
+    from,
+    to,
+    department,
+    employeeId,
+  });
+  if (attError) return { report: [], from, to, error: attError };
   if (attRows.length === 0) return { report: [], from, to, error: null };
 
   const attendanceIds = Array.from(
@@ -87,10 +76,25 @@ export async function fetchAttendanceReportForApi(
     .in('employee_id', employeeIds);
   if (empErr) return { report: [], from, to, error: empErr.message };
 
+  let history: EmployeeDepartmentHistoryRow[] = [];
+  const { data: historyData, error: historyErr } = await supabase
+    .from('Employee_history')
+    .select('employee_id, created_at, details')
+    .in('employee_id', employeeIds)
+    .order('created_at', { ascending: true });
+  if (!historyErr) {
+    history = (historyData ?? []) as EmployeeDepartmentHistoryRow[];
+  }
+
+  const resolveDept = buildEmployeeDepartmentResolver(
+    (empRows ?? []) as { employee_id: string; department?: string | null }[],
+    history
+  );
+
   const employees = (empRows ?? []).map((e: Record<string, unknown>) => ({
     employee_id: e.employee_id as string,
     name: (e.name as string) ?? 'Unknown',
-    department: (e.department as string) ?? null,
+    department: resolveDept(e.employee_id as string, from) || ((e.department as string) ?? null),
     salary: e.salary as number | null | undefined,
     overtime_enabled: e.overtime_enabled as boolean | null | undefined,
   })) as RawEmployeeRow[];

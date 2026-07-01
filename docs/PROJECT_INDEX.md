@@ -13,7 +13,7 @@
 | Field worker attendance submit | `src/app/page.tsx` → `useHomeSubmit` → `Track_Attendance` + `Attendance` |
 | Weekend / holiday OT defaults | `OvertimeCalendarContext` + `overtimeCalendar.ts` + `HomeCalendarDayBanner` + Admin → Departments tab |
 | Admin dashboard tab | `src/app/admin/page.tsx` → tab via `?tab=` |
-| Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `ReportsTab` |
+| Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `fetchAttendanceRowsForReport.ts` + `employeeDepartmentAtDate.ts` |
 | Office BioTime sync | `src/app/api/office/biotime/sync/route.ts` + `scripts/office-biotime-sync.js` |
 | Office employee emails | `src/lib/officeEmployeeReport.ts` + `/api/office/send-employee-report` |
 | Email sending (Gmail) | `src/lib/email.ts` / `emailGmail.ts` — uses `GMAIL_USER` + `GMAIL_APP_PASSWORD` |
@@ -124,7 +124,7 @@ pnpm build && pnpm start
 | `department_holidays` | `id` | Named dates → default holiday OT (×2.5); `department_id` NULL = all depts |
 | `projects` | `id` | Project list for hour allocation |
 | `Track_Attendance` | composite | Daily submit lock: one row per user per day |
-| `Attendance` | `id` | Per-employee daily record: `status_attendance`, `working_hours`, `notes` |
+| `Attendance` | `id` | Per-employee daily record; **`department`** = roster at submit time (historical reports) |
 | `Attendance_projects` | — | Per-project hours + `overtime_hours` + `overtime_type` |
 | `attendance_reminder_settings` | `department` | Enable + schedule for construction reminders |
 | `attendance_reminder_emails` | `id` | Reminder recipients per department |
@@ -195,6 +195,8 @@ src/
 │   ├── payrollPeriod.ts          # Payroll month 26→25
 │   ├── payrollCalculation.ts     # (re-exported from admin/services)
 │   ├── fetchAttendanceReportForApi.ts / fetchSalaryReportForApi.ts
+│   ├── fetchAttendanceRowsForReport.ts  # report attendance query + historical dept filter
+│   ├── employeeDepartmentAtDate.ts      # resolve dept at date from history
 │   ├── officeEmployeeReport.ts   # Office email report builder
 │   ├── officeAttendanceReconcileRpc.ts
 │   ├── email.ts / emailGmail.ts  # Nodemailer Gmail
@@ -317,6 +319,7 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | `add_department_theme_id.sql` | Dept UI themes |
 | `add_department_allow_future_attendance.sql` | Future date submit flag |
 | `add_department_overtime_type_toggles.sql` | Dept-level OT type enable |
+| `add_attendance_department.sql` | `Attendance.department` for historical dept on each row |
 | `add_department_weekend_days.sql` | `departments.weekend_days` (0=Sun…6=Sat) for weekend OT default |
 | `add_department_holidays.sql` | `department_holidays` table + RLS |
 | `add_attendance_projects_overtime_type.sql` | `overtime_type` on project rows |
@@ -387,6 +390,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 | 2026-06-15 | OT defaults fixed: holiday → public holiday OT, weekend → weekend OT | `resolveDefaultOvertimeType`, `CalendarOvertimeDefaultsSync` |
 | 2026-06-15 | Holiday name shown on attendance home when admin date matches | `HomeCalendarDayBanner`, `holidayNameForDate` in calendar context |
 | 2026-06-15 | Weekend/holiday calendar → auto OT defaults + admin holidays | `overtimeCalendar.ts`, `OvertimeCalendarContext`, `department_holidays`, Departments tab |
+| 2026-06-15 | Historical dept filter for reports (transfers) | `employeeDepartmentAtDate.ts`, `fetchAttendanceRowsForReport.ts`, `add_attendance_department.sql` |
 | 2026-06-15 | Attendance report summary weekend days from dept `weekend_days` DB | `overtimeCalendar.ts`, `AttendanceReportSection.tsx` |
 | 2026-06-15 | AI project index + post-task update rules | `docs/PROJECT_INDEX.md`, `.cursor/rules/`, `AGENTS.md`, `CLAUDE.md` |
 | 2026-06 | Email + WhatsApp share for reports | `PayrollReportDeliveryPanel`, payroll APIs |

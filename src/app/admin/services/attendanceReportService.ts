@@ -19,6 +19,8 @@ export interface RawAttendanceRow {
   status: string | null;
   status_attendance: string | null;
   notes: string | null;
+  /** Department at submission time; used for historical report filtering. */
+  department?: string | null;
 }
 
 export interface RawAttendanceProjectRow {
