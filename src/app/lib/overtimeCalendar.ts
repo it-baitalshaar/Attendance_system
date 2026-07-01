@@ -88,7 +88,7 @@ export function resolveSummaryWeekendDays(params: {
 
   const names =
     reportDepartmentNames?.length
-      ? [...new Set(reportDepartmentNames.map((n) => n.trim()).filter(Boolean))]
+      ? Array.from(new Set(reportDepartmentNames.map((n) => n.trim()).filter(Boolean)))
       : departments.map((d) => d.name);
 
   const union = new Set<number>();
@@ -98,7 +98,7 @@ export function resolveSummaryWeekendDays(params: {
       union.add(dow);
     }
   }
-  return [...union].sort((a, b) => a - b);
+  return Array.from(union).sort((a, b) => a - b);
 }
 
 export function isPublicHolidayDate(
