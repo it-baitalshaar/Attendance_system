@@ -52,6 +52,55 @@ export function isWeekendForDepartment(dateStr: string, weekendDays: number[]): 
   return weekendDays.includes(getDayOfWeekFromDateStr(dateStr));
 }
 
+/** Count calendar days in [from, to] that fall on configured weekend DOWs (0=Sun … 6=Sat). */
+export function countWeekendDaysInRange(
+  fromDate: string,
+  toDate: string,
+  weekendDays: number[]
+): number {
+  if (!fromDate || !toDate || !weekendDays.length) return 0;
+  let count = 0;
+  const cur = new Date(fromDate + 'T00:00:00');
+  const end = new Date(toDate + 'T00:00:00');
+  while (cur <= end) {
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    if (isWeekendForDepartment(`${y}-${m}-${d}`, weekendDays)) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+/** Union weekend DOWs for report summary when multiple departments are in scope. */
+export function resolveSummaryWeekendDays(params: {
+  departmentFilter: string | null | undefined;
+  departments: { name: string; weekend_days?: number[] | null }[];
+  reportDepartmentNames?: string[];
+}): number[] {
+  const { departmentFilter, departments, reportDepartmentNames } = params;
+  const filter = (departmentFilter ?? '').trim();
+
+  if (filter) {
+    const row = departments.find((d) => d.name.toLowerCase() === filter.toLowerCase());
+    return resolveWeekendDaysForDepartment(filter, row?.weekend_days);
+  }
+
+  const names =
+    reportDepartmentNames?.length
+      ? [...new Set(reportDepartmentNames.map((n) => n.trim()).filter(Boolean))]
+      : departments.map((d) => d.name);
+
+  const union = new Set<number>();
+  for (const name of names) {
+    const row = departments.find((d) => d.name.toLowerCase() === name.toLowerCase());
+    for (const dow of resolveWeekendDaysForDepartment(name, row?.weekend_days)) {
+      union.add(dow);
+    }
+  }
+  return [...union].sort((a, b) => a - b);
+}
+
 export function isPublicHolidayDate(
   dateStr: string,
   holidayDates: string[]

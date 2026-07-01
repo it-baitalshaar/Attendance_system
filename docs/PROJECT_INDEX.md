@@ -387,6 +387,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 | 2026-06-15 | OT defaults fixed: holiday → public holiday OT, weekend → weekend OT | `resolveDefaultOvertimeType`, `CalendarOvertimeDefaultsSync` |
 | 2026-06-15 | Holiday name shown on attendance home when admin date matches | `HomeCalendarDayBanner`, `holidayNameForDate` in calendar context |
 | 2026-06-15 | Weekend/holiday calendar → auto OT defaults + admin holidays | `overtimeCalendar.ts`, `OvertimeCalendarContext`, `department_holidays`, Departments tab |
+| 2026-06-15 | Attendance report summary weekend days from dept `weekend_days` DB | `overtimeCalendar.ts`, `AttendanceReportSection.tsx` |
 | 2026-06-15 | AI project index + post-task update rules | `docs/PROJECT_INDEX.md`, `.cursor/rules/`, `AGENTS.md`, `CLAUDE.md` |
 | 2026-06 | Email + WhatsApp share for reports | `PayrollReportDeliveryPanel`, payroll APIs |
 | 2026-06 | OT overlay / duplicate hours fix | `attendanceReportService`, report UI |

@@ -9,6 +9,11 @@ import { computePayrollFromDays } from '../../services/payrollCalculation';
 import { buildAttendanceReportWhatsAppMessage } from '@/lib/attendanceReportEmailHtml';
 import { getCurrentPayrollYearMonth, getPayrollPeriodBounds } from '@/lib/payrollPeriod';
 import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
+import {
+  countWeekendDaysInRange,
+  formatWeekendDaysSummary,
+  resolveSummaryWeekendDays,
+} from '@/app/lib/overtimeCalendar';
 
 function getDeptTheme(dept: string) {
   const d = (dept ?? '').toLowerCase();
@@ -122,7 +127,9 @@ export function AttendanceReportSection() {
   const [toDate, setToDate] = useState(() => getDefaultPayrollDates().to);
   const [department, setDepartment] = useState(ALL);
   const [employeeId, setEmployeeId] = useState(ALL);
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  const [departments, setDepartments] = useState<
+    { id: string; name: string; weekend_days?: number[] | null }[]
+  >([]);
   const [employees, setEmployees] = useState<{ employee_id: string; name: string; department: string }[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
@@ -140,7 +147,13 @@ export function AttendanceReportSection() {
           fetchEmployeesService(),
         ]);
         if (!cancelled) {
-          setDepartments(deptRes.map((d) => ({ id: d.id, name: d.name })));
+          setDepartments(
+            deptRes.map((d) => ({
+              id: d.id,
+              name: d.name,
+              weekend_days: d.weekend_days,
+            }))
+          );
           setEmployees(
             empRes.employees.map((e) => ({
               employee_id: e.employee_id,
@@ -233,16 +246,14 @@ export function AttendanceReportSection() {
   const summaryCalendarDays = calFrom && calTo
     ? Math.round((new Date(calTo + 'T00:00:00').getTime() - new Date(calFrom + 'T00:00:00').getTime()) / 86400000) + 1
     : 0;
-  let summaryPeriodWeekends = 0;
-  if (calFrom && calTo) {
-    const cur = new Date(calFrom + 'T00:00:00');
-    const end = new Date(calTo + 'T00:00:00');
-    while (cur <= end) {
-      const dow = cur.getDay();
-      if (dow === 5 || dow === 6) summaryPeriodWeekends++;
-      cur.setDate(cur.getDate() + 1);
-    }
-  }
+  const summaryWeekendDays = resolveSummaryWeekendDays({
+    departmentFilter: department === ALL ? null : department,
+    departments,
+    reportDepartmentNames: localReport.map((r) => r.employee.department),
+  });
+  const summaryPeriodWeekends = countWeekendDaysInRange(calFrom, calTo, summaryWeekendDays);
+  const summaryWeekendLabel =
+    summaryWeekendDays.length > 0 ? formatWeekendDaysSummary(summaryWeekendDays) : null;
   const summaryPeriodLabel = calFrom && calTo
     ? `${formatDateShort(calFrom)} – ${formatDateShort(calTo)}`
     : '';
@@ -1027,13 +1038,16 @@ export function AttendanceReportSection() {
               <div className="grid grid-cols-4 divide-x divide-gray-100">
                 {[
                   { label: 'Calendar Days',  value: summaryCalendarDays,                         color: 'text-slate-700' },
-                  { label: 'Weekend Days',   value: summaryPeriodWeekends,                        color: 'text-slate-500' },
+                  { label: 'Weekend Days',   value: summaryPeriodWeekends,                        color: 'text-slate-500', hint: summaryWeekendLabel },
                   { label: 'Work Days',      value: summaryCalendarDays - summaryPeriodWeekends,  color: 'text-emerald-600' },
                   { label: 'Employees',      value: localReport.length,                                color: 'text-indigo-600' },
-                ].map(({ label, value, color }) => (
+                ].map(({ label, value, color, hint }) => (
                   <div key={label} className="sum-card p-3 text-center">
                     <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
                     <div className="sum-lbl text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide leading-tight">{label}</div>
+                    {hint ? (
+                      <div className="text-[10px] text-gray-400 mt-0.5 normal-case tracking-normal">{hint}</div>
+                    ) : null}
                   </div>
                 ))}
               </div>
