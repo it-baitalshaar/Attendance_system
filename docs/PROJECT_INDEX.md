@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-06-15 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-07-19 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -195,7 +195,7 @@ src/
 │   ├── payrollPeriod.ts          # Payroll month 26→25
 │   ├── payrollCalculation.ts     # (re-exported from admin/services)
 │   ├── fetchAttendanceReportForApi.ts / fetchSalaryReportForApi.ts
-│   ├── fetchAttendanceRowsForReport.ts  # report attendance query + historical dept filter
+│   ├── fetchAttendanceRowsForReport.ts  # report attendance query (paginated, 1000/page) + historical dept filter
 │   ├── employeeDepartmentAtDate.ts      # resolve dept at date from history
 │   ├── officeEmployeeReport.ts   # Office email report builder
 │   ├── officeAttendanceReconcileRpc.ts
@@ -385,6 +385,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-07-19 | Attendance/salary reports: page past Supabase 1000-row limit so late-period days are not dropped | `fetchAttendanceRowsForReport.ts` |
 | 2026-06-15 | No-OT employees (foremen/supervisors): cap regular hours at 8, zero OT | `employeeRegularHours.ts`, Redux, submit, report |
 | 2026-06-15 | Attendance report print: compact date row + ~31 days/page | `AttendanceReportSection` print CSS |
 | 2026-06-15 | OT defaults fixed: holiday → public holiday OT, weekend → weekend OT | `resolveDefaultOvertimeType`, `CalendarOvertimeDefaultsSync` |

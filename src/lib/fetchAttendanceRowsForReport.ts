@@ -12,36 +12,51 @@ const ATTENDANCE_COLS_WITH_DEPT =
 const ATTENDANCE_COLS_BASE =
   'id, employee_id, date, status, status_attendance, notes';
 
+/** PostgREST/Supabase default max rows per request; must page past this. */
+const PAGE_SIZE = 1000;
+
 async function queryAttendanceInRange(
   supabase: SupabaseClient,
   from: string,
   to: string,
   employeeId?: string | null
 ): Promise<{ rows: RawAttendanceRow[]; error: string | null }> {
-  const run = (cols: string) => {
+  let cols = ATTENDANCE_COLS_WITH_DEPT;
+  let triedWithoutDeptCol = false;
+  const all: RawAttendanceRow[] = [];
+  let offset = 0;
+
+  while (true) {
     let q = supabase
       .from('Attendance')
       .select(cols)
       .gte('date', from)
       .lte('date', to)
-      .order('date', { ascending: true });
+      .order('date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
     if (employeeId) q = q.eq('employee_id', employeeId);
-    return q;
-  };
 
-  const withDept = await run(ATTENDANCE_COLS_WITH_DEPT);
-  if (!withDept.error) {
-    return { rows: (withDept.data ?? []) as unknown as RawAttendanceRow[], error: null };
-  }
-  if (!isUndefinedColumnError(withDept.error)) {
-    return { rows: [], error: withDept.error.message };
+    const { data, error } = await q;
+
+    if (error && !triedWithoutDeptCol && isUndefinedColumnError(error)) {
+      triedWithoutDeptCol = true;
+      cols = ATTENDANCE_COLS_BASE;
+      all.length = 0;
+      offset = 0;
+      continue;
+    }
+    if (error) {
+      return { rows: [], error: error.message };
+    }
+
+    const batch = (data ?? []) as unknown as RawAttendanceRow[];
+    all.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
 
-  const base = await run(ATTENDANCE_COLS_BASE);
-  if (base.error) {
-    return { rows: [], error: base.error.message };
-  }
-  return { rows: (base.data ?? []) as unknown as RawAttendanceRow[], error: null };
+  return { rows: all, error: null };
 }
 
 export async function fetchAttendanceRowsForReport(
