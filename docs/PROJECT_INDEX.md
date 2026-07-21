@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-07-19 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-07-21 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -16,6 +16,7 @@
 | Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `fetchAttendanceRowsForReport.ts` + `employeeDepartmentAtDate.ts` |
 | Office BioTime sync | `src/app/api/office/biotime/sync/route.ts` + `scripts/office-biotime-sync.js` |
 | Office employee emails | `src/lib/officeEmployeeReport.ts` + `/api/office/send-employee-report` |
+| Office overall summary (no salary) | `OfficeEmployeesTab` monthly report → Overall Summary (from `/api/office/report`) |
 | Email sending (Gmail) | `src/lib/email.ts` / `emailGmail.ts` — uses `GMAIL_USER` + `GMAIL_APP_PASSWORD` |
 | Auth / role gates | `src/middleware.ts` + `profiles.role` |
 | DB schema changes | `supabase/migrations/*.sql` — run in Supabase SQL Editor |
@@ -102,7 +103,7 @@ pnpm build && pnpm start
 | POST | `/api/admin-update-password` | session | Admin self password change |
 | POST | `/api/set-password` | — | User password set |
 | POST | `/api/office/biotime/sync` | cron/secret | BioTime punch ingest → office tables |
-| GET | `/api/office/report` | admin | Office report data |
+| GET | `/api/office/report` | admin | Office monthly report + overall summary source (hours/punches, no salary) |
 | GET | `/api/office/punches` | admin | Raw punch logs |
 | PATCH | `/api/office/attendance-edit` | admin | Edit office check-in/out |
 | POST | `/api/office/send-daily-report` | admin | Dept daily email (UAE yesterday) |
@@ -385,6 +386,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-07-21 | Office Overall Summary (present/complete/hours; no salary) + Print under monthly report | `OfficeEmployeesTab.tsx` |
 | 2026-07-19 | Attendance/salary reports: page past Supabase 1000-row limit so late-period days are not dropped | `fetchAttendanceRowsForReport.ts` |
 | 2026-06-15 | No-OT employees (foremen/supervisors): cap regular hours at 8, zero OT | `employeeRegularHours.ts`, Redux, submit, report |
 | 2026-06-15 | Attendance report print: compact date row + ~31 days/page | `AttendanceReportSection` print CSS |

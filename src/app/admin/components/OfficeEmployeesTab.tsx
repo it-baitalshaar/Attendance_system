@@ -257,6 +257,197 @@ function downloadReportAsExcel(
   XLSX.writeFile(wb, `monthly-report-${start}-${end}.xlsx`);
 }
 
+type OfficeOverallSummaryRow = {
+  employee: ReportResult['employee'];
+  presentDays: number;
+  completeDays: number;
+  incompleteDays: number;
+  noPunchDays: number;
+  totalHours: number;
+  avgHours: number;
+};
+
+function computeOfficeOverallSummaries(
+  rows: ReportResult[],
+  dates: string[]
+): OfficeOverallSummaryRow[] {
+  return rows.map((r) => {
+    let presentDays = 0;
+    let completeDays = 0;
+    let incompleteDays = 0;
+    let noPunchDays = 0;
+    for (const date of dates) {
+      const day = r.daily[date];
+      if (!day) {
+        noPunchDays++;
+        continue;
+      }
+      const hasIn = !!day.checkIn;
+      const hasOut = !!day.checkOut;
+      const hasHours = (day.hours ?? 0) > 0;
+      if (hasIn || hasHours) {
+        presentDays++;
+        if (hasIn && hasOut) completeDays++;
+        else if (hasIn && !hasOut) incompleteDays++;
+      } else {
+        noPunchDays++;
+      }
+    }
+    const totalHours = Math.round(r.monthlyTotal * 100) / 100;
+    const avgHours =
+      presentDays > 0 ? Math.round((totalHours / presentDays) * 100) / 100 : 0;
+    return {
+      employee: r.employee,
+      presentDays,
+      completeDays,
+      incompleteDays,
+      noPunchDays,
+      totalHours,
+      avgHours,
+    };
+  });
+}
+
+function downloadOverallSummaryAsPDF(
+  summaries: OfficeOverallSummaryRow[],
+  start: string,
+  end: string,
+  departmentLabel: string
+) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const margin = 10;
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Office Attendance — Overall Summary', margin, 12);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(
+    `Period: ${start} → ${end}  |  ${departmentLabel}  |  ${summaries.length} employee${summaries.length !== 1 ? 's' : ''}`,
+    margin,
+    18
+  );
+
+  const totals = summaries.reduce(
+    (acc, s) => {
+      acc.presentDays += s.presentDays;
+      acc.completeDays += s.completeDays;
+      acc.incompleteDays += s.incompleteDays;
+      acc.noPunchDays += s.noPunchDays;
+      acc.totalHours += s.totalHours;
+      return acc;
+    },
+    { presentDays: 0, completeDays: 0, incompleteDays: 0, noPunchDays: 0, totalHours: 0 }
+  );
+
+  autoTable(doc, {
+    startY: 24,
+    margin: { left: margin, right: margin },
+    head: [['Employee', 'Code', 'Dept', 'Present', 'Complete', 'Incomplete', 'No punch', 'Total Hrs', 'Avg Hrs/Day']],
+    body: summaries.map((s) => [
+      s.employee.name,
+      s.employee.employee_code || '—',
+      s.employee.department || '—',
+      String(s.presentDays),
+      String(s.completeDays),
+      s.incompleteDays > 0 ? String(s.incompleteDays) : '—',
+      s.noPunchDays > 0 ? String(s.noPunchDays) : '—',
+      s.totalHours > 0 ? `${s.totalHours.toFixed(1)}h` : '—',
+      s.avgHours > 0 ? s.avgHours.toFixed(2) : '—',
+    ]),
+    foot: [[
+      `TOTAL — ${summaries.length} employee${summaries.length !== 1 ? 's' : ''}`,
+      '',
+      '',
+      String(totals.presentDays),
+      String(totals.completeDays),
+      totals.incompleteDays > 0 ? String(totals.incompleteDays) : '—',
+      totals.noPunchDays > 0 ? String(totals.noPunchDays) : '—',
+      totals.totalHours > 0 ? `${Math.round(totals.totalHours * 100) / 100}h` : '—',
+      '',
+    ]],
+    styles: { fontSize: 8, cellPadding: 1.5, textColor: [31, 41, 55] },
+    headStyles: { fillColor: [49, 46, 129], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+    footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 42 },
+      3: { halign: 'center' },
+      4: { halign: 'center' },
+      5: { halign: 'center' },
+      6: { halign: 'center' },
+      7: { halign: 'right' },
+      8: { halign: 'right' },
+    },
+  });
+
+  doc.save(`office-overall-summary-${start}-${end}.pdf`);
+}
+
+function downloadOverallSummaryAsExcel(
+  summaries: OfficeOverallSummaryRow[],
+  start: string,
+  end: string
+) {
+  const headerRow = [
+    'Employee',
+    'Code',
+    'Department',
+    'Present days',
+    'Complete days',
+    'Incomplete days',
+    'No punch days',
+    'Total hours',
+    'Avg hours/day',
+  ];
+  const body = summaries.map((s) => [
+    s.employee.name,
+    s.employee.employee_code || '',
+    s.employee.department || '',
+    s.presentDays,
+    s.completeDays,
+    s.incompleteDays,
+    s.noPunchDays,
+    s.totalHours,
+    s.avgHours,
+  ]);
+  const totals = summaries.reduce(
+    (acc, s) => {
+      acc.presentDays += s.presentDays;
+      acc.completeDays += s.completeDays;
+      acc.incompleteDays += s.incompleteDays;
+      acc.noPunchDays += s.noPunchDays;
+      acc.totalHours += s.totalHours;
+      return acc;
+    },
+    { presentDays: 0, completeDays: 0, incompleteDays: 0, noPunchDays: 0, totalHours: 0 }
+  );
+  body.push([
+    `TOTAL (${summaries.length})`,
+    '',
+    '',
+    totals.presentDays,
+    totals.completeDays,
+    totals.incompleteDays,
+    totals.noPunchDays,
+    Math.round(totals.totalHours * 100) / 100,
+    '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headerRow, ...body]);
+  ws['!cols'] = [
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 12 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Overall summary');
+  XLSX.writeFile(wb, `office-overall-summary-${start}-${end}.xlsx`);
+}
+
 export function OfficeEmployeesTab() {
   const supabase = useMemo(() => createSupabbaseFrontendClient(), []);
   const { employees, attendanceToday, loading, error } = useOfficeEmployeesRealtime();
@@ -498,6 +689,25 @@ export function OfficeEmployeesTab() {
     return list;
   }, [reportData?.results, reportDepartmentFilter, reportSortBy, reportSortDir]);
 
+  const officeOverallSummaries = useMemo(
+    () => computeOfficeOverallSummaries(reportRows, reportDates),
+    [reportRows, reportDates]
+  );
+
+  const officeOverallGrand = useMemo(() => {
+    return officeOverallSummaries.reduce(
+      (acc, s) => {
+        acc.presentDays += s.presentDays;
+        acc.completeDays += s.completeDays;
+        acc.incompleteDays += s.incompleteDays;
+        acc.noPunchDays += s.noPunchDays;
+        acc.totalHours += s.totalHours;
+        return acc;
+      },
+      { presentDays: 0, completeDays: 0, incompleteDays: 0, noPunchDays: 0, totalHours: 0 }
+    );
+  }, [officeOverallSummaries]);
+
   const toggleReportSort = (key: ReportSortKey) => {
     if (reportSortBy === key) setReportSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
@@ -719,6 +929,38 @@ export function OfficeEmployeesTab() {
 
   return (
     <div className="space-y-6">
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 8mm; }
+          body.print-office-overall * { visibility: hidden; }
+          body.print-office-overall #office-overall-print-area,
+          body.print-office-overall #office-overall-print-area * { visibility: visible; }
+          body.print-office-overall #office-overall-print-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          body.print-office-overall .no-print { display: none !important; }
+          body.print-office-overall #office-overall-print-area .office-overall-hdr,
+          body.print-office-overall #office-overall-print-area .office-overall-stats {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body.print-office-overall #office-overall-print-area table th,
+          body.print-office-overall #office-overall-print-area table td {
+            padding: 2px 4px !important;
+            font-size: 7.5pt !important;
+            line-height: 1.2 !important;
+          }
+          body.print-office-overall #office-overall-print-area table thead {
+            display: table-header-group;
+          }
+        }
+      `}</style>
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Office Employees</h2>
@@ -809,7 +1051,8 @@ export function OfficeEmployeesTab() {
       <section className="rounded-lg border bg-white p-4">
         <h3 className="text-lg font-medium mb-2">Monthly report</h3>
         <p className="text-sm text-gray-600 mb-3">
-          Hours per employee for the selected date range. Data from <code>office_attendance</code> (synced from BioTime).
+          Hours per employee for the selected date range, plus an Overall Summary (present / complete / hours — no salary).
+          Data from <code>office_attendance</code> (synced from BioTime).
         </p>
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <div>
@@ -968,6 +1211,174 @@ export function OfficeEmployeesTab() {
             <p className="mt-3 text-sm font-medium text-gray-700">
               Grand total: <span className="font-semibold">{reportData.grandTotal.toFixed(2)}</span> hours
             </p>
+
+            {/* Overall Summary — attendance counts & hours only (no salary) */}
+            <div
+              id="office-overall-print-area"
+              className="mt-8 rounded-lg shadow overflow-hidden border border-indigo-100"
+            >
+              <div
+                className="office-overall-hdr bg-gradient-to-r from-indigo-900 to-indigo-800 text-white px-6 py-4"
+                style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <h3 className="text-xl font-bold tracking-wide leading-tight">Overall Summary</h3>
+                    <div className="text-indigo-200 text-sm mt-1">
+                      {reportDepartmentFilter || 'All departments'} · {officeOverallSummaries.length} employee
+                      {officeOverallSummaries.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                  <div className="text-right text-indigo-200 text-sm">
+                    <div className="text-white font-semibold text-base">
+                      {reportStart} → {reportEnd}
+                    </div>
+                    <div>{reportDates.length} calendar days</div>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="office-overall-stats grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-gray-100 border-b bg-white"
+                style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
+              >
+                {[
+                  { label: 'Calendar Days', value: reportDates.length, color: 'text-slate-700' },
+                  { label: 'Employees', value: officeOverallSummaries.length, color: 'text-indigo-600' },
+                  { label: 'Present Days', value: officeOverallGrand.presentDays, color: 'text-emerald-600' },
+                  {
+                    label: 'Total Hours',
+                    value: Math.round(officeOverallGrand.totalHours * 100) / 100,
+                    color: 'text-slate-700',
+                  },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="p-3 text-center">
+                    <div className={`text-2xl font-bold ${color}`}>{value}</div>
+                    <div className="text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide">{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="px-5 py-2 bg-gray-50 border-b flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                {[
+                  ['Present', 'Days with check-in or hours'],
+                  ['Complete', 'Check-in and check-out both recorded'],
+                  ['Incomplete', 'Check-in only (no check-out)'],
+                  ['No punch', 'Calendar days with no attendance row'],
+                ].map(([code, desc]) => (
+                  <span key={code}>
+                    <span className="font-semibold text-gray-700">{code}</span>
+                    <span className="text-gray-400 ml-1">= {desc}</span>
+                  </span>
+                ))}
+              </div>
+
+              <div className="no-print flex flex-wrap items-center gap-2 px-4 py-2 bg-white border-b">
+                <span className="text-sm text-gray-500">Download overall:</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadOverallSummaryAsPDF(
+                      officeOverallSummaries,
+                      reportStart,
+                      reportEnd,
+                      reportDepartmentFilter || 'All departments'
+                    )
+                  }
+                  className="px-3 py-1.5 rounded border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadOverallSummaryAsExcel(officeOverallSummaries, reportStart, reportEnd)
+                  }
+                  className="px-3 py-1.5 rounded border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    document.body.classList.add('print-office-overall');
+                    window.print();
+                    document.body.classList.remove('print-office-overall');
+                  }}
+                  className="px-3 py-1.5 rounded border border-indigo-300 bg-indigo-50 text-sm font-medium text-indigo-800 hover:bg-indigo-100"
+                >
+                  Print / Save as PDF
+                </button>
+              </div>
+
+              <div className="overflow-x-auto bg-white">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="px-4 py-2.5 text-left font-semibold">Employee</th>
+                      <th className="px-3 py-2.5 text-center font-semibold text-emerald-700">Present</th>
+                      <th className="px-3 py-2.5 text-center font-semibold text-emerald-600">Complete</th>
+                      <th className="px-3 py-2.5 text-center font-semibold text-amber-600">Incomplete</th>
+                      <th className="px-3 py-2.5 text-center font-semibold text-slate-500">No punch</th>
+                      <th className="px-3 py-2.5 text-right font-semibold">Total Hrs</th>
+                      <th className="px-3 py-2.5 text-right font-semibold text-indigo-700">Avg Hrs/Day</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {officeOverallSummaries.map((s) => (
+                      <tr key={s.employee.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2">
+                          <div className="font-medium text-gray-800">{s.employee.name}</div>
+                          <div className="text-xs text-gray-400 font-mono">
+                            {s.employee.employee_code || '—'} · {s.employee.department || '—'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-center font-bold text-emerald-700">{s.presentDays}</td>
+                        <td className="px-3 py-2 text-center tabular-nums text-emerald-600">
+                          {s.completeDays || <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center tabular-nums text-amber-600">
+                          {s.incompleteDays || <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center tabular-nums text-slate-500">
+                          {s.noPunchDays || <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                          {s.totalHours > 0 ? `${s.totalHours.toFixed(1)}h` : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-indigo-700">
+                          {s.avgHours > 0 ? s.avgHours.toFixed(2) : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
+                      <td className="px-4 py-2.5">
+                        TOTAL — {officeOverallSummaries.length} employee
+                        {officeOverallSummaries.length !== 1 ? 's' : ''}
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-bold text-emerald-700">
+                        {officeOverallGrand.presentDays}
+                      </td>
+                      <td className="px-3 py-2.5 text-center text-emerald-600">
+                        {officeOverallGrand.completeDays || '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-center text-amber-600">
+                        {officeOverallGrand.incompleteDays || '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-center text-slate-500">
+                        {officeOverallGrand.noPunchDays || '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {officeOverallGrand.totalHours > 0
+                          ? `${(Math.round(officeOverallGrand.totalHours * 100) / 100).toFixed(1)}h`
+                          : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-indigo-700">—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </>
         )}
       </section>
