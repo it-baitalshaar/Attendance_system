@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-07-21 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-07-26 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -335,11 +335,13 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | Rule | Value |
 |------|-------|
 | Hourly rate | `monthly_salary ÷ (calendar_days_in_month × 8)` using report `from` date |
-| Base pay | Σ `working_hours × hourly_rate` per day |
+| Base pay | Σ `working_hours × hourly_rate` per day (includes SL / excused A when hours present) |
 | OT multipliers | normal ×1.25, holiday ×1.5, public_holiday ×2.5 (`constants/overtime.ts`) |
 | OT bucketing | From `Attendance_projects.overtime_type` + attendance status fallback |
 | Payroll period default | 26th prev month → 25th selected month (`lib/payrollPeriod.ts`) |
-| Absent codes (no base) | `AWO`, `SL`, `A` |
+| AWO | Flat deduction `8 × hourly_rate` per AWO day (shown as negative PAY) |
+| Sick Leave (SL) | Paid base hours; default **8hrs** even without project rows; **project column hidden** (project optional on submit) |
+| Report inline edit | `/api/attendance-report-edit` syncs notes `Attendance type:` with status so rebuild does not revert |
 
 **Report delivery:** UI opens mailto/WhatsApp; user attaches PDF from Print. Saved emails in `payroll_report_emails`.
 
@@ -386,6 +388,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-07-26 | SL: show daily PAY + default 8hrs without project; hide SL project col; report edit syncs notes Attendance type | `attendanceReportService`, `AttendanceReportSection`, `attendance-report-edit` |
 | 2026-07-21 | Office Overall Summary (present/complete/hours; no salary) + Print under monthly report | `OfficeEmployeesTab.tsx` |
 | 2026-07-19 | Attendance/salary reports: page past Supabase 1000-row limit so late-period days are not dropped | `fetchAttendanceRowsForReport.ts` |
 | 2026-06-15 | No-OT employees (foremen/supervisors): cap regular hours at 8, zero OT | `employeeRegularHours.ts`, Redux, submit, report |

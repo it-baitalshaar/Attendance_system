@@ -152,6 +152,7 @@ export function buildAttendanceReport(
 
   // Apply hour defaults:
   // - Weekend/Holiday-Work: 8hr default only when project rows exist (Construction/Maintenance track per-project).
+  // - Sick Leave: 8hr default even without project rows (project is optional for SL).
   // - Half Day AM: 4.5hr for all employees (7:30–12:00), regardless of project rows.
   // - Half Day PM: 3.5hr for all employees (13:00–16:30), regardless of project rows.
   dayDataByKey.forEach((v) => {
@@ -160,6 +161,8 @@ export function buildAttendanceReport(
         v.projectParts.length > 0 &&
         (v.status_attendance === 'Weekend' || v.status_attendance === 'Holiday-Work')
       ) {
+        v.working_hours = 8;
+      } else if (v.status_attendance === 'Sick Leave') {
         v.working_hours = 8;
       } else if (v.status_attendance === 'Half Day AM') {
         v.working_hours = 4.5;
@@ -222,7 +225,8 @@ export function buildAttendanceReport(
           holiday: d.overtime_holiday,
           public_holiday: d.overtime_public_holiday,
         },
-        projects: projectsText || '—',
+        // Sick Leave: project is optional — never show project allocation on the report.
+        projects: statusCode === 'SL' ? '—' : projectsText || '—',
         notes: d.notes,
       });
     }

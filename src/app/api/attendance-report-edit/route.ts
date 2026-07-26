@@ -35,6 +35,20 @@ function codeToStatus(code: string): { status: string; status_attendance: string
   return map[code] ?? { status: 'present', status_attendance: code };
 }
 
+/** Keep notes "Attendance type:" in sync with status_attendance so report rebuilds don't revert edits. */
+function syncAttendanceTypeInNotes(
+  notes: string | null | undefined,
+  statusAttendance: string
+): string | null {
+  const typeLine = `Attendance type: ${statusAttendance}`;
+  const trimmed = (notes ?? '').trim();
+  if (!trimmed) return typeLine;
+  if (/Attendance\s+type:\s*.+/i.test(trimmed)) {
+    return trimmed.replace(/Attendance\s+type:\s*.+?(?=\n|$)/i, typeLine);
+  }
+  return `${typeLine}\n${trimmed}`;
+}
+
 function normalizeOtType(raw: string | null): 'normal' | 'holiday' | 'public_holiday' {
   const s = (raw ?? '').toLowerCase().replace(/[\s-]/g, '_');
   if (s === 'holiday') return 'holiday';
@@ -163,10 +177,10 @@ export async function POST(request: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Find the Attendance row
+  // Find the Attendance row (include notes so status edits can sync Attendance type line)
   const { data: attData, error: attErr } = await db
     .from('Attendance')
-    .select('id')
+    .select('id, notes')
     .eq('employee_id', employee_id)
     .eq('date', date)
     .limit(1);
@@ -178,16 +192,27 @@ export async function POST(request: Request) {
       { status: 404 }
     );
   }
-  const attendanceId = (attData[0] as { id: string }).id;
+  const attendanceId = (attData[0] as { id: string; notes?: string | null }).id;
+  const existingNotes = (attData[0] as { notes?: string | null }).notes ?? null;
 
   // Update Attendance (status + notes)
   const attUpdate: Record<string, unknown> = {};
+  let statusAttendanceForNotes: string | null = null;
   if (status_code !== undefined) {
     const fields = codeToStatus(String(status_code));
     attUpdate.status = fields.status;
     attUpdate.status_attendance = fields.status_attendance;
+    statusAttendanceForNotes = fields.status_attendance;
   }
-  if (notes !== undefined) attUpdate.notes = notes || null;
+
+  // Prefer client notes when provided; always sync Attendance type when status changes
+  // so report rebuild (which prefers notes type over status_attendance) does not revert.
+  if (notes !== undefined || statusAttendanceForNotes) {
+    const baseNotes = notes !== undefined ? (notes || null) : existingNotes;
+    attUpdate.notes = statusAttendanceForNotes
+      ? syncAttendanceTypeInNotes(baseNotes, statusAttendanceForNotes)
+      : baseNotes;
+  }
 
   if (Object.keys(attUpdate).length > 0) {
     const { error } = await db.from('Attendance').update(attUpdate).eq('id', attendanceId);

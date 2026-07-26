@@ -862,8 +862,29 @@ export function AttendanceReportSection() {
                                 value={day.status_code}
                                 onChange={e => {
                                   const val = e.target.value;
-                                  updateDay(eid, day.date, d => ({ ...d, status_code: val }));
-                                  saveDay(eid, day.date, { ...day, status_code: val });
+                                  const statusLabel: Record<string, string> = {
+                                    P: 'Present', W: 'Weekend', H: 'Holiday-Work',
+                                    HDAM: 'Half Day AM', HDPM: 'Half Day PM',
+                                    AWO: 'Absence without excuse', SL: 'Sick Leave',
+                                    A: 'Absence with excuse', V: 'vacation',
+                                  };
+                                  const typeLine = `Attendance type: ${statusLabel[val] ?? val}`;
+                                  const prevNotes = day.notes ?? '';
+                                  const nextNotes = /Attendance\s+type:\s*.+/i.test(prevNotes)
+                                    ? prevNotes.replace(/Attendance\s+type:\s*.+?(?=\n|$)/i, typeLine)
+                                    : prevNotes.trim()
+                                      ? `${typeLine}\n${prevNotes}`
+                                      : typeLine;
+                                  const patched = {
+                                    ...day,
+                                    status_code: val,
+                                    notes: nextNotes,
+                                    ...(val === 'SL'
+                                      ? { working_hours: day.working_hours > 0 ? day.working_hours : 8, projects: '—' }
+                                      : {}),
+                                  };
+                                  updateDay(eid, day.date, () => patched);
+                                  saveDay(eid, day.date, patched);
                                 }}
                                 className="text-xs border rounded px-1 py-0.5 w-full max-w-[72px]"
                               >
@@ -941,20 +962,19 @@ export function AttendanceReportSection() {
                           {showDailySalary && (() => {
                             const hr = salarySummary!.hourlyRate;
                             const isAwo = day.status_code === 'AWO';
-                            const isOtherAbsent = !isAwo && ABSENT_CODES.has(day.status_code);
-                            const dayPay = isOtherAbsent
-                              ? null
-                              : isAwo
-                                ? -Math.round(8 * hr)
-                                : Math.round(
-                                    day.working_hours * hr +
-                                    day.overtime.normal * 1.25 * hr +
-                                    day.overtime.holiday * 1.5 * hr +
-                                    day.overtime.public_holiday * 2.5 * hr
-                                  );
+                            // SL/A count in base pay (hours × rate). Only AWO is a flat deduction.
+                            // Previously SL/A forced PAY to "—" while totals still included their hours.
+                            const dayPay = isAwo
+                              ? -Math.round(8 * hr)
+                              : Math.round(
+                                  day.working_hours * hr +
+                                  day.overtime.normal * 1.25 * hr +
+                                  day.overtime.holiday * 1.5 * hr +
+                                  day.overtime.public_holiday * 2.5 * hr
+                                );
                             return (
                               <td className="px-3 py-2 text-right tabular-nums text-xs font-medium">
-                                {dayPay == null
+                                {dayPay === 0 && !isAwo
                                   ? <span className="text-gray-300">—</span>
                                   : dayPay < 0
                                     ? <span className="text-red-500">−{Math.abs(dayPay).toLocaleString('en-US')}</span>
