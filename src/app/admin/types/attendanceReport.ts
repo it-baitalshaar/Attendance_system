@@ -23,6 +23,14 @@ export interface AttendanceReportDayOvertime {
   public_holiday: number;
 }
 
+/** Calendar-year SL law tier for a single sick-leave day (see sickLeaveLaw.ts). */
+export interface AttendanceReportDaySickLeave {
+  ordinal: number;
+  year: number;
+  tier: 'full' | 'half' | 'unpaid';
+  paid_hours: number;
+}
+
 export interface AttendanceReportDay {
   date: string;
   status_code: string;
@@ -30,11 +38,24 @@ export interface AttendanceReportDay {
   overtime: AttendanceReportDayOvertime;
   projects: string;
   notes: string | null;
+  /** Present only when status_code === 'SL'. Payable hours already applied to working_hours. */
+  sick_leave?: AttendanceReportDaySickLeave | null;
+}
+
+/** Per-employee SL law rollup for the Overall Summary. */
+export interface AttendanceReportSickLeaveSummary {
+  /** One entry per calendar year touched by the year-to-date window (prior + period). */
+  ytd: { year: number; daysUsed: number }[];
+  periodDays: number;
+  periodFullDays: number;
+  periodHalfDays: number;
+  periodUnpaidDays: number;
 }
 
 export interface AttendanceReportEmployeeReport {
   employee: AttendanceReportEmployee;
   days: AttendanceReportDay[];
+  sickLeave?: AttendanceReportSickLeaveSummary | null;
 }
 
 /**

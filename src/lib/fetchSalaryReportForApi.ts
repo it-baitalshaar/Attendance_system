@@ -4,6 +4,7 @@ import type { RawAttendanceRow, RawEmployeeRow } from '@/app/admin/services/atte
 import { buildProjectNameLookup } from '@/lib/projectDisplayName';
 import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
 import { fetchAttendanceRowsForReport } from '@/lib/fetchAttendanceRowsForReport';
+import { fetchPriorSickLeaveDays } from '@/lib/fetchPriorSickLeaveDays';
 import {
   buildEmployeeDepartmentResolver,
   type EmployeeDepartmentHistoryRow,
@@ -114,6 +115,10 @@ export async function fetchSalaryReportForApi(
   }
 
   const employeeIds = Array.from(new Set(attRows.map((r) => r.employee_id)));
+  const priorSickLeaveDaysByEmployee = await fetchPriorSickLeaveDays(supabase, {
+    from,
+    employeeIds,
+  });
   const { data: empData, error: empErr } = await supabase
     .from('Employee')
     .select('employee_id, name, department, salary')
@@ -152,6 +157,7 @@ export async function fetchSalaryReportForApi(
     employees,
     fromDate: from,
     toDate: to,
+    priorSickLeaveDaysByEmployee,
   });
 
   return { report, from, to, error: null };

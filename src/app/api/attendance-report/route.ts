@@ -11,6 +11,7 @@ import type { RawAttendanceRow, RawAttendanceProjectRow, RawEmployeeRow } from '
 import { buildProjectNameLookup } from '@/lib/projectDisplayName';
 import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
 import { fetchAttendanceRowsForReport } from '@/lib/fetchAttendanceRowsForReport';
+import { fetchPriorSickLeaveDays } from '@/lib/fetchPriorSickLeaveDays';
 import {
   buildEmployeeDepartmentResolver,
   type EmployeeDepartmentHistoryRow,
@@ -157,6 +158,10 @@ export async function GET(request: Request) {
     }
 
     const employeeIds = Array.from(new Set(rows.map((r) => r.employee_id)));
+    const priorSickLeaveDaysByEmployee = await fetchPriorSickLeaveDays(supabase, {
+      from,
+      employeeIds,
+    });
     const { data: empRows, error: empErr } = await supabase
       .from('Employee')
       .select('employee_id, name, department, salary, overtime_enabled')
@@ -198,6 +203,7 @@ export async function GET(request: Request) {
       attProjRows: attProj,
       projectNameById,
       employees,
+      priorSickLeaveDaysByEmployee,
     });
 
     return NextResponse.json({

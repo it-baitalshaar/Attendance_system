@@ -43,8 +43,18 @@ export function buildSalaryReport(input: {
   employees: RawEmployeeRow[];
   fromDate: string;
   toDate: string;
+  /** Optional prior-year SL days so payable hours match the attendance report. */
+  priorSickLeaveDaysByEmployee?: Map<string, string[]>;
 }): SalaryReportEmployee[] {
-  const { attRows, attProjRows, projectNameById, employees, fromDate, toDate } = input;
+  const {
+    attRows,
+    attProjRows,
+    projectNameById,
+    employees,
+    fromDate,
+    toDate,
+    priorSickLeaveDaysByEmployee,
+  } = input;
 
   const periodDays = countInclusiveDays(fromDate, toDate);
 
@@ -53,6 +63,7 @@ export function buildSalaryReport(input: {
     attProjRows,
     projectNameById,
     employees,
+    priorSickLeaveDaysByEmployee,
   });
 
   const projByAttId = new Map<string, RawSalaryProjectRow[]>();

@@ -286,6 +286,7 @@ docs/
 | `attendanceService` | Admin attendance queries |
 | `attendanceReportService` | `buildAttendanceReport()` — day cards, OT buckets |
 | `payrollCalculation` | **Single source of payroll math** (hourly rate, OT multipliers) |
+| `sickLeaveLaw` | Calendar-year SL pay tiers (1–15 → 8h, 16–45 → 4h, 46+ → 0h) + YTD summary |
 | `salaryReportService` | `buildSalaryReport()` |
 | `projectCostReportService` | Project pivot + reconciliation summary |
 | `payrollReportDeliveryService` | Saved emails + WhatsApp + send helpers |
@@ -340,7 +341,7 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | OT bucketing | From `Attendance_projects.overtime_type` + attendance status fallback |
 | Payroll period default | 26th prev month → 25th selected month (`lib/payrollPeriod.ts`) |
 | AWO | Flat deduction `8 × hourly_rate` per AWO day (shown as negative PAY) |
-| Sick Leave (SL) | Paid base hours; default **8hrs** even without project rows; **project column hidden** (project optional on submit) |
+| Sick Leave (SL) | **Calendar-year law** (`sickLeaveLaw.ts`): days 1–15 → **8h** full pay, 16–45 → **4h** half pay, 46+ → **0h** unpaid (Jan 1–Dec 31). Prior-year SL days fetched so ordinals continue across payroll periods. Project column hidden. Overall Summary shows SL (period), SL YTD, Full / Half / Unpaid. |
 | Report inline edit | `/api/attendance-report-edit` syncs notes `Attendance type:` with status so rebuild does not revert |
 
 **Report delivery:** UI opens mailto/WhatsApp; user attaches PDF from Print. Saved emails in `payroll_report_emails`.
@@ -388,6 +389,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-07-26 | SL law: calendar-year tiers (1–15→8h, 16–45→4h, 46+→0h); Overall Summary SL YTD + Full/Half/Unpaid; prior-year fetch | `sickLeaveLaw`, `fetchPriorSickLeaveDays`, `attendanceReportService`, `AttendanceReportSection` |
 | 2026-07-26 | SL: show daily PAY + default 8hrs without project; hide SL project col; report edit syncs notes Attendance type | `attendanceReportService`, `AttendanceReportSection`, `attendance-report-edit` |
 | 2026-07-21 | Office Overall Summary (present/complete/hours; no salary) + Print under monthly report | `OfficeEmployeesTab.tsx` |
 | 2026-07-19 | Attendance/salary reports: page past Supabase 1000-row limit so late-period days are not dropped | `fetchAttendanceRowsForReport.ts` |

@@ -264,12 +264,18 @@ export function AttendanceReportSection() {
       emp.employee.salary != null && emp.employee.salary > 0 && summaryCalFrom
         ? computePayrollFromDays(emp.days, emp.employee.salary, summaryCalFrom)
         : null;
+    const sl = emp.sickLeave;
     return {
       employee: emp.employee,
       ...s,
       awo: s.absentDays.filter((d) => d.status_code === 'AWO').length,
       sl: s.absentDays.filter((d) => d.status_code === 'SL').length,
       a: s.absentDays.filter((d) => d.status_code === 'A').length,
+      slYtd: sl?.ytd ?? [],
+      slYtdTotal: (sl?.ytd ?? []).reduce((n, y) => n + y.daysUsed, 0),
+      slFull: sl?.periodFullDays ?? 0,
+      slHalf: sl?.periodHalfDays ?? 0,
+      slUnpaid: sl?.periodUnpaidDays ?? 0,
       totalSalary: payroll ? payroll.totalSalary : null,
       otNormalAmt: payroll?.otNormalAmount ?? 0,
       otHolidayAmt: payroll?.otHolidayAmount ?? 0,
@@ -288,6 +294,10 @@ export function AttendanceReportSection() {
       awo: acc.awo + s.awo,
       sl: acc.sl + s.sl,
       a: acc.a + s.a,
+      slYtdTotal: acc.slYtdTotal + s.slYtdTotal,
+      slFull: acc.slFull + s.slFull,
+      slHalf: acc.slHalf + s.slHalf,
+      slUnpaid: acc.slUnpaid + s.slUnpaid,
       totalHours: acc.totalHours + s.totalHours,
       otNormal: acc.otNormal + s.otNormal,
       otHoliday: acc.otHoliday + s.otHoliday,
@@ -299,14 +309,19 @@ export function AttendanceReportSection() {
       awoDeductionAmt: acc.awoDeductionAmt + s.awoDeductionAmt,
       totalSalary: acc.totalSalary + (s.totalSalary ?? 0),
     }),
-    { workedDays: 0, present: 0, holidayWork: 0, weekend: 0, vacation: 0, absent: 0, awo: 0, sl: 0, a: 0, totalHours: 0, otNormal: 0, otHoliday: 0, otPublicHoliday: 0, totalOT: 0, otNormalAmt: 0, otHolidayAmt: 0, otPublicHolidayAmt: 0, awoDeductionAmt: 0, totalSalary: 0 }
+    {
+      workedDays: 0, present: 0, holidayWork: 0, weekend: 0, vacation: 0, absent: 0,
+      awo: 0, sl: 0, a: 0, slYtdTotal: 0, slFull: 0, slHalf: 0, slUnpaid: 0,
+      totalHours: 0, otNormal: 0, otHoliday: 0, otPublicHoliday: 0, totalOT: 0,
+      otNormalAmt: 0, otHolidayAmt: 0, otPublicHolidayAmt: 0, awoDeductionAmt: 0, totalSalary: 0,
+    }
   );
 
   const handleDownloadCsv = () => {
     if (!hasReport) return;
     const header = [
       'Employee ID', 'Employee Name', 'Department', 'Salary',
-      'Date', 'Status',
+      'Date', 'Status', 'SL Tier',
       'Work Hrs', 'OT (×1.25)',
       'W.OT (×1.5)', 'H.OT (×2.5)',
       'Project', 'Notes',
@@ -318,6 +333,7 @@ export function AttendanceReportSection() {
           csvEscape(emp.employee.id), csvEscape(emp.employee.name),
           csvEscape(emp.employee.department), csvEscape(emp.employee.salary ?? ''),
           csvEscape(day.date), csvEscape(day.status_code),
+          csvEscape(day.sick_leave?.tier ?? ''),
           csvEscape(day.working_hours), csvEscape(day.overtime.normal),
           csvEscape(day.overtime.holiday), csvEscape(day.overtime.public_holiday),
           csvEscape(day.projects), csvEscape(day.notes ?? ''),
@@ -379,11 +395,18 @@ export function AttendanceReportSection() {
           }
           .overall-summary-print .att-table th,
           .overall-summary-print .att-table td {
-            padding: 2px 3px !important;
-            font-size: 6.5pt !important;
-            line-height: 1.2 !important;
+            padding: 2px 2px !important;
+            font-size: 6pt !important;
+            line-height: 1.15 !important;
+            white-space: nowrap;
           }
-          .overall-summary-print .att-table th { font-size: 6pt !important; padding: 1.5px 3px !important; }
+          .overall-summary-print .att-table th { font-size: 5.5pt !important; padding: 1.5px 2px !important; }
+          .overall-summary-print .att-table th.sl-law-col,
+          .overall-summary-print .att-table td.sl-law-col {
+            padding: 1px 1.5px !important;
+            font-size: 5.5pt !important;
+            max-width: 28px;
+          }
           .overall-summary-print .emp-hdr { padding: 3px 10px !important; }
           .overall-summary-print .emp-hdr h2 { font-size: 10pt !important; }
           .overall-summary-print .summary-legend { padding: 1px 8px !important; font-size: 5.5pt !important; line-height: 1.2 !important; }
@@ -893,15 +916,31 @@ export function AttendanceReportSection() {
                                 ))}
                               </select>
                             ) : (
-                              <span className={`status-badge inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
-                                <span className={`badge-dot w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                                {day.status_code}
+                              <span className="inline-flex flex-col items-center gap-0.5">
+                                <span className={`status-badge inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${meta.bg} ${meta.color}`}>
+                                  <span className={`badge-dot w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                                  {day.status_code}
+                                </span>
+                                {day.status_code === 'SL' && day.sick_leave && (
+                                  <span
+                                    className={`text-[9px] font-semibold leading-none ${
+                                      day.sick_leave.tier === 'full'
+                                        ? 'text-emerald-600'
+                                        : day.sick_leave.tier === 'half'
+                                          ? 'text-amber-600'
+                                          : 'text-red-600'
+                                    }`}
+                                    title={`SL day ${day.sick_leave.ordinal} of ${day.sick_leave.year} — ${day.sick_leave.tier} pay`}
+                                  >
+                                    {day.sick_leave.paid_hours}h
+                                  </span>
+                                )}
                               </span>
                             )}
                           </td>
                           {showWorkHours && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                              {editMode ? (
+                              {editMode && day.status_code !== 'SL' ? (
                                 <input
                                   type="number" min="0" step="0.5"
                                   value={day.working_hours}
@@ -910,7 +949,11 @@ export function AttendanceReportSection() {
                                   className="w-14 text-right border rounded px-1 py-0.5 text-xs"
                                 />
                               ) : (
-                                day.working_hours > 0 ? day.working_hours : <span className="text-gray-300">—</span>
+                                day.working_hours > 0
+                                  ? day.working_hours
+                                  : day.status_code === 'SL'
+                                    ? <span className="text-red-500" title="Unpaid sick leave (day 46+)">0</span>
+                                    : <span className="text-gray-300">—</span>
                               )}
                             </td>
                           )}
@@ -1080,7 +1123,9 @@ export function AttendanceReportSection() {
             >
               {[
                 ['P', 'Present'], ['H', 'Holiday-Work'], ['W', 'Weekend'], ['V', 'Vacation'],
-                ['AWO', 'Absent – no excuse'], ['SL', 'Sick Leave'], ['A', 'Absent – excused'],
+                ['AWO', 'Absent – no excuse'], ['SL', 'Sick Leave (period)'], ['A', 'Absent – excused'],
+                ['SL YTD', 'Sick days since Jan 1'],
+                ['SL Full', '8h paid (days 1–15)'], ['SL Half', '4h paid (days 16–45)'], ['SL Unpaid', '0h (day 46+)'],
                 ['OT', '×1.25 normal'], ['W.OT', '×1.5 weekend'], ['H.OT', '×2.5 public holiday'],
               ].map(([code, desc]) => (
                 <span key={code}>
@@ -1104,6 +1149,10 @@ export function AttendanceReportSection() {
                     <th className="px-3 py-2.5 text-center font-semibold text-blue-600">V</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-red-600">AWO</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-orange-600">SL</th>
+                    <th className="sl-law-col px-2 py-2.5 text-center font-semibold text-orange-700" title="Sick leave days used since Jan 1 (calendar year)">SL YTD</th>
+                    <th className="sl-law-col px-2 py-2.5 text-center font-semibold text-emerald-700" title="Full pay 8h (days 1–15 this year)">Full</th>
+                    <th className="sl-law-col px-2 py-2.5 text-center font-semibold text-amber-700" title="Half pay 4h (days 16–45 this year)">Half</th>
+                    <th className="sl-law-col px-2 py-2.5 text-center font-semibold text-red-700" title="Unpaid 0h (day 46+ this year)">Unpaid</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-purple-600">A</th>
                     <th className="px-3 py-2.5 text-right font-semibold">Work Hrs</th>
                     <th className="px-3 py-2.5 text-right font-semibold text-amber-600">OT ×1.25</th>
@@ -1127,6 +1176,22 @@ export function AttendanceReportSection() {
                       <td className="px-3 py-2 text-center tabular-nums text-blue-600">{s.vacation        || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2 text-center tabular-nums text-red-600">{s.awo              || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2 text-center tabular-nums text-orange-600">{s.sl            || <span className="text-gray-300">—</span>}</td>
+                      <td className="sl-law-col px-2 py-2 text-center tabular-nums text-orange-700">
+                        {s.slYtdTotal > 0
+                          ? (s.slYtd.length > 1
+                              ? (
+                                <span className="inline-flex flex-col leading-tight">
+                                  {s.slYtd.map((y) => (
+                                    <span key={y.year}>{y.daysUsed} <span className="text-[9px] text-gray-400">({y.year})</span></span>
+                                  ))}
+                                </span>
+                              )
+                              : s.slYtdTotal)
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="sl-law-col px-2 py-2 text-center tabular-nums text-emerald-700">{s.slFull || <span className="text-gray-300">—</span>}</td>
+                      <td className="sl-law-col px-2 py-2 text-center tabular-nums text-amber-700">{s.slHalf || <span className="text-gray-300">—</span>}</td>
+                      <td className="sl-law-col px-2 py-2 text-center tabular-nums text-red-700">{s.slUnpaid || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2 text-center tabular-nums text-purple-600">{s.a             || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                         {s.totalHours > 0 ? `${s.totalHours}h` : <span className="text-gray-300">—</span>}
@@ -1161,6 +1226,10 @@ export function AttendanceReportSection() {
                     <td className="px-3 py-2.5 text-center text-blue-600">{grandTotals.vacation        || '—'}</td>
                     <td className="px-3 py-2.5 text-center text-red-600">{grandTotals.awo              || '—'}</td>
                     <td className="px-3 py-2.5 text-center text-orange-600">{grandTotals.sl            || '—'}</td>
+                    <td className="sl-law-col px-2 py-2.5 text-center text-orange-700">{grandTotals.slYtdTotal || '—'}</td>
+                    <td className="sl-law-col px-2 py-2.5 text-center text-emerald-700">{grandTotals.slFull || '—'}</td>
+                    <td className="sl-law-col px-2 py-2.5 text-center text-amber-700">{grandTotals.slHalf || '—'}</td>
+                    <td className="sl-law-col px-2 py-2.5 text-center text-red-700">{grandTotals.slUnpaid || '—'}</td>
                     <td className="px-3 py-2.5 text-center text-purple-600">{grandTotals.a             || '—'}</td>
                     <td className="px-3 py-2.5 text-right">{grandTotals.totalHours > 0 ? `${grandTotals.totalHours}h` : '—'}</td>
                     <td className="px-3 py-2.5 text-right text-amber-600">

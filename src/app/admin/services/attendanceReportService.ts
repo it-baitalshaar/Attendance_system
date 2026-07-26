@@ -11,6 +11,10 @@ import { statusToCode } from '../types/attendanceReport';
 import { resolveProjectDisplayName } from '@/lib/projectDisplayName';
 import { bucketOvertimeHours } from './payrollCalculation';
 import { maxRegularHoursForStatus } from '@/app/lib/employeeRegularHours';
+import {
+  assignSickLeaveTiers,
+  summarizeEmployeeSickLeave,
+} from './sickLeaveLaw';
 
 export interface RawAttendanceRow {
   id: string;
@@ -46,13 +50,19 @@ export interface BuildReportInput {
   attProjRows: RawAttendanceProjectRow[];
   projectNameById: Map<string, string>;
   employees: RawEmployeeRow[];
+  /**
+   * Sick leave dates before the report `from` date (same calendar year),
+   * keyed by employee_id. Used so SL law ordinals continue across periods.
+   * Optional — defaults to empty (treats period SL days as starting at ordinal 1).
+   */
+  priorSickLeaveDaysByEmployee?: Map<string, string[]>;
 }
 
 /**
  * Builds the attendance report per spec:
  * - One row per employee per calendar day
  * - Sum hours and overtime per day
- * - 8hr default for Weekend/Holiday-Work when working_hours=0
+ * - Sick Leave: calendar-year law (1–15 → 8h, 16–45 → 4h, 46+ → 0h); see sickLeaveLaw.ts
  * - Overtime by payroll type from each project row (overtime_type), with legacy fallback from day status when type is missing
  * - Project text: "Name Xhrs + Name Yhrs", NULL → "Unknown"
  * - Sort by employee_id, date asc
@@ -60,7 +70,13 @@ export interface BuildReportInput {
 export function buildAttendanceReport(
   input: BuildReportInput
 ): AttendanceReportEmployeeReport[] {
-  const { attRows, attProjRows, projectNameById, employees } = input;
+  const {
+    attRows,
+    attProjRows,
+    projectNameById,
+    employees,
+    priorSickLeaveDaysByEmployee = new Map(),
+  } = input;
 
   const attendanceById = new Map<string, RawAttendanceRow>();
   attRows.forEach((r) => attendanceById.set(r.id, r));
@@ -152,7 +168,7 @@ export function buildAttendanceReport(
 
   // Apply hour defaults:
   // - Weekend/Holiday-Work: 8hr default only when project rows exist (Construction/Maintenance track per-project).
-  // - Sick Leave: 8hr default even without project rows (project is optional for SL).
+  // - Sick Leave: temporary 8hr default; overwritten by SL law tiers below.
   // - Half Day AM: 4.5hr for all employees (7:30–12:00), regardless of project rows.
   // - Half Day PM: 3.5hr for all employees (13:00–16:30), regardless of project rows.
   dayDataByKey.forEach((v) => {
@@ -171,6 +187,24 @@ export function buildAttendanceReport(
       }
     }
   });
+
+  // Calendar-year SL law: force payable hours by ordinal (1–15 → 8h, 16–45 → 4h, 46+ → 0h).
+  // Applies even when the SL day has project rows — the law fixes payable hours.
+  const periodSickLeaveDays: { employee_id: string; date: string }[] = [];
+  dayDataByKey.forEach((v, k) => {
+    const code = statusToCode(v.status, v.status_attendance);
+    if (code !== 'SL') return;
+    const [empId, date] = k.split('|');
+    periodSickLeaveDays.push({ employee_id: empId, date });
+  });
+  const slAssignments = assignSickLeaveTiers({
+    periodSickLeaveDays,
+    priorSickLeaveDaysByEmployee,
+  });
+  for (const [key, assignment] of Array.from(slAssignments.entries())) {
+    const v = dayDataByKey.get(key);
+    if (v) v.working_hours = assignment.paid_hours;
+  }
 
   // Employees with overtime disabled: cap regular hours, exclude OT from payroll report.
   dayDataByKey.forEach((v, k) => {
@@ -197,6 +231,7 @@ export function buildAttendanceReport(
     const dates = Array.from(
       new Set(attRows.filter((r) => r.employee_id === empId).map((r) => r.date))
     ).sort();
+    const periodSlDates: string[] = [];
 
     for (const date of dates) {
       const k = key(empId, date);
@@ -216,6 +251,10 @@ export function buildAttendanceReport(
               .map(([name, hrs]) => `${name} ${hrs}hrs`)
               .join(' + ');
 
+      const slAssignment =
+        statusCode === 'SL' ? slAssignments.get(k) ?? null : null;
+      if (statusCode === 'SL') periodSlDates.push(date);
+
       days.push({
         date,
         status_code: statusCode,
@@ -228,8 +267,23 @@ export function buildAttendanceReport(
         // Sick Leave: project is optional — never show project allocation on the report.
         projects: statusCode === 'SL' ? '—' : projectsText || '—',
         notes: d.notes,
+        sick_leave: slAssignment
+          ? {
+              ordinal: slAssignment.ordinal,
+              year: slAssignment.year,
+              tier: slAssignment.tier,
+              paid_hours: slAssignment.paid_hours,
+            }
+          : null,
       });
     }
+
+    const sickLeave = summarizeEmployeeSickLeave({
+      employeeId: empId,
+      periodSickLeaveDates: periodSlDates,
+      priorSickLeaveDates: priorSickLeaveDaysByEmployee.get(empId) ?? [],
+      assignments: slAssignments,
+    });
 
     result.push({
       employee: {
@@ -239,6 +293,10 @@ export function buildAttendanceReport(
         salary: emp?.salary ?? null,
       },
       days,
+      sickLeave:
+        sickLeave.ytd.length > 0 || sickLeave.periodDays > 0
+          ? sickLeave
+          : null,
     });
   }
 
