@@ -8,6 +8,7 @@ import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../
 import { computePayrollFromDays } from '../../services/payrollCalculation';
 import { buildAttendanceReportWhatsAppMessage } from '@/lib/attendanceReportEmailHtml';
 import { getCurrentPayrollYearMonth, getPayrollPeriodBounds } from '@/lib/payrollPeriod';
+import { buildBaitalshaarReportBasename } from '@/lib/reportPdf/baitalshaarReportFilename';
 import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
 import {
   countWeekendDaysInRange,
@@ -559,9 +560,24 @@ export function AttendanceReportSection() {
               disabled={!hasReport || loading}
               className="px-4 py-2 text-sm rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40"
               onClick={() => {
+                const prevTitle = document.title;
+                document.title = buildBaitalshaarReportBasename({
+                  department: department === ALL ? null : department,
+                  from: reportFrom || fromDate,
+                  to: reportTo || toDate,
+                });
                 document.body.classList.add('print-attendance');
+                let restored = false;
+                const restore = () => {
+                  if (restored) return;
+                  restored = true;
+                  document.body.classList.remove('print-attendance');
+                  document.title = prevTitle;
+                  window.removeEventListener('afterprint', restore);
+                };
+                window.addEventListener('afterprint', restore);
                 window.print();
-                document.body.classList.remove('print-attendance');
+                window.setTimeout(restore, 60_000);
               }}
             >
               Print / Save as PDF

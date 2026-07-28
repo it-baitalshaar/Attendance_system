@@ -2,7 +2,7 @@
  * Salary & Project Cost Report — uses the same payroll rules as the Attendance Report.
  * Days/hours/OT are built via buildAttendanceReport; salary totals via computePayrollFromDays.
  * Project costs allocate logged project hours at the same hourly rate and OT multipliers.
- * Any variance vs attendance salary means project rows need fixing in attendance.
+ * Hrs Δ from Sick Leave (paid, not charged to projects) is expected; other gaps need attendance fixes.
  */
 
 import type { SalaryReportEmployee, ProjectCostEntry } from '../types/salaryReport';
@@ -144,12 +144,23 @@ export function buildSalaryReport(input: {
         workingHours: data.workingHours,
         baseValue,
         overtimeHours,
+        otNormal: data.otNormal,
+        otHoliday: data.otHoliday,
+        otPublicHoliday: data.otPublicHoliday,
         overtimeRate,
         overtimeValue,
       });
     }
 
     projects.sort((a, b) => a.projectName.localeCompare(b.projectName));
+
+    let sickLeaveHours = 0;
+    let sickLeaveDays = 0;
+    for (const day of empReport.days) {
+      if (day.status_code !== 'SL') continue;
+      sickLeaveDays += 1;
+      sickLeaveHours += day.working_hours ?? 0;
+    }
 
     result.push({
       employee: {
@@ -166,6 +177,8 @@ export function buildSalaryReport(input: {
       baseSalary: payroll.baseSalary,
       overtimeAmount: payroll.overtimeAmount,
       totalSalary: payroll.totalSalary,
+      sickLeaveHours,
+      sickLeaveDays,
       projects,
     });
   }

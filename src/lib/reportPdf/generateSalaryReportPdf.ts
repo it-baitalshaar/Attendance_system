@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { SalaryReconciliationSummary } from '@/app/admin/types/projectCostReport';
 import { formatPeriodLabel } from '@/lib/payrollPeriod';
+import { buildBaitalshaarReportPdfFilename } from '@/lib/reportPdf/baitalshaarReportFilename';
 
 function fmt(n: number, decimals = 0): string {
   return n.toLocaleString('en-US', {
@@ -35,7 +36,16 @@ export function generateSalaryReportPdfBuffer(input: {
   doc.text(`View: ${viewMode === 'project' ? 'By Project' : 'By Employee'}`, margin, y);
   y += 8;
   doc.text(
-    `Total Salary: ${fmt(summary.grandTotalSalary)}  |  Project Cost: ${fmt(summary.grandProjectCost, 2)}  |  Variance: ${summary.isMatched ? 'Matched' : fmt(summary.grandVariance, 2)}`,
+    `Total Salary: ${fmt(summary.grandTotalSalary)}  |  Project Cost: ${fmt(summary.grandProjectCost, 2)}  |  Variance: ${
+      summary.isMatched
+        ? 'Matched'
+        : summary.isExplained
+          ? `${fmt(summary.grandVariance, 2)} (Sick Leave ${summary.grandSickLeaveExplainedHours}h: ${summary.employees
+              .filter((e) => e.sickLeaveExplainedHours > 0.01)
+              .map((e) => e.employeeId)
+              .join(', ')})`
+          : fmt(summary.grandVariance, 2)
+    }`,
     margin,
     y
   );
@@ -44,14 +54,25 @@ export function generateSalaryReportPdfBuffer(input: {
   autoTable(doc, {
     startY: y,
     margin: { left: margin, right: margin },
-    head: [['Employee', 'Total Salary', 'Project Total', 'Work Hrs', 'Logged Hrs', 'Cost Δ']],
-    body: summary.employees.map((e) => [
+    head: [['Employee', 'Total Salary', 'Project Total', 'Work Hrs', 'Logged Hrs', 'Cost Δ', 'Reason']],
+    body: [...summary.employees]
+      .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance))
+      .map((e) => [
       `${e.employeeName}\n${e.employeeId}`,
       fmt(e.totalSalary),
       e.projectTotalCost > 0 ? fmt(e.projectTotalCost, 2) : '—',
       `${e.totalHours}h`,
       e.projectHours > 0 ? `${e.projectHours}h` : '—',
       Math.abs(e.variance) <= 0.5 ? '✓' : fmt(e.variance, 2),
+      e.varianceReason === 'sick_leave'
+        ? `Sick Leave (${e.sickLeaveExplainedHours}h)`
+        : e.varianceReason === 'mixed'
+          ? `SL ${e.sickLeaveExplainedHours}h + missing ${e.unexplainedHours}h`
+          : e.varianceReason === 'missing_project_hours'
+            ? `Missing ${e.unexplainedHours}h`
+            : e.varianceReason === 'rounding'
+              ? 'Rounding'
+              : '—',
     ]),
     foot: [
       [
@@ -61,6 +82,9 @@ export function generateSalaryReportPdfBuffer(input: {
         '',
         '',
         summary.isMatched ? '✓' : fmt(summary.grandVariance, 2),
+        summary.grandSickLeaveExplainedHours > 0
+          ? `SL ${summary.grandSickLeaveExplainedHours}h`
+          : '',
       ],
     ],
     styles: { fontSize: 8, cellPadding: 2 },
@@ -105,6 +129,10 @@ export function generateSalaryReportPdfBuffer(input: {
   return Buffer.from(doc.output('arraybuffer'));
 }
 
-export function salaryReportPdfFilename(from: string, to: string): string {
-  return `salary-project-report_${from}_${to}.pdf`;
+export function salaryReportPdfFilename(
+  from: string,
+  to: string,
+  department?: string | null
+): string {
+  return buildBaitalshaarReportPdfFilename({ department, from, to });
 }

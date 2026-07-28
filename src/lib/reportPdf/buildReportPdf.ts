@@ -49,7 +49,7 @@ export async function buildReportPdf(
       viewMode: viewMode ?? 'employee',
       summary,
     });
-    return { buffer, filename: salaryReportPdfFilename(from, to) };
+    return { buffer, filename: salaryReportPdfFilename(from, to, params.department) };
   }
 
   if (attendanceError) return { buffer: Buffer.alloc(0), filename: '', error: attendanceError };
@@ -62,5 +62,5 @@ export async function buildReportPdf(
     filterLabel,
     report: attendanceReport,
   });
-  return { buffer, filename: attendanceReportPdfFilename(from, to) };
+  return { buffer, filename: attendanceReportPdfFilename(from, to, params.department) };
 }

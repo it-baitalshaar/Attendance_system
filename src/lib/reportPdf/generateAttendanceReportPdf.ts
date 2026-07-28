@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import type { AttendanceReportEmployeeReport } from '@/app/admin/types/attendanceReport';
 import { computePayrollFromDays } from '@/app/admin/services/payrollCalculation';
 import { formatPeriodLabel } from '@/lib/payrollPeriod';
+import { buildBaitalshaarReportPdfFilename } from '@/lib/reportPdf/baitalshaarReportFilename';
 
 function fmt(n: number): string {
   return n.toLocaleString('en-US');
@@ -79,6 +80,10 @@ export function generateAttendanceReportPdfBuffer(input: {
   return Buffer.from(doc.output('arraybuffer'));
 }
 
-export function attendanceReportPdfFilename(from: string, to: string): string {
-  return `attendance-report_${from}_${to}.pdf`;
+export function attendanceReportPdfFilename(
+  from: string,
+  to: string,
+  department?: string | null
+): string {
+  return buildBaitalshaarReportPdfFilename({ department, from, to });
 }

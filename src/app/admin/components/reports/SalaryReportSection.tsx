@@ -14,6 +14,7 @@ import {
   formatPeriodLabel,
   payrollMonthLabel,
 } from '@/lib/payrollPeriod';
+import { buildBaitalshaarReportBasename } from '@/lib/reportPdf/baitalshaarReportFilename';
 import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -25,8 +26,44 @@ function fmt(n: number, decimals = 0): string {
   });
 }
 
-function fmtRate(r: number): string {
-  return `×${r.toFixed(2)}`;
+const COST_MATCH_TOLERANCE = 0.5;
+const HOURS_MATCH_TOLERANCE = 0.01;
+
+function isEmployeeMismatch(e: {
+  hoursVariance: number;
+  variance: number;
+}): boolean {
+  return (
+    Math.abs(e.hoursVariance) > HOURS_MATCH_TOLERANCE ||
+    Math.abs(e.variance) > COST_MATCH_TOLERANCE
+  );
+}
+
+function varianceReasonLabel(e: {
+  varianceReason: string;
+  sickLeaveExplainedHours: number;
+  sickLeaveDays: number;
+  unexplainedHours: number;
+}): string | null {
+  switch (e.varianceReason) {
+    case 'sick_leave':
+      return e.sickLeaveDays > 0
+        ? `Sick Leave (${e.sickLeaveExplainedHours}h · ${e.sickLeaveDays}d)`
+        : `Sick Leave (${e.sickLeaveExplainedHours}h)`;
+    case 'mixed':
+      return `SL ${e.sickLeaveExplainedHours}h + missing ${e.unexplainedHours}h`;
+    case 'missing_project_hours':
+      return `Missing project hours (${e.unexplainedHours}h)`;
+    case 'rounding':
+      return 'Rounding';
+    default:
+      return null;
+  }
+}
+
+function OtHoursCell({ n, color = 'text-gray-600' }: { n: number; color?: string }) {
+  if (n <= 0) return <span className="text-gray-300">—</span>;
+  return <span className={`tabular-nums ${color}`}>{n}</span>;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -60,9 +97,12 @@ function ProjectTable({ projects }: { projects: ProjectCostEntry[] }) {
   const totalBase = projects.reduce((s, p) => s + p.baseValue, 0);
   const totalOtVal = projects.reduce((s, p) => s + p.overtimeValue, 0);
   const totalVal = totalBase + totalOtVal;
+  const totalOtNormal = projects.reduce((s, p) => s + p.otNormal, 0);
+  const totalOtHoliday = projects.reduce((s, p) => s + p.otHoliday, 0);
+  const totalOtPublic = projects.reduce((s, p) => s + p.otPublicHoliday, 0);
 
   return (
-    <div className="overflow-x-auto">
+    <div className="sal-scroll overflow-x-auto print:overflow-visible">
       <table className="sal-table w-full text-sm border-collapse">
         <thead>
           <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
@@ -72,7 +112,9 @@ function ProjectTable({ projects }: { projects: ProjectCostEntry[] }) {
               <span dir="rtl">قيمة الأيام</span>
             </th>
             <th className="px-3 py-2.5 text-right font-semibold">OT Hrs</th>
-            <th className="px-3 py-2.5 text-center font-semibold">OT Rate</th>
+            <th className="px-3 py-2.5 text-right font-semibold text-amber-600">OT ×1.25</th>
+            <th className="px-3 py-2.5 text-right font-semibold text-amber-600">W.OT ×1.5</th>
+            <th className="px-3 py-2.5 text-right font-semibold text-amber-600">H.OT ×2.5</th>
             <th className="px-3 py-2.5 text-right font-semibold">
               <span dir="rtl">قيمة الإضافي</span>
             </th>
@@ -89,11 +131,17 @@ function ProjectTable({ projects }: { projects: ProjectCostEntry[] }) {
               <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
                 {p.baseValue > 0 ? fmt(p.baseValue, 2) : <span className="text-gray-300">—</span>}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                {p.overtimeHours > 0 ? p.overtimeHours : <span className="text-gray-300">—</span>}
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={p.overtimeHours} />
               </td>
-              <td className="px-3 py-2 text-center text-amber-700 font-mono text-xs">
-                {p.overtimeHours > 0 ? fmtRate(p.overtimeRate) : <span className="text-gray-300">—</span>}
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={p.otNormal} color="text-amber-700" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={p.otHoliday} color="text-amber-700" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={p.otPublicHoliday} color="text-amber-700" />
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-amber-700">
                 {p.overtimeValue > 0 ? fmt(p.overtimeValue, 2) : <span className="text-gray-300">—</span>}
@@ -116,7 +164,15 @@ function ProjectTable({ projects }: { projects: ProjectCostEntry[] }) {
             <td className="px-3 py-2.5 text-right tabular-nums">
               {projects.reduce((s, p) => s + p.overtimeHours, 0) || '—'}
             </td>
-            <td />
+            <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              {totalOtNormal > 0 ? totalOtNormal : '—'}
+            </td>
+            <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              {totalOtHoliday > 0 ? totalOtHoliday : '—'}
+            </td>
+            <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              {totalOtPublic > 0 ? totalOtPublic : '—'}
+            </td>
             <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
               {totalOtVal > 0 ? fmt(totalOtVal, 2) : '—'}
             </td>
@@ -133,9 +189,12 @@ function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] })
   const totalBase = employees.reduce((s, e) => s + e.baseValue, 0);
   const totalOtVal = employees.reduce((s, e) => s + e.overtimeValue, 0);
   const totalVal = totalBase + totalOtVal;
+  const totalOtNormal = employees.reduce((s, e) => s + e.otNormal, 0);
+  const totalOtHoliday = employees.reduce((s, e) => s + e.otHoliday, 0);
+  const totalOtPublic = employees.reduce((s, e) => s + e.otPublicHoliday, 0);
 
   return (
-    <div className="overflow-x-auto">
+    <div className="sal-scroll overflow-x-auto print:overflow-visible">
       <table className="sal-table w-full text-sm border-collapse">
         <thead>
           <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
@@ -146,7 +205,9 @@ function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] })
               <span dir="rtl">قيمة الأيام</span>
             </th>
             <th className="px-3 py-2.5 text-right font-semibold">OT Hrs</th>
-            <th className="px-3 py-2.5 text-center font-semibold">OT Rate</th>
+            <th className="px-3 py-2.5 text-right font-semibold text-amber-600">OT ×1.25</th>
+            <th className="px-3 py-2.5 text-right font-semibold text-amber-600">W.OT ×1.5</th>
+            <th className="px-3 py-2.5 text-right font-semibold text-amber-600">H.OT ×2.5</th>
             <th className="px-3 py-2.5 text-right font-semibold">
               <span dir="rtl">قيمة الإضافي</span>
             </th>
@@ -167,11 +228,17 @@ function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] })
               <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
                 {e.baseValue > 0 ? fmt(e.baseValue, 2) : <span className="text-gray-300">—</span>}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                {e.overtimeHours > 0 ? e.overtimeHours : <span className="text-gray-300">—</span>}
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={e.overtimeHours} />
               </td>
-              <td className="px-3 py-2 text-center text-amber-700 font-mono text-xs">
-                {e.overtimeHours > 0 ? fmtRate(e.overtimeRate) : <span className="text-gray-300">—</span>}
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={e.otNormal} color="text-amber-700" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={e.otHoliday} color="text-amber-700" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <OtHoursCell n={e.otPublicHoliday} color="text-amber-700" />
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-amber-700">
                 {e.overtimeValue > 0 ? fmt(e.overtimeValue, 2) : <span className="text-gray-300">—</span>}
@@ -196,7 +263,15 @@ function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] })
             <td className="px-3 py-2.5 text-right tabular-nums">
               {employees.reduce((s, e) => s + e.overtimeHours, 0) || '—'}
             </td>
-            <td />
+            <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              {totalOtNormal > 0 ? totalOtNormal : '—'}
+            </td>
+            <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              {totalOtHoliday > 0 ? totalOtHoliday : '—'}
+            </td>
+            <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              {totalOtPublic > 0 ? totalOtPublic : '—'}
+            </td>
             <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
               {totalOtVal > 0 ? fmt(totalOtVal, 2) : '—'}
             </td>
@@ -209,7 +284,7 @@ function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] })
 }
 
 function VarianceCell({ value }: { value: number }) {
-  const matched = Math.abs(value) <= 0.5;
+  const matched = Math.abs(value) <= COST_MATCH_TOLERANCE;
   return (
     <span
       className={`tabular-nums font-medium ${
@@ -232,8 +307,69 @@ function OverallSummaryPage({
   filterLabel: string;
   printColorStyle: React.CSSProperties;
 }) {
+  const [showMismatchesOnly, setShowMismatchesOnly] = useState(!summary.isMatched);
+
+  const mismatchedEmployees = useMemo(
+    () => summary.employees.filter(isEmployeeMismatch),
+    [summary.employees]
+  );
+
+  const sortedEmployees = useMemo(() => {
+    const list = showMismatchesOnly ? mismatchedEmployees : summary.employees;
+    return [...list].sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance));
+  }, [summary.employees, mismatchedEmployees, showMismatchesOnly]);
+
+  const topMismatch = mismatchedEmployees.reduce<(typeof mismatchedEmployees)[0] | null>(
+    (best, e) =>
+      !best || Math.abs(e.variance) > Math.abs(best.variance) ? e : best,
+    null
+  );
+
+  const sickLeaveEmployees = useMemo(
+    () =>
+      summary.employees
+        .filter((e) => e.sickLeaveExplainedHours > HOURS_MATCH_TOLERANCE)
+        .sort((a, b) => b.sickLeaveExplainedHours - a.sickLeaveExplainedHours),
+    [summary.employees]
+  );
+
+  const scrollToEmployee = (employeeId: string) => {
+    const el = document.getElementById(`sal-emp-${employeeId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const renderSickLeaveEmployeeLinks = () => {
+    if (sickLeaveEmployees.length === 0) return null;
+    return (
+      <>
+        {' '}
+        from{' '}
+        {sickLeaveEmployees.map((e, i) => (
+          <span key={e.employeeId}>
+            {i > 0 && (i === sickLeaveEmployees.length - 1 ? ' and ' : ', ')}
+            <button
+              type="button"
+              onClick={() => scrollToEmployee(e.employeeId)}
+              className="underline font-semibold hover:opacity-80 no-print font-mono"
+            >
+              {e.employeeId}
+            </button>
+            <span className="hidden print:inline font-mono font-semibold">{e.employeeId}</span>
+            <span className="opacity-80">
+              {' '}
+              ({e.sickLeaveExplainedHours}h
+              {e.sickLeaveDays > 0 ? ` · ${e.sickLeaveDays}d` : ''})
+            </span>
+          </span>
+        ))}
+      </>
+    );
+  };
+
   return (
-    <div className="sal-card sal-page-break bg-white rounded-lg shadow mt-6 overflow-hidden">
+    <div className="sal-card sal-page-break sal-overall-summary bg-white rounded-lg shadow mt-6 overflow-hidden">
       <div
         className="sal-hdr bg-gradient-to-r from-indigo-900 to-indigo-800 text-white px-6 py-4"
         style={printColorStyle}
@@ -302,13 +438,81 @@ function OverallSummaryPage({
         </div>
       </div>
 
-      {!summary.isMatched && (
+      {!summary.isMatched && summary.isExplained && (
+        <div className="px-6 py-3 bg-sky-50 border-b text-sm text-sky-900">
+          Attendance salary and project cost differ by{' '}
+          <strong>{fmt(Math.abs(summary.grandVariance), 2)}</strong>
+          {summary.grandSickLeaveExplainedHours > 0 && (
+            <>
+              {' '}
+              — explained by <strong>Sick Leave</strong> pay (
+              {summary.grandSickLeaveExplainedHours}h)
+              {renderSickLeaveEmployeeLinks()}
+              , which is paid in salary but not charged to projects. No attendance fix needed.
+              Click an ID to open that employee’s card.
+            </>
+          )}
+          {summary.grandSickLeaveExplainedHours <= 0 && (
+            <> — within rounding tolerance for project hours. No attendance fix needed.</>
+          )}
+        </div>
+      )}
+
+      {!summary.isMatched && !summary.isExplained && (
         <div className="px-6 py-3 bg-amber-50 border-b text-sm text-amber-800">
           Attendance salary total and project cost total differ by{' '}
-          <strong>{fmt(Math.abs(summary.grandVariance), 2)}</strong>. Salary follows the same
-          rules as the Attendance Report — fix missing or incorrect project hours in attendance
-          (see Work Hrs vs Logged Hrs). Cost variance usually equals missing logged hours × hourly
-          rate.
+          <strong>{fmt(Math.abs(summary.grandVariance), 2)}</strong>
+          {mismatchedEmployees.length > 0 && (
+            <>
+              {' '}
+              — <strong>{mismatchedEmployees.length}</strong> employee
+              {mismatchedEmployees.length !== 1 ? 's' : ''} with Hrs Δ / Cost Δ
+              {topMismatch && (
+                <>
+                  {' '}
+                  (largest:{' '}
+                  <button
+                    type="button"
+                    onClick={() => scrollToEmployee(topMismatch.employeeId)}
+                    className="underline font-semibold hover:text-amber-950 no-print font-mono"
+                  >
+                    {topMismatch.employeeId}
+                  </button>
+                  <span className="hidden print:inline font-mono font-semibold">
+                    {topMismatch.employeeId}
+                  </span>
+                  , {topMismatch.hoursVariance}h / {fmt(topMismatch.variance, 2)}
+                  {topMismatch.varianceReason === 'sick_leave' ||
+                  topMismatch.varianceReason === 'mixed'
+                    ? ` · ${varianceReasonLabel(topMismatch)}`
+                    : ''}
+                  )
+                </>
+              )}
+            </>
+          )}
+          {summary.grandSickLeaveExplainedHours > 0 && (
+            <>
+              {' '}
+              Part of the gap is <strong>Sick Leave</strong> (
+              {summary.grandSickLeaveExplainedHours}h paid, not on projects)
+              {renderSickLeaveEmployeeLinks()}
+              {summary.grandUnexplainedHours > 0 && (
+                <>
+                  ; remaining unexplained{' '}
+                  <strong>{summary.grandUnexplainedHours}h</strong> needs project hours fixed in
+                  the Attendance Report
+                </>
+              )}
+              .
+            </>
+          )}
+          {summary.grandSickLeaveExplainedHours <= 0 && (
+            <>
+              . Fix missing or incorrect project hours in the Attendance Report (Work Hrs vs Logged
+              Hrs). Click a mismatched employee to jump to their card.
+            </>
+          )}
         </div>
       )}
 
@@ -319,99 +523,176 @@ function OverallSummaryPage({
         </div>
       )}
 
-      <div className="px-4 pt-4 pb-1 bg-white">
+      <div className="px-4 pt-4 pb-1 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
           Salary vs Project Cost — By Employee
         </h3>
+        <label className="no-print flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showMismatchesOnly}
+            onChange={(e) => setShowMismatchesOnly(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          Show mismatches only
+          {mismatchedEmployees.length > 0 && (
+            <span className="text-amber-700 font-medium">({mismatchedEmployees.length})</span>
+          )}
+        </label>
       </div>
-      <div className="overflow-x-auto">
-        <table className="sal-table w-full text-sm border-collapse">
+      <div className="sal-scroll overflow-x-auto print:overflow-visible">
+        <table className="sal-table sal-recon-table w-full text-xs sm:text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
-              <th className="px-4 py-2.5 text-left font-semibold">Employee</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Base Salary</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Overtime</th>
-              <th className="px-3 py-2.5 text-right font-semibold text-indigo-700">Total Salary</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Project Base</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Project OT</th>
-              <th className="px-3 py-2.5 text-right font-semibold text-emerald-700">Project Total</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Work Hrs</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Logged Hrs</th>
-              <th className="px-3 py-2.5 text-right font-semibold">Hrs Δ</th>
-              <th className="px-3 py-2.5 text-center font-semibold">Cost Δ</th>
+            <tr className="bg-gray-50 border-b text-[10px] sm:text-xs text-gray-500 uppercase tracking-wide">
+              <th className="px-2 py-2 text-left font-semibold">Employee</th>
+              <th className="px-2 py-2 text-right font-semibold">Base</th>
+              <th className="px-2 py-2 text-right font-semibold">OT</th>
+              <th className="px-2 py-2 text-right font-semibold text-indigo-700">Total</th>
+              <th className="px-2 py-2 text-right font-semibold">P.Base</th>
+              <th className="px-2 py-2 text-right font-semibold">P.OT</th>
+              <th className="px-2 py-2 text-right font-semibold text-emerald-700">P.Total</th>
+              <th className="px-2 py-2 text-right font-semibold">Work</th>
+              <th className="px-2 py-2 text-right font-semibold">Logged</th>
+              <th className="px-2 py-2 text-right font-semibold">Hrs Δ</th>
+              <th className="px-2 py-2 text-center font-semibold">Cost Δ / Reason</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {summary.employees.map((e) => (
-              <tr key={e.employeeId} className="hover:bg-gray-50">
-                <td className="px-4 py-2">
-                  <div className="font-medium text-gray-800">{e.employeeName}</div>
-                  <div className="text-xs text-gray-400 font-mono">
-                    {e.employeeId} · {e.department}
-                  </div>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                  {fmt(e.baseSalary, 2)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-amber-700">
-                  {e.overtimeAmount > 0 ? fmt(e.overtimeAmount, 2) : '—'}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold text-indigo-700">
-                  {fmt(e.totalSalary)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                  {e.projectBaseCost > 0 ? fmt(e.projectBaseCost, 2) : '—'}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-amber-700">
-                  {e.projectOvertimeCost > 0 ? fmt(e.projectOvertimeCost, 2) : '—'}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold text-emerald-700">
-                  {e.projectTotalCost > 0 ? fmt(e.projectTotalCost, 2) : '—'}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                  {e.totalHours > 0 ? `${e.totalHours}h` : '—'}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                  {e.projectHours > 0 ? `${e.projectHours}h` : '—'}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {Math.abs(e.hoursVariance) <= 0.01 ? (
-                    <span className="text-emerald-600">✓</span>
-                  ) : (
-                    <span className="text-amber-700 font-medium">{e.hoursVariance}h</span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-center">
-                  <VarianceCell value={e.variance} />
+            {sortedEmployees.length === 0 ? (
+              <tr>
+                <td colSpan={11} className="px-4 py-6 text-center text-sm text-gray-500">
+                  {showMismatchesOnly
+                    ? 'No mismatches — all employees match within tolerance.'
+                    : 'No employees in this report.'}
                 </td>
               </tr>
-            ))}
+            ) : (
+              sortedEmployees.map((e) => {
+                const mismatch = isEmployeeMismatch(e);
+                const reason = varianceReasonLabel(e);
+                const rowTone =
+                  e.varianceReason === 'sick_leave'
+                    ? 'bg-sky-50/80 hover:bg-sky-50'
+                    : mismatch
+                      ? 'bg-amber-50/80 hover:bg-amber-50'
+                      : 'hover:bg-gray-50';
+                return (
+                  <tr key={e.employeeId} className={rowTone}>
+                    <td className="px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => scrollToEmployee(e.employeeId)}
+                        className="text-left group no-print"
+                      >
+                        <div className="font-medium text-gray-800 group-hover:text-indigo-700 group-hover:underline">
+                          {e.employeeName}
+                        </div>
+                        <div className="text-xs text-gray-400 font-mono">
+                          {e.employeeId} · {e.department}
+                        </div>
+                      </button>
+                      <div className="hidden print:block">
+                        <div className="font-medium text-gray-800">{e.employeeName}</div>
+                        <div className="text-xs text-gray-400 font-mono">
+                          {e.employeeId} · {e.department}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-emerald-700">
+                      {fmt(e.baseSalary, 2)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-amber-700">
+                      {e.overtimeAmount > 0 ? fmt(e.overtimeAmount, 2) : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-indigo-700">
+                      {fmt(e.totalSalary)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-emerald-700">
+                      {e.projectBaseCost > 0 ? fmt(e.projectBaseCost, 2) : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-amber-700">
+                      {e.projectOvertimeCost > 0 ? fmt(e.projectOvertimeCost, 2) : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-emerald-700">
+                      {e.projectTotalCost > 0 ? fmt(e.projectTotalCost, 2) : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">
+                      {e.totalHours > 0 ? `${e.totalHours}h` : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">
+                      {e.projectHours > 0 ? `${e.projectHours}h` : '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">
+                      {Math.abs(e.hoursVariance) <= HOURS_MATCH_TOLERANCE ? (
+                        <span className="text-emerald-600">✓</span>
+                      ) : (
+                        <span
+                          className={`font-medium ${
+                            e.varianceReason === 'sick_leave'
+                              ? 'text-sky-700'
+                              : 'text-amber-700'
+                          }`}
+                        >
+                          {e.hoursVariance}h
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <div>
+                        <VarianceCell value={e.variance} />
+                      </div>
+                      {reason ? (
+                        <div
+                          className={`mt-0.5 text-[10px] leading-tight ${
+                            e.varianceReason === 'sick_leave'
+                              ? 'text-sky-800 font-medium'
+                              : e.varianceReason === 'missing_project_hours' ||
+                                  e.varianceReason === 'mixed'
+                                ? 'text-amber-800 font-medium'
+                                : 'text-gray-500'
+                          }`}
+                        >
+                          {reason}
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
-              <td className="px-4 py-2.5">TOTAL</td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
+              <td className="px-2 py-2">TOTAL</td>
+              <td className="px-2 py-2 text-right tabular-nums text-emerald-700">
                 {fmt(summary.grandBaseSalary, 2)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              <td className="px-2 py-2 text-right tabular-nums text-amber-700">
                 {fmt(summary.grandOvertime, 2)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-indigo-700">
+              <td className="px-2 py-2 text-right tabular-nums text-indigo-700">
                 {fmt(summary.grandTotalSalary)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
+              <td className="px-2 py-2 text-right tabular-nums text-emerald-700">
                 {fmt(summary.grandProjectBase, 2)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-amber-700">
+              <td className="px-2 py-2 text-right tabular-nums text-amber-700">
                 {fmt(summary.grandProjectOvertime, 2)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
+              <td className="px-2 py-2 text-right tabular-nums text-emerald-700">
                 {fmt(summary.grandProjectCost, 2)}
               </td>
               <td colSpan={2} />
               <td />
-              <td className="px-3 py-2.5 text-center">
-                <VarianceCell value={summary.grandVariance} />
+              <td className="px-2 py-2 text-center">
+                <div>
+                  <VarianceCell value={summary.grandVariance} />
+                </div>
+                {summary.grandSickLeaveExplainedHours > 0 && (
+                  <div className="mt-0.5 text-[10px] font-normal text-sky-800">
+                    SL {summary.grandSickLeaveExplainedHours}h
+                  </div>
+                )}
               </td>
             </tr>
           </tfoot>
@@ -419,13 +700,13 @@ function OverallSummaryPage({
       </div>
 
       {summary.projects.length > 0 && (
-        <div className="sal-page-break-before border-t">
+        <div className="sal-project-totals border-t">
           <div className="px-4 pt-4 pb-1 bg-white">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               Project Cost Totals
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="sal-scroll overflow-x-auto print:overflow-visible">
             <table className="sal-table w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
@@ -593,16 +874,31 @@ export function SalaryReportSection() {
     );
   };
 
-  const handlePrint = () => {
-    document.body.classList.add('print-salary');
-    window.print();
-    document.body.classList.remove('print-salary');
-  };
-
   const hasReport = report.length > 0;
   const displayFrom = reportFrom || fromDate;
   const displayTo = reportTo || toDate;
   const periodLabel = formatPeriodLabel(displayFrom, displayTo);
+
+  const handlePrint = () => {
+    const prevTitle = document.title;
+    document.title = buildBaitalshaarReportBasename({
+      department: department === ALL ? null : department,
+      from: displayFrom,
+      to: displayTo,
+    });
+    document.body.classList.add('print-salary');
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      document.body.classList.remove('print-salary');
+      document.title = prevTitle;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
+    window.setTimeout(restore, 60_000);
+  };
 
   const projectReport = useMemo(
     () =>
@@ -642,17 +938,41 @@ export function SalaryReportSection() {
           body.print-salary #salary-print-area {
             position: absolute; top: 0; left: 0; width: 100%;
           }
-          @page { size: A4 portrait; margin: 10mm 12mm; }
+          @page { size: A4 landscape; margin: 6mm 8mm; }
           .sal-page-break { page-break-after: always; break-after: page; margin: 0 !important; }
           .sal-page-break-before { page-break-before: always; break-before: page; }
-          .sal-card { box-shadow: none !important; border: 1px solid #d1d5db; border-radius: 0 !important; margin-top: 0 !important; }
+          .sal-card { box-shadow: none !important; border: 1px solid #d1d5db; border-radius: 0 !important; margin-top: 0 !important; overflow: visible !important; }
           .sal-hdr, .sal-summary { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          .sal-sum-cell { padding: 4px 6px !important; }
-          .sal-sum-val { font-size: 14pt !important; line-height: 1.1 !important; }
-          .sal-sum-lbl { font-size: 6pt !important; }
+          .sal-sum-cell { padding: 2px 3px !important; }
+          .sal-sum-val { font-size: 10pt !important; line-height: 1.05 !important; }
+          .sal-sum-lbl { font-size: 5pt !important; }
           .sal-total-bar { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          .sal-table { font-size: 8pt !important; }
-          .sal-table th, .sal-table td { padding: 2px 5px !important; }
+          .sal-scroll {
+            overflow: visible !important;
+            max-width: 100% !important;
+          }
+          .sal-table {
+            font-size: 6.5pt !important;
+            width: 100% !important;
+            table-layout: fixed !important;
+          }
+          .sal-table th, .sal-table td {
+            padding: 1px 2px !important;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+          }
+          .sal-recon-table { font-size: 6pt !important; }
+          .sal-recon-table th { font-size: 5pt !important; }
+          /* Keep Overall Summary + Project Cost Totals on one landscape page */
+          .sal-overall-summary .sal-hdr { padding: 6px 10px !important; }
+          .sal-overall-summary .sal-hdr h2 { font-size: 12pt !important; }
+          .sal-overall-summary .sal-hdr .text-sm { font-size: 7pt !important; }
+          .sal-overall-summary .sal-hdr .text-base { font-size: 9pt !important; }
+          .sal-overall-summary .px-6.py-3 { padding: 4px 10px !important; font-size: 7pt !important; }
+          .sal-overall-summary .px-4.pt-4 { padding-top: 4px !important; padding-left: 8px !important; padding-right: 8px !important; }
+          .sal-project-totals { page-break-before: avoid !important; break-before: avoid !important; }
+          .sal-project-totals h3 { margin: 0 !important; padding-top: 2px !important; }
+          .no-print { display: none !important; }
         }
       `}</style>
 
@@ -661,8 +981,9 @@ export function SalaryReportSection() {
         <div className="p-5 border-b">
           <h2 className="text-xl font-semibold mb-1">Salary &amp; Project Cost Report</h2>
           <p className="text-xs text-gray-400 mb-4">
-            Uses the same payroll rules as the Attendance Report. Project variance highlights rows
-            to fix in attendance.
+            Uses the same payroll rules as the Attendance Report. Overall Summary lists Cost Δ /
+            Hrs Δ with a Reason (e.g. Sick Leave vs missing project hours). OT shows ×1.25 / ×1.5 /
+            ×2.5 separately.
           </p>
 
           {!filtersLoading && (
@@ -842,6 +1163,7 @@ export function SalaryReportSection() {
       <div id="salary-print-area">
         {hasReport && reconciliationSummary && (
           <OverallSummaryPage
+            key={`${periodLabel}-${reconciliationSummary.grandVariance}-${reconciliationSummary.employeeCount}`}
             summary={reconciliationSummary}
             periodLabel={periodLabel}
             filterLabel={filterLabel}
@@ -863,12 +1185,18 @@ export function SalaryReportSection() {
               baseSalary,
               overtimeAmount,
               totalSalary,
+              sickLeaveHours,
+              sickLeaveDays,
               projects,
             } = empReport;
+
+            const loggedProjectHours = projects.reduce((s, p) => s + p.workingHours, 0);
+            const hoursGap = totalHours - loggedProjectHours;
 
             return (
               <div
                 key={employee.id}
+                id={`sal-emp-${employee.id}`}
                 className="sal-card sal-page-break bg-white rounded-lg shadow mt-6 overflow-hidden"
               >
                 <div
@@ -986,11 +1314,47 @@ export function SalaryReportSection() {
                         Project Cost Breakdown
                       </h3>
                     </div>
+                    {hoursGap > HOURS_MATCH_TOLERANCE &&
+                      sickLeaveHours > 0 &&
+                      Math.abs(hoursGap - sickLeaveHours) <= HOURS_MATCH_TOLERANCE && (
+                        <div className="mx-4 mb-2 px-3 py-2 rounded bg-sky-50 border border-sky-100 text-sm text-sky-900">
+                          Work Hrs ({totalHours}h) exceed logged project hours ({loggedProjectHours}h)
+                          by <strong>{hoursGap}h</strong> because of{' '}
+                          <strong>
+                            Sick Leave
+                            {sickLeaveDays > 0 ? ` (${sickLeaveDays} day${sickLeaveDays !== 1 ? 's' : ''})` : ''}
+                          </strong>
+                          — paid in salary, not charged to projects.
+                        </div>
+                      )}
+                    {hoursGap > HOURS_MATCH_TOLERANCE &&
+                      !(
+                        sickLeaveHours > 0 &&
+                        Math.abs(hoursGap - sickLeaveHours) <= HOURS_MATCH_TOLERANCE
+                      ) && (
+                        <div className="mx-4 mb-2 px-3 py-2 rounded bg-amber-50 border border-amber-100 text-sm text-amber-900">
+                          Work Hrs ({totalHours}h) vs logged ({loggedProjectHours}h) — gap{' '}
+                          <strong>{hoursGap}h</strong>
+                          {sickLeaveHours > 0 && (
+                            <>
+                              {' '}
+                              (of which <strong>{Math.min(hoursGap, sickLeaveHours)}h</strong> is
+                              Sick Leave; remaining may need project hours fixed)
+                            </>
+                          )}
+                          {sickLeaveHours <= 0 && <> — check attendance project rows.</>}
+                        </div>
+                      )}
                     <ProjectTable projects={projects} />
                   </>
                 ) : (
                   <div className="px-6 py-3 text-xs text-gray-400 italic">
                     No project tracking data for this period.
+                    {sickLeaveHours > 0 && (
+                      <span className="block mt-1 text-sky-700 not-italic">
+                        Sick Leave {sickLeaveHours}h is paid in salary but not charged to projects.
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

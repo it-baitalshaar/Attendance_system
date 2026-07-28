@@ -28,18 +28,37 @@ export function buildSalaryReportEmailHtml(input: {
   const { from, to, filterLabel, viewMode, report, summary } = input;
   const periodLabel = formatPeriodLabel(from, to);
   const matched = summary.isMatched;
+  const explained = summary.isExplained;
 
-  const employeeRows = summary.employees
-    .map(
-      (e) => `<tr>
+  const employeeRows = [...summary.employees]
+    .sort((a, b) => Math.abs(b.variance) - Math.abs(a.variance))
+    .map((e) => {
+      const reason =
+        e.varianceReason === 'sick_leave'
+          ? `Sick Leave (${e.sickLeaveExplainedHours}h)`
+          : e.varianceReason === 'mixed'
+            ? `SL ${e.sickLeaveExplainedHours}h + missing ${e.unexplainedHours}h`
+            : e.varianceReason === 'missing_project_hours'
+              ? `Missing project hours (${e.unexplainedHours}h)`
+              : e.varianceReason === 'rounding'
+                ? 'Rounding'
+                : '—';
+      const highlight =
+        Math.abs(e.variance) > 0.5 || Math.abs(e.hoursVariance) > 0.01
+          ? e.varianceReason === 'sick_leave'
+            ? ' style="background:#f0f9ff"'
+            : ' style="background:#fffbeb"'
+          : '';
+      return `<tr${highlight}>
         <td>${esc(e.employeeName)}<br/><span style="color:#6b7280;font-size:11px">${esc(e.employeeId)}</span></td>
         <td style="text-align:right">${fmt(e.totalSalary)}</td>
         <td style="text-align:right">${e.projectTotalCost > 0 ? fmt(e.projectTotalCost, 2) : '—'}</td>
         <td style="text-align:right">${e.totalHours}h</td>
         <td style="text-align:right">${e.projectHours > 0 ? `${e.projectHours}h` : '—'}</td>
         <td style="text-align:center">${Math.abs(e.variance) <= 0.5 ? '✓' : fmt(e.variance, 2)}</td>
-      </tr>`
-    )
+        <td style="font-size:12px">${esc(reason)}</td>
+      </tr>`;
+    })
     .join('');
 
   const projectRows = summary.projects
@@ -76,8 +95,26 @@ export function buildSalaryReportEmailHtml(input: {
     </tr>
     <tr>
       <td><strong>Variance</strong></td>
-      <td colspan="3" style="text-align:right;color:${matched ? '#059669' : '#b45309'}">
-        ${matched ? 'Matched ✓' : fmt(summary.grandVariance, 2) + ' — fix project hours in attendance'}
+      <td colspan="3" style="text-align:right;color:${matched ? '#059669' : explained ? '#0369a1' : '#b45309'}">
+        ${
+          matched
+            ? 'Matched ✓'
+            : explained
+              ? fmt(summary.grandVariance, 2) +
+                (summary.grandSickLeaveExplainedHours > 0
+                  ? ` — Sick Leave (${summary.grandSickLeaveExplainedHours}h) from ${summary.employees
+                      .filter((e) => e.sickLeaveExplainedHours > 0.01)
+                      .sort((a, b) => b.sickLeaveExplainedHours - a.sickLeaveExplainedHours)
+                      .map(
+                        (e) =>
+                          `${e.employeeId} (${e.sickLeaveExplainedHours}h${
+                            e.sickLeaveDays > 0 ? ` · ${e.sickLeaveDays}d` : ''
+                          })`
+                      )
+                      .join(', ')} — not charged to projects`
+                  : ' — explained (no attendance fix needed)')
+              : fmt(summary.grandVariance, 2) + ' — check attendance project hours'
+        }
       </td>
     </tr>
   </table>
@@ -90,13 +127,14 @@ export function buildSalaryReportEmailHtml(input: {
       <th align="right">Work Hrs</th>
       <th align="right">Logged Hrs</th>
       <th align="center">Cost Δ</th>
+      <th align="left">Reason</th>
     </tr></thead>
     <tbody>${employeeRows}</tbody>
     <tfoot><tr style="background:#f1f5f9;font-weight:600">
       <td>TOTAL</td>
       <td align="right">${fmt(summary.grandTotalSalary)}</td>
       <td align="right">${fmt(summary.grandProjectCost, 2)}</td>
-      <td colspan="3"></td>
+      <td colspan="4"></td>
     </tr></tfoot>
   </table>
   <h3 style="font-size:14px;color:#374151">Project Cost Totals</h3>
@@ -132,7 +170,12 @@ export function buildSalaryReportWhatsAppMessage(input: {
     `Project Cost: ${fmt(input.summary.grandProjectCost, 2)}`,
     input.summary.isMatched
       ? `Status: Matched ✓`
-      : `Variance: ${fmt(input.summary.grandVariance, 2)} (check attendance project hours)`,
+      : input.summary.isExplained
+        ? `Variance: ${fmt(input.summary.grandVariance, 2)} (Sick Leave ${input.summary.grandSickLeaveExplainedHours}h from ${input.summary.employees
+            .filter((e) => e.sickLeaveExplainedHours > 0.01)
+            .map((e) => e.employeeId)
+            .join(', ')} — not charged to projects)`
+        : `Variance: ${fmt(input.summary.grandVariance, 2)} (check attendance project hours)`,
     `Employees: ${input.summary.employeeCount}`,
     ``,
     `Please attach the report PDF (saved from Print / Save as PDF in the admin app).`,

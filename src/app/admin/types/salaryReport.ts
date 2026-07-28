@@ -8,8 +8,15 @@ export interface ProjectCostEntry {
   workingHours: number;
   baseValue: number;       // workingHours * hourlyRate  (قيمة الأيام)
   overtimeHours: number;
-  overtimeRate: number;    // effective multiplier for display (1.25 / 1.5 / etc.)
-  overtimeValue: number;   // overtimeHours * overtimeRate * hourlyRate  (قيمة الإضافي)
+  /** Normal OT hours (×1.25) — prefer over blended overtimeRate for display */
+  otNormal: number;
+  /** Weekend OT hours (×1.5) */
+  otHoliday: number;
+  /** Public holiday OT hours (×2.5) */
+  otPublicHoliday: number;
+  /** @deprecated Blended average of OT multipliers; prefer otNormal/otHoliday/otPublicHoliday */
+  overtimeRate: number;
+  overtimeValue: number;   // OT buckets × multipliers × hourlyRate  (قيمة الإضافي)
 }
 
 export interface SalaryReportEmployee {
@@ -33,6 +40,9 @@ export interface SalaryReportEmployee {
   overtimeAmount: number;    // sum of all daily OT earned
   // Final
   totalSalary: number;       // round(baseSalary + overtimeAmount)
+  // Sick leave (paid in salary, not charged to projects)
+  sickLeaveHours: number;    // Σ working_hours on SL days
+  sickLeaveDays: number;     // count of SL days in period
   // Project breakdown (actual logged hours)
   projects: ProjectCostEntry[];
 }

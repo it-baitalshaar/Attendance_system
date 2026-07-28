@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-07-26 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-07-28 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -287,8 +287,8 @@ docs/
 | `attendanceReportService` | `buildAttendanceReport()` — day cards, OT buckets |
 | `payrollCalculation` | **Single source of payroll math** (hourly rate, OT multipliers) |
 | `sickLeaveLaw` | Calendar-year SL pay tiers (1–15 → 8h, 16–45 → 4h, 46+ → 0h) + YTD summary |
-| `salaryReportService` | `buildSalaryReport()` |
-| `projectCostReportService` | Project pivot + reconciliation summary |
+| `salaryReportService` | `buildSalaryReport()` — project costs + OT buckets (`otNormal` / `otHoliday` / `otPublicHoliday`) |
+| `projectCostReportService` | Project pivot + reconciliation (Hrs Δ / Cost Δ + Sick Leave variance reason) |
 | `payrollReportDeliveryService` | Saved emails + WhatsApp + send helpers |
 | `reportService` | Leave report fetch |
 | `remindersService` | `attendance_reminder_*` tables |
@@ -339,6 +339,8 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | Base pay | Σ `working_hours × hourly_rate` per day (includes SL / excused A when hours present) |
 | OT multipliers | normal ×1.25, holiday ×1.5, public_holiday ×2.5 (`constants/overtime.ts`) |
 | OT bucketing | From `Attendance_projects.overtime_type` + attendance status fallback |
+| Salary vs project cost | Overall Summary Cost Δ = attendance salary − project logged cost. Hrs Δ = Work Hrs − Logged Hrs. **Sick Leave** paid hours explain expected gaps (Reason column / sky banner — not charged to projects). Remaining unexplained hours → fix in Attendance Report. UI: mismatches-only filter, sort by \|Cost Δ\|, click employee → card. |
+| OT display (salary report) | Show OT ×1.25 / W.OT ×1.5 / H.OT ×2.5 hours — not a blended OT Rate |
 | Payroll period default | 26th prev month → 25th selected month (`lib/payrollPeriod.ts`) |
 | AWO | Flat deduction `8 × hourly_rate` per AWO day (shown as negative PAY) |
 | Sick Leave (SL) | **Calendar-year law** (`sickLeaveLaw.ts`): days 1–15 → **8h** full pay, 16–45 → **4h** half pay, 46+ → **0h** unpaid (Jan 1–Dec 31). Prior-year SL days fetched so ordinals continue across payroll periods. Project column hidden. Overall Summary shows SL (period), SL YTD, Full / Half / Unpaid. |
@@ -389,6 +391,13 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-07-28 | Print/Save as PDF default name: `Baitalshaar_{dept}_{month}_{month}_{year}` (e.g. construction_june_july_2026) | `baitalshaarReportFilename`, Salary/Attendance print title, PDF APIs |
+| 2026-07-28 | Salary Overall Summary print: keep employee + project totals on one landscape page (no forced break) | `SalaryReportSection` |
+| 2026-07-28 | Salary print: landscape + no horizontal scrollbar; Overall Summary Cost Δ/Reason combined, compact columns | `SalaryReportSection` print CSS |
+| 2026-07-28 | Salary SL variance banner lists employee ID(s) with hours (clickable → card) | `SalaryReportSection`, salary email/PDF |
+| 2026-07-28 | Salary variance Reason: Sick Leave vs missing project hours; SL-explained banner (no false “fix attendance”) | `projectCostReportService`, `SalaryReportSection`, salary email/PDF |
+| 2026-07-28 | Salary Overall Summary: mismatches-only filter, sort by Cost Δ, click-to-employee; OT ×1.25/×1.5/×2.5 columns (no blended rate) | `SalaryReportSection`, `salaryReportService`, `projectCostReport` types |
+| 2026-07-27 | Leave Report: Department + Employee filters (generate per person / department) | `ReportsTab`, `useLeaveReportDashboard`, `reportService` |
 | 2026-07-26 | SL law: calendar-year tiers (1–15→8h, 16–45→4h, 46+→0h); Overall Summary SL YTD + Full/Half/Unpaid; prior-year fetch | `sickLeaveLaw`, `fetchPriorSickLeaveDays`, `attendanceReportService`, `AttendanceReportSection` |
 | 2026-07-26 | SL: show daily PAY + default 8hrs without project; hide SL project col; report edit syncs notes Attendance type | `attendanceReportService`, `AttendanceReportSection`, `attendance-report-edit` |
 | 2026-07-21 | Office Overall Summary (present/complete/hours; no salary) + Print under monthly report | `OfficeEmployeesTab.tsx` |

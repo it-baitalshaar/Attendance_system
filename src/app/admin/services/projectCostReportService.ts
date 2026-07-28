@@ -2,10 +2,12 @@ import type { SalaryReportEmployee } from '../types/salaryReport';
 import type {
   ProjectCostReport,
   ProjectEmployeeEntry,
+  EmployeeReconciliationRow,
   SalaryReconciliationSummary,
 } from '../types/projectCostReport';
 
 const MATCH_TOLERANCE = 0.5;
+const HOURS_TOLERANCE = 0.01;
 
 function sumProjectCosts(projects: SalaryReportEmployee['projects']) {
   let base = 0;
@@ -19,11 +21,78 @@ function sumProjectCosts(projects: SalaryReportEmployee['projects']) {
   return { base, ot, total: base + ot, hours };
 }
 
+function classifyVariance(input: {
+  hoursVariance: number;
+  variance: number;
+  sickLeaveHours: number;
+}): Pick<
+  EmployeeReconciliationRow,
+  | 'sickLeaveExplainedHours'
+  | 'unexplainedHours'
+  | 'varianceReason'
+> {
+  const { hoursVariance, variance, sickLeaveHours } = input;
+  const positiveGap = Math.max(0, hoursVariance);
+  const sickLeaveExplainedHours = Math.min(positiveGap, Math.max(0, sickLeaveHours));
+  const unexplainedHours =
+    hoursVariance > 0
+      ? hoursVariance - sickLeaveExplainedHours
+      : hoursVariance;
+
+  if (
+    Math.abs(hoursVariance) <= HOURS_TOLERANCE &&
+    Math.abs(variance) <= MATCH_TOLERANCE
+  ) {
+    return {
+      sickLeaveExplainedHours: 0,
+      unexplainedHours: 0,
+      varianceReason: 'none',
+    };
+  }
+
+  if (Math.abs(unexplainedHours) <= HOURS_TOLERANCE) {
+    if (sickLeaveExplainedHours > HOURS_TOLERANCE) {
+      return {
+        sickLeaveExplainedHours,
+        unexplainedHours: 0,
+        varianceReason: 'sick_leave',
+      };
+    }
+    return {
+      sickLeaveExplainedHours: 0,
+      unexplainedHours: 0,
+      varianceReason: 'rounding',
+    };
+  }
+
+  if (sickLeaveExplainedHours > HOURS_TOLERANCE) {
+    return {
+      sickLeaveExplainedHours,
+      unexplainedHours,
+      varianceReason: 'mixed',
+    };
+  }
+
+  return {
+    sickLeaveExplainedHours: 0,
+    unexplainedHours,
+    varianceReason: 'missing_project_hours',
+  };
+}
+
 export function buildSalaryReconciliationSummary(
   report: SalaryReportEmployee[]
 ): SalaryReconciliationSummary {
-  const employees = report.map((emp) => {
+  const employees: EmployeeReconciliationRow[] = report.map((emp) => {
     const { base, ot, total, hours } = sumProjectCosts(emp.projects);
+    const hoursVariance = emp.totalHours - hours;
+    const variance = emp.totalSalary - total;
+    const classified = classifyVariance({
+      hoursVariance,
+      variance,
+      sickLeaveHours: emp.sickLeaveHours,
+    });
+
     return {
       employeeId: emp.employee.id,
       employeeName: emp.employee.name,
@@ -34,10 +103,13 @@ export function buildSalaryReconciliationSummary(
       projectBaseCost: base,
       projectOvertimeCost: ot,
       projectTotalCost: total,
-      variance: emp.totalSalary - total,
+      variance,
       projectHours: hours,
       totalHours: emp.totalHours,
-      hoursVariance: emp.totalHours - hours,
+      hoursVariance,
+      sickLeaveHours: emp.sickLeaveHours,
+      sickLeaveDays: emp.sickLeaveDays,
+      ...classified,
     };
   });
 
@@ -61,6 +133,15 @@ export function buildSalaryReconciliationSummary(
   const grandProjectOvertime = employees.reduce((s, e) => s + e.projectOvertimeCost, 0);
   const grandProjectCost = employees.reduce((s, e) => s + e.projectTotalCost, 0);
   const grandVariance = grandTotalSalary - grandProjectCost;
+  const grandSickLeaveHours = employees.reduce((s, e) => s + e.sickLeaveHours, 0);
+  const grandSickLeaveExplainedHours = employees.reduce(
+    (s, e) => s + e.sickLeaveExplainedHours,
+    0
+  );
+  const grandUnexplainedHours = employees.reduce(
+    (s, e) => s + Math.max(0, e.unexplainedHours),
+    0
+  );
 
   return {
     periodDays: report[0]?.periodDays ?? 0,
@@ -74,6 +155,10 @@ export function buildSalaryReconciliationSummary(
     grandProjectCost,
     grandVariance,
     isMatched: Math.abs(grandVariance) <= MATCH_TOLERANCE,
+    isExplained: grandUnexplainedHours <= HOURS_TOLERANCE,
+    grandSickLeaveHours,
+    grandSickLeaveExplainedHours,
+    grandUnexplainedHours,
     employees,
     projects,
   };
@@ -98,6 +183,9 @@ export function pivotSalaryReportByProject(
         workingHours: p.workingHours,
         baseValue: p.baseValue,
         overtimeHours: p.overtimeHours,
+        otNormal: p.otNormal,
+        otHoliday: p.otHoliday,
+        otPublicHoliday: p.otPublicHoliday,
         overtimeRate: p.overtimeRate,
         overtimeValue: p.overtimeValue,
         totalValue: p.baseValue + p.overtimeValue,

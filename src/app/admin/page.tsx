@@ -96,6 +96,13 @@ function AdminPageContent() {
     reportDateRange,
     handleReportDateChange,
     fetchLeaveReport,
+    department: leaveDepartment,
+    employeeId: leaveEmployeeId,
+    departments: leaveDepartments,
+    employeesInDepartment: leaveEmployees,
+    filtersLoading: leaveFiltersLoading,
+    handleDepartmentChange: handleLeaveDepartmentChange,
+    setEmployeeId: setLeaveEmployeeId,
   } = useLeaveReportDashboard(activeTab);
 
   const {
@@ -255,6 +262,13 @@ function AdminPageContent() {
           reportDateRange={reportDateRange}
           onReportDateChange={handleReportDateChange}
           onGenerateReport={fetchLeaveReport}
+          department={leaveDepartment}
+          employeeId={leaveEmployeeId}
+          departments={leaveDepartments}
+          employeesInDepartment={leaveEmployees}
+          filtersLoading={leaveFiltersLoading}
+          onDepartmentChange={handleLeaveDepartmentChange}
+          onEmployeeChange={setLeaveEmployeeId}
         />
       )}
 

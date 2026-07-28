@@ -8,7 +8,20 @@ interface ReportsTabProps {
   reportDateRange: { startDate: string; endDate: string };
   onReportDateChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onGenerateReport: () => void;
+  department: string;
+  employeeId: string;
+  departments: { id: string; name: string }[];
+  employeesInDepartment: {
+    employee_id: string;
+    name: string;
+    department: string;
+  }[];
+  filtersLoading: boolean;
+  onDepartmentChange: (value: string) => void;
+  onEmployeeChange: (value: string) => void;
 }
+
+const ALL = '';
 
 export function ReportsTab({
   leaveReport,
@@ -16,6 +29,13 @@ export function ReportsTab({
   reportDateRange,
   onReportDateChange,
   onGenerateReport,
+  department,
+  employeeId,
+  departments,
+  employeesInDepartment,
+  filtersLoading,
+  onDepartmentChange,
+  onEmployeeChange,
 }: ReportsTabProps) {
   const totalSickLeave = leaveReport.reduce(
     (sum, emp) => sum + emp.sick_leave,
@@ -31,12 +51,20 @@ export function ReportsTab({
   );
   const totalOverall = leaveReport.reduce((sum, emp) => sum + emp.total, 0);
 
+  const filterLabel =
+    department !== ALL
+      ? department
+      : employeeId !== ALL
+        ? employeesInDepartment.find((e) => e.employee_id === employeeId)
+            ?.name ?? employeeId
+        : 'All Departments';
+
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="p-4 border-b">
         <h2 className="text-xl font-semibold mb-4">Leave Report</h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium mb-1">Start Date</label>
             <input
@@ -58,6 +86,46 @@ export function ReportsTab({
               className="w-full p-2 border rounded"
             />
           </div>
+
+          {!filtersLoading && (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Department
+                </label>
+                <select
+                  value={department}
+                  onChange={(e) => onDepartmentChange(e.target.value)}
+                  className="w-full p-2 border rounded"
+                >
+                  <option value={ALL}>All departments</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.name}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Employee
+                </label>
+                <select
+                  value={employeeId}
+                  onChange={(e) => onEmployeeChange(e.target.value)}
+                  className="w-full p-2 border rounded"
+                >
+                  <option value={ALL}>All employees</option>
+                  {employeesInDepartment.map((e) => (
+                    <option key={e.employee_id} value={e.employee_id}>
+                      {e.name} ({e.employee_id}) — {e.department}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
         </div>
 
         <button
@@ -72,6 +140,10 @@ export function ReportsTab({
         <p className="p-4 text-center">Generating report...</p>
       ) : leaveReport.length > 0 ? (
         <div className="overflow-x-auto">
+          <div className="px-4 pt-3 text-sm text-gray-500">
+            {filterLabel} · {leaveReport.length} employee
+            {leaveReport.length !== 1 ? 's' : ''}
+          </div>
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -179,7 +251,7 @@ export function ReportsTab({
         </div>
       ) : (
         <p className="p-4 text-center">
-          No leave data found for the selected date range
+          No leave data found for the selected filters
         </p>
       )}
 
@@ -188,4 +260,3 @@ export function ReportsTab({
     </div>
   );
 }
-

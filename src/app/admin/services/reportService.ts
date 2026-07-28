@@ -13,6 +13,10 @@ export interface LeaveReportRow {
 export interface LeaveReportFilters {
   startDate: string;
   endDate: string;
+  /** When set, only rows for this department (case-insensitive). */
+  department?: string | null;
+  /** When set, only this employee. */
+  employeeId?: string | null;
 }
 
 export async function fetchLeaveReportService(
@@ -20,7 +24,7 @@ export async function fetchLeaveReportService(
 ): Promise<LeaveReportRow[]> {
   const supabase = createSupabbaseFrontendClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('Attendance')
     .select(
       `
@@ -41,6 +45,12 @@ export async function fetchLeaveReportService(
       'Absence without excuse',
     ]);
 
+  if (filters.employeeId?.trim()) {
+    query = query.eq('employee_id', filters.employeeId.trim());
+  }
+
+  const { data, error } = await query;
+
   if (error) {
     throw error;
   }
@@ -48,6 +58,8 @@ export async function fetchLeaveReportService(
   if (!data) {
     return [];
   }
+
+  const deptFilter = filters.department?.trim().toLowerCase() || null;
 
   const employeeLeaveCounts: {
     [key: string]: {
@@ -60,7 +72,14 @@ export async function fetchLeaveReportService(
     };
   } = {};
 
-  data.forEach((record: any) => {
+  data.forEach((record: {
+    employee_id: string;
+    status_attendance: string | null;
+    Employee:
+      | { name?: string; department?: string; status?: string }
+      | { name?: string; department?: string; status?: string }[]
+      | null;
+  }) => {
     const employee = Array.isArray(record.Employee)
       ? record.Employee[0]
       : record.Employee;
@@ -71,11 +90,16 @@ export async function fetchLeaveReportService(
       return;
     }
 
+    const department = employee?.department || 'Unknown';
+    if (deptFilter && department.toLowerCase() !== deptFilter) {
+      return;
+    }
+
     if (!employeeLeaveCounts[employeeId]) {
       employeeLeaveCounts[employeeId] = {
         employee_id: employeeId,
         employee_name: employee?.name || 'Unknown',
-        department: employee?.department || 'Unknown',
+        department,
         sick_leave: 0,
         personal_leave: 0,
         absence_without_excuse: 0,
@@ -95,12 +119,17 @@ export async function fetchLeaveReportService(
     }
   });
 
-  return Object.values(employeeLeaveCounts).map((employee) => ({
-    ...employee,
-    total:
-      employee.sick_leave +
-      employee.personal_leave +
-      employee.absence_without_excuse,
-  }));
+  return Object.values(employeeLeaveCounts)
+    .map((employee) => ({
+      ...employee,
+      total:
+        employee.sick_leave +
+        employee.personal_leave +
+        employee.absence_without_excuse,
+    }))
+    .sort((a, b) => {
+      const deptCmp = a.department.localeCompare(b.department);
+      if (deptCmp !== 0) return deptCmp;
+      return a.employee_name.localeCompare(b.employee_name);
+    });
 }
-
