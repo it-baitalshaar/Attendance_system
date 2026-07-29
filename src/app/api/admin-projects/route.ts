@@ -111,14 +111,40 @@ export async function POST(request: NextRequest) {
 
     const supabase = getAdminClient();
 
+    // projects.project_id is a text primary key with no DB default and it doubles
+    // as the value stored in Attendance_projects.project_id, so it must equal the name.
+    // projects.overtime_rate is legacy and unused (OT rates live on Attendance_projects),
+    // but it is NOT NULL without a default, so it must be sent as 0 like every existing row.
+    const [{ data: sameId }, { data: sameName }] = await Promise.all([
+      supabase.from('projects').select('project_id').eq('project_id', trimmed).limit(1),
+      supabase.from('projects').select('project_id').eq('project_name', trimmed).limit(1),
+    ]);
+
+    if ((sameId?.length ?? 0) > 0 || (sameName?.length ?? 0) > 0) {
+      return NextResponse.json(
+        { error: `A project named "${trimmed}" already exists` },
+        { status: 409 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('projects')
-      .insert({ project_name: trimmed, department: dept, project_status: status })
+      .insert({
+        project_id: trimmed,
+        project_name: trimmed,
+        department: dept,
+        project_status: status,
+        overtime_rate: 0,
+      })
       .select('project_id, project_name, department, project_status')
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const message =
+        error.code === '23505'
+          ? `A project named "${trimmed}" already exists`
+          : error.message;
+      return NextResponse.json({ error: message }, { status: 400 });
     }
 
     return NextResponse.json({ project: data });

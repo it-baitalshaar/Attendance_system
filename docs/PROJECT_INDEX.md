@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-07-28 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-07-29 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -123,7 +123,7 @@ pnpm build && pnpm start
 | `Employee_history` | `id` | Audit log for employee edits |
 | `departments` | `id` | `name`, `theme_id`, `allow_future_attendance`, `weekend_days[]`, OT toggles |
 | `department_holidays` | `id` | Named dates → default holiday OT (×2.5); `department_id` NULL = all depts |
-| `projects` | `id` | Project list for hour allocation |
+| `projects` | `project_id` (**text, no DB default**) | Project list for hour allocation. `project_id` = `project_name` by convention — inserts must set it explicitly (`/api/admin-projects` POST); `Attendance_projects.project_id` stores this same text. Also `overtime_rate` is NOT NULL with no default but **unused** (real OT rates live on `Attendance_projects`) — insert `0` |
 | `Track_Attendance` | composite | Daily submit lock: one row per user per day |
 | `Attendance` | `id` | Per-employee daily record; **`department`** = roster at submit time (historical reports) |
 | `Attendance_projects` | — | Per-project hours + `overtime_hours` + `overtime_type` |
@@ -391,6 +391,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-07-29 | Fix Add Project not-null violations: POST now sets `project_id = project_name` and legacy `overtime_rate = 0` + friendly duplicate-name error | `/api/admin-projects` POST, index §6 |
 | 2026-07-28 | Print/Save as PDF default name: `Baitalshaar_{dept}_{month}_{month}_{year}` (e.g. construction_june_july_2026) | `baitalshaarReportFilename`, Salary/Attendance print title, PDF APIs |
 | 2026-07-28 | Salary Overall Summary print: keep employee + project totals on one landscape page (no forced break) | `SalaryReportSection` |
 | 2026-07-28 | Salary print: landscape + no horizontal scrollbar; Overall Summary Cost Δ/Reason combined, compact columns | `SalaryReportSection` print CSS |
