@@ -176,7 +176,23 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const supabase = getAdminClient();
+
+    const { data: current, error: loadError } = await supabase
+      .from('projects')
+      .select('project_id, project_name, department, project_status')
+      .eq('project_id', project_id)
+      .maybeSingle();
+
+    if (loadError) {
+      return NextResponse.json({ error: loadError.message }, { status: 400 });
+    }
+    if (!current) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
     const payload: Record<string, string> = {};
+    let renamedTo: string | null = null;
 
     if (typeof project_name === 'string') {
       const trimmed = project_name.trim();
@@ -186,7 +202,35 @@ export async function PATCH(request: NextRequest) {
           { status: 400 }
         );
       }
-      payload.project_name = trimmed;
+
+      if (trimmed !== current.project_name || trimmed !== current.project_id) {
+        const [{ data: sameId }, { data: sameName }] = await Promise.all([
+          supabase
+            .from('projects')
+            .select('project_id')
+            .eq('project_id', trimmed)
+            .neq('project_id', project_id)
+            .limit(1),
+          supabase
+            .from('projects')
+            .select('project_id')
+            .eq('project_name', trimmed)
+            .neq('project_id', project_id)
+            .limit(1),
+        ]);
+
+        if ((sameId?.length ?? 0) > 0 || (sameName?.length ?? 0) > 0) {
+          return NextResponse.json(
+            { error: `A project named "${trimmed}" already exists` },
+            { status: 409 }
+          );
+        }
+
+        // Keep project_id === project_name so attendance history and dropdowns stay aligned.
+        payload.project_name = trimmed;
+        payload.project_id = trimmed;
+        renamedTo = trimmed;
+      }
     }
 
     if (department !== undefined) {
@@ -207,10 +251,11 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (Object.keys(payload).length === 0) {
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({
+        ok: true,
+        project_id: current.project_id,
+      });
     }
-
-    const supabase = getAdminClient();
 
     const { error } = await supabase
       .from('projects')
@@ -218,10 +263,42 @@ export async function PATCH(request: NextRequest) {
       .eq('project_id', project_id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const message =
+        error.code === '23505'
+          ? `A project named "${payload.project_name ?? ''}" already exists`
+          : error.message;
+      return NextResponse.json({ error: message }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true });
+    // Cascade rename into attendance history (no FK CASCADE assumed).
+    if (renamedTo && renamedTo !== project_id) {
+      for (const tableName of ['Attendance_projects', 'attendance_projects'] as const) {
+        const { error: cascadeError } = await supabase
+          .from(tableName)
+          .update({ project_id: renamedTo })
+          .eq('project_id', project_id);
+
+        // Ignore missing alternate table name; report real update failures.
+        if (
+          cascadeError &&
+          !/relation|does not exist|schema cache/i.test(cascadeError.message)
+        ) {
+          return NextResponse.json(
+            {
+              error: `Project renamed, but failed to update attendance history: ${cascadeError.message}`,
+            },
+            { status: 400 }
+          );
+        }
+        if (!cascadeError) break;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      project_id: renamedTo ?? project_id,
+      renamed: Boolean(renamedTo && renamedTo !== project_id),
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Server error' },

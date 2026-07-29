@@ -98,7 +98,7 @@ pnpm build && pnpm start
 | POST | `/api/payroll-report/send-email` | admin | Server Gmail send (optional) |
 | POST | `/api/payroll-report/pdf` | admin | Server PDF gen (optional) |
 | GET/POST/PATCH/DELETE | `/api/admin-users` | super user | User CRUD |
-| GET/POST/PATCH/DELETE | `/api/admin-projects` | admin | Project CRUD |
+| GET/POST/PATCH/DELETE | `/api/admin-projects` | admin | Project CRUD; PATCH rename updates `project_id` + `project_name` and cascades to `Attendance_projects` |
 | POST | `/api/admin-set-password` | — | Set password for new users |
 | POST | `/api/admin-update-password` | session | Admin self password change |
 | POST | `/api/set-password` | — | User password set |
@@ -123,7 +123,7 @@ pnpm build && pnpm start
 | `Employee_history` | `id` | Audit log for employee edits |
 | `departments` | `id` | `name`, `theme_id`, `allow_future_attendance`, `weekend_days[]`, OT toggles |
 | `department_holidays` | `id` | Named dates → default holiday OT (×2.5); `department_id` NULL = all depts |
-| `projects` | `project_id` (**text, no DB default**) | Project list for hour allocation. `project_id` = `project_name` by convention — inserts must set it explicitly (`/api/admin-projects` POST); `Attendance_projects.project_id` stores this same text. Also `overtime_rate` is NOT NULL with no default but **unused** (real OT rates live on `Attendance_projects`) — insert `0` |
+| `projects` | `project_id` (**text, no DB default**) | Project list for hour allocation. `project_id` = `project_name` by convention — inserts must set both (`/api/admin-projects` POST); rename via PATCH updates both and cascades `Attendance_projects.project_id`. Also `overtime_rate` is NOT NULL with no default but **unused** (real OT rates live on `Attendance_projects`) — insert `0` |
 | `Track_Attendance` | composite | Daily submit lock: one row per user per day |
 | `Attendance` | `id` | Per-employee daily record; **`department`** = roster at submit time (historical reports) |
 | `Attendance_projects` | — | Per-project hours + `overtime_hours` + `overtime_type` |
@@ -391,6 +391,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-07-29 | Project rename from Manage Projects: PATCH updates `project_id` + `project_name` and cascades `Attendance_projects` | `/api/admin-projects` PATCH, `ProjectsTab` |
 | 2026-07-29 | Fix Add Project not-null violations: POST now sets `project_id = project_name` and legacy `overtime_rate = 0` + friendly duplicate-name error | `/api/admin-projects` POST, index §6 |
 | 2026-07-28 | Print/Save as PDF default name: `Baitalshaar_{dept}_{month}_{month}_{year}` (e.g. construction_june_july_2026) | `baitalshaarReportFilename`, Salary/Attendance print title, PDF APIs |
 | 2026-07-28 | Salary Overall Summary print: keep employee + project totals on one landscape page (no forced break) | `SalaryReportSection` |

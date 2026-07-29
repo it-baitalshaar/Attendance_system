@@ -61,8 +61,12 @@ export function useProjectManagement() {
   ) => {
     setMessage('');
     try {
-      await updateProjectService(projectId, updates);
-      setMessage('Project updated successfully');
+      const result = await updateProjectService(projectId, updates);
+      setMessage(
+        result.renamed
+          ? 'Project renamed and saved to the database'
+          : 'Project updated successfully'
+      );
       setMessageType('success');
       await loadProjects();
     } catch (err) {

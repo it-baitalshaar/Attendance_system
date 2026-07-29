@@ -165,8 +165,9 @@ export function ProjectsTab({
           <h2 className="text-xl font-semibold">Project List</h2>
           <p className="text-sm text-gray-600 mt-1">
             Projects appear in the attendance system when active. Pause projects
-            to hide them from dropdowns. Type (Construction/Maintenance) controls
-            which department sees them.
+            to hide them from dropdowns. Use Edit to rename a project (updates the
+            database and past attendance), change type, or change status. Type
+            (Construction/Maintenance) controls which department sees them.
           </p>
         </div>
 
@@ -260,6 +261,10 @@ export function ProjectsTab({
                     className="w-full p-2 border rounded"
                     required
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Saving a new name updates it in the database and in past
+                    attendance records.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Type</label>

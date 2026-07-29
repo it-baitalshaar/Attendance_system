@@ -59,7 +59,7 @@ export async function updateProjectService(
     department?: ProjectDepartment;
     project_status?: ProjectStatus;
   }
-): Promise<void> {
+): Promise<{ project_id: string; renamed: boolean }> {
   const payload: Record<string, string> = { project_id: projectId };
 
   if (updates.project_name !== undefined) {
@@ -71,7 +71,9 @@ export async function updateProjectService(
   if (updates.project_status !== undefined)
     payload.project_status = updates.project_status;
 
-  if (Object.keys(payload).length === 1) return; // only project_id, no updates
+  if (Object.keys(payload).length === 1) {
+    return { project_id: projectId, renamed: false };
+  }
 
   const res = await fetch('/api/admin-projects', {
     method: 'PATCH',
@@ -83,4 +85,13 @@ export async function updateProjectService(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to update project');
   }
+
+  const data = (await res.json()) as {
+    project_id?: string;
+    renamed?: boolean;
+  };
+  return {
+    project_id: data.project_id ?? projectId,
+    renamed: Boolean(data.renamed),
+  };
 }
