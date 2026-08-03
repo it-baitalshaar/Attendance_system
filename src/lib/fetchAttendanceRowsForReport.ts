@@ -90,13 +90,13 @@ export async function fetchAttendanceRowsForReport(
   }
 ): Promise<{ rows: RawAttendanceRow[]; error: string | null }> {
   const { from, to, department } = params;
-  const employeeIds = normalizeEmployeeIds(params);
+  const filterEmployeeIds = normalizeEmployeeIds(params);
 
   const { rows: initialRows, error } = await queryAttendanceInRange(
     supabase,
     from,
     to,
-    employeeIds
+    filterEmployeeIds
   );
   if (error) return { rows: [], error };
 
