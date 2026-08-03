@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAttendanceReport } from '../../hooks/useAttendanceReport';
 import { fetchDepartmentsService } from '../../services/departmentService';
 import { fetchEmployeesService } from '../../services/employeeService';
@@ -127,7 +127,10 @@ export function AttendanceReportSection() {
   const [fromDate, setFromDate] = useState(() => getDefaultPayrollDates().from);
   const [toDate, setToDate] = useState(() => getDefaultPayrollDates().to);
   const [department, setDepartment] = useState(ALL);
-  const [employeeId, setEmployeeId] = useState(ALL);
+  /** Empty = all employees; otherwise only the checked IDs. */
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
+  const employeePickerRef = useRef<HTMLDivElement>(null);
   const [departments, setDepartments] = useState<
     { id: string; name: string; weekend_days?: number[] | null }[]
   >([]);
@@ -137,6 +140,17 @@ export function AttendanceReportSection() {
   const [localReport, setLocalReport] = useState<AttendanceReportEmployeeReport[]>([]);
   const [originalReport, setOriginalReport] = useState<AttendanceReportEmployeeReport[]>([]);
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved' | 'error'>>({});
+
+  useEffect(() => {
+    if (!employeePickerOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (employeePickerRef.current && !employeePickerRef.current.contains(e.target as Node)) {
+        setEmployeePickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [employeePickerOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -231,11 +245,27 @@ export function AttendanceReportSection() {
       ? employees
       : employees.filter((e) => e.department.toLowerCase() === department.toLowerCase());
 
+  const selectedEmployees = employees.filter((e) => selectedEmployeeIds.includes(e.employee_id));
+  const employeeFilterLabel =
+    selectedEmployeeIds.length === 0
+      ? 'All employees'
+      : selectedEmployeeIds.length === 1
+        ? selectedEmployees[0]
+          ? `${selectedEmployees[0].name} (${selectedEmployees[0].employee_id})`
+          : selectedEmployeeIds[0]
+        : `${selectedEmployeeIds.length} employees selected`;
+
+  const toggleEmployeeId = (id: string) => {
+    setSelectedEmployeeIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
   const handleGenerate = () => {
     fetchReport(
       fromDate, toDate,
       department === ALL ? null : department,
-      employeeId === ALL ? null : employeeId
+      selectedEmployeeIds.length > 0 ? selectedEmployeeIds : null
     );
   };
 
@@ -506,27 +536,65 @@ export function AttendanceReportSection() {
                 <label className="block text-sm font-medium mb-1">Department</label>
                 <select
                   value={department}
-                  onChange={(e) => { setDepartment(e.target.value); setEmployeeId(ALL); }}
+                  onChange={(e) => { setDepartment(e.target.value); setSelectedEmployeeIds([]); }}
                   className="w-full p-2 border rounded"
                 >
                   <option value={ALL}>All departments</option>
                   {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
                 </select>
               </div>
-              <div>
+              <div ref={employeePickerRef} className="relative">
                 <label className="block text-sm font-medium mb-1">Employee</label>
-                <select
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                  className="w-full p-2 border rounded"
+                <button
+                  type="button"
+                  onClick={() => setEmployeePickerOpen((o) => !o)}
+                  className="w-full p-2 border rounded bg-white text-left flex items-center justify-between gap-2"
+                  aria-expanded={employeePickerOpen}
+                  aria-haspopup="listbox"
                 >
-                  <option value={ALL}>All employees</option>
-                  {employeesInDepartment.map((e) => (
-                    <option key={e.employee_id} value={e.employee_id}>
-                      {e.name} ({e.employee_id}) — {e.department}
-                    </option>
-                  ))}
-                </select>
+                  <span className={selectedEmployeeIds.length === 0 ? 'text-gray-700' : 'text-gray-900'}>
+                    {employeeFilterLabel}
+                  </span>
+                  <span className="text-gray-400 text-xs shrink-0">{employeePickerOpen ? '▲' : '▼'}</span>
+                </button>
+                {employeePickerOpen && (
+                  <div
+                    className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded border border-gray-200 bg-white shadow-lg"
+                    role="listbox"
+                    aria-multiselectable="true"
+                  >
+                    <label className="flex items-center gap-2 px-3 py-2 border-b bg-gray-50 cursor-pointer hover:bg-gray-100 sticky top-0">
+                      <input
+                        type="checkbox"
+                        checked={selectedEmployeeIds.length === 0}
+                        onChange={() => setSelectedEmployeeIds([])}
+                        className="rounded border-gray-300"
+                      />
+                      <span className="text-sm font-medium">All employees</span>
+                    </label>
+                    {employeesInDepartment.map((e) => {
+                      const checked = selectedEmployeeIds.includes(e.employee_id);
+                      return (
+                        <label
+                          key={e.employee_id}
+                          className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-blue-50 ${
+                            checked ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleEmployeeId(e.employee_id)}
+                            className="rounded border-gray-300"
+                          />
+                          <span className="text-sm">
+                            {e.name} ({e.employee_id}) — {e.department}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -617,12 +685,18 @@ export function AttendanceReportSection() {
             from={reportFrom || fromDate}
             to={reportTo || toDate}
             department={department === ALL ? null : department}
-            employeeId={employeeId === ALL ? null : employeeId}
+            employeeId={
+              selectedEmployeeIds.length === 1
+                ? selectedEmployeeIds[0]
+                : selectedEmployeeIds.length > 1
+                  ? selectedEmployeeIds.join(',')
+                  : null
+            }
             filterLabel={
               department !== ALL
                 ? department
-                : employeeId !== ALL
-                  ? employees.find((e) => e.employee_id === employeeId)?.name ?? employeeId
+                : selectedEmployeeIds.length > 0
+                  ? employeeFilterLabel
                   : 'All Departments'
             }
             onBuildAttendanceWhatsAppMessage={() =>

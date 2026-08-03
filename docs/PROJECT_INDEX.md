@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-07-29 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-08-03 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -90,7 +90,7 @@ pnpm build && pnpm start
 | Method | Route | Auth | Purpose |
 |--------|-------|------|---------|
 | POST | `/api/submitAttendance` | session | Legacy/server attendance submit |
-| GET | `/api/attendance-report` | admin | Attendance report JSON |
+| GET | `/api/attendance-report` | admin | Attendance report JSON; `employee_id` accepts one ID or comma-separated IDs |
 | PATCH | `/api/attendance-report-edit` | admin + service role | Edit attendance rows in reports |
 | GET | `/api/salary-report` | admin | Salary + project cost report JSON |
 | GET/PATCH | `/api/payroll-report/delivery` | admin | WhatsApp number settings |
@@ -262,7 +262,7 @@ docs/
 | `useUserManagement` | Users tab (super user) |
 | `useAttendanceDashboard` | Attendance tab list/filters |
 | `useLeaveReportDashboard` | Leave report in attendance tab |
-| `useAttendanceReport` | Reports → attendance |
+| `useAttendanceReport` | Reports → attendance (multi employee IDs via `employee_id` query) |
 | `useSalaryReport` | Reports → salary/project cost |
 | `useOfficeEmployeesRealtime` | Office employees live dashboard |
 | `useRemindersData` / `useRemindersAuth` | Reminders tab |
@@ -391,6 +391,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-08-03 | Attendance Report employee filter: multi-select checkboxes (2+ employees); API `employee_id` comma-separated | `AttendanceReportSection`, `useAttendanceReport`, `fetchAttendanceRowsForReport`, `/api/attendance-report` |
 | 2026-07-29 | Project rename from Manage Projects: PATCH updates `project_id` + `project_name` and cascades `Attendance_projects` | `/api/admin-projects` PATCH, `ProjectsTab` |
 | 2026-07-29 | Fix Add Project not-null violations: POST now sets `project_id = project_name` and legacy `overtime_rate = 0` + friendly duplicate-name error | `/api/admin-projects` POST, index §6 |
 | 2026-07-28 | Print/Save as PDF default name: `Baitalshaar_{dept}_{month}_{month}_{year}` (e.g. construction_june_july_2026) | `baitalshaarReportFilename`, Salary/Attendance print title, PDF APIs |

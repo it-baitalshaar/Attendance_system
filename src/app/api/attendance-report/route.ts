@@ -66,7 +66,10 @@ export async function GET(request: Request) {
   const from = fromDate.includes('T') ? fromDate.split('T')[0] : fromDate;
   const to = toDate.includes('T') ? toDate.split('T')[0] : toDate;
   const department = searchParams.get('department')?.trim() || null;
-  const employeeId = searchParams.get('employee_id')?.trim() || null;
+  const employeeIdParam = searchParams.get('employee_id')?.trim() || null;
+  const employeeIds = employeeIdParam
+    ? employeeIdParam.split(',').map((id) => id.trim()).filter(Boolean)
+    : null;
 
   try {
     const supabase = createSupabaseServerComponentClient();
@@ -75,7 +78,7 @@ export async function GET(request: Request) {
       from,
       to,
       department,
-      employeeId,
+      employeeIds,
     });
 
     if (attError) {

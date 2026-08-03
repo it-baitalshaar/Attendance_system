@@ -20,7 +20,7 @@ export function useAttendanceReport() {
       fromDate: string,
       toDate: string,
       department?: string | null,
-      employeeId?: string | null
+      employeeIds?: string[] | null
     ) => {
       if (!fromDate || !toDate) {
         setError('Please select both from and to dates.');
@@ -32,7 +32,9 @@ export function useAttendanceReport() {
       try {
         const params = new URLSearchParams({ from: fromDate, to: toDate });
         if (department) params.set('department', department);
-        if (employeeId) params.set('employee_id', employeeId);
+        if (employeeIds && employeeIds.length > 0) {
+          params.set('employee_id', employeeIds.join(','));
+        }
         const res = await fetch(`/api/attendance-report?${params}`);
         const data = await res.json();
         if (!res.ok) {

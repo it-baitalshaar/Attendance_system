@@ -15,11 +15,25 @@ const ATTENDANCE_COLS_BASE =
 /** PostgREST/Supabase default max rows per request; must page past this. */
 const PAGE_SIZE = 1000;
 
+function normalizeEmployeeIds(params: {
+  employeeId?: string | null;
+  employeeIds?: string[] | null;
+}): string[] | null {
+  if (params.employeeIds && params.employeeIds.length > 0) {
+    const ids = params.employeeIds.map((id) => id.trim()).filter(Boolean);
+    return ids.length > 0 ? ids : null;
+  }
+  const raw = params.employeeId?.trim();
+  if (!raw) return null;
+  const ids = raw.split(',').map((id) => id.trim()).filter(Boolean);
+  return ids.length > 0 ? ids : null;
+}
+
 async function queryAttendanceInRange(
   supabase: SupabaseClient,
   from: string,
   to: string,
-  employeeId?: string | null
+  employeeIds?: string[] | null
 ): Promise<{ rows: RawAttendanceRow[]; error: string | null }> {
   let cols = ATTENDANCE_COLS_WITH_DEPT;
   let triedWithoutDeptCol = false;
@@ -35,7 +49,11 @@ async function queryAttendanceInRange(
       .order('date', { ascending: true })
       .order('id', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
-    if (employeeId) q = q.eq('employee_id', employeeId);
+    if (employeeIds && employeeIds.length === 1) {
+      q = q.eq('employee_id', employeeIds[0]);
+    } else if (employeeIds && employeeIds.length > 1) {
+      q = q.in('employee_id', employeeIds);
+    }
 
     const { data, error } = await q;
 
@@ -65,16 +83,20 @@ export async function fetchAttendanceRowsForReport(
     from: string;
     to: string;
     department?: string | null;
+    /** Single employee filter (legacy). Prefer `employeeIds`. */
     employeeId?: string | null;
+    /** One or more employee IDs. Empty/null = all employees. */
+    employeeIds?: string[] | null;
   }
 ): Promise<{ rows: RawAttendanceRow[]; error: string | null }> {
-  const { from, to, department, employeeId } = params;
+  const { from, to, department } = params;
+  const employeeIds = normalizeEmployeeIds(params);
 
   const { rows: initialRows, error } = await queryAttendanceInRange(
     supabase,
     from,
     to,
-    employeeId
+    employeeIds
   );
   if (error) return { rows: [], error };
 

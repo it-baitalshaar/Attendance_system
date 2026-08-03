@@ -16,15 +16,22 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export async function fetchAttendanceReportForApi(
   supabase: SupabaseClient,
-  params: { from: string; to: string; department?: string | null; employeeId?: string | null }
+  params: {
+    from: string;
+    to: string;
+    department?: string | null;
+    employeeId?: string | null;
+    employeeIds?: string[] | null;
+  }
 ) {
-  const { from, to, department, employeeId } = params;
+  const { from, to, department, employeeId, employeeIds } = params;
 
   const { rows: attRows, error: attError } = await fetchAttendanceRowsForReport(supabase, {
     from,
     to,
     department,
     employeeId,
+    employeeIds,
   });
   if (attError) return { report: [], from, to, error: attError };
   if (attRows.length === 0) return { report: [], from, to, error: null };
