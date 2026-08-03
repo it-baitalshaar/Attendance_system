@@ -67,7 +67,7 @@ export async function GET(request: Request) {
   const to = toDate.includes('T') ? toDate.split('T')[0] : toDate;
   const department = searchParams.get('department')?.trim() || null;
   const employeeIdParam = searchParams.get('employee_id')?.trim() || null;
-  const employeeIds = employeeIdParam
+  const filterEmployeeIds = employeeIdParam
     ? employeeIdParam.split(',').map((id) => id.trim()).filter(Boolean)
     : null;
 
@@ -78,7 +78,7 @@ export async function GET(request: Request) {
       from,
       to,
       department,
-      employeeIds,
+      employeeIds: filterEmployeeIds,
     });
 
     if (attError) {
