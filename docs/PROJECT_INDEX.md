@@ -391,6 +391,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-08-03 | Attendance print: cap day-row height for short ranges + kill overflow scrollbars so ≤~31 days stay on one page | `AttendanceReportSection` print CSS |
 | 2026-08-03 | Attendance Report employee filter: multi-select checkboxes (2+ employees); API `employee_id` comma-separated | `AttendanceReportSection`, `useAttendanceReport`, `fetchAttendanceRowsForReport`, `/api/attendance-report` |
 | 2026-07-29 | Project rename from Manage Projects: PATCH updates `project_id` + `project_name` and cascades `Attendance_projects` | `/api/admin-projects` PATCH, `ProjectsTab` |
 | 2026-07-29 | Fix Add Project not-null violations: POST now sets `project_id = project_name` and legacy `overtime_rate = 0` + friendly duplicate-name error | `/api/admin-projects` POST, index §6 |

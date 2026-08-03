@@ -444,15 +444,23 @@ export function AttendanceReportSection() {
           .no-print { display: none !important; }
           /* preserve background colours */
           .emp-hdr, .emp-summary { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-          /* portrait employee card — fill printable A4 height */
+          /* portrait employee card — natural height (no forced full-page stretch) */
           .emp-card:not(.overall-summary-print) {
             display: flex !important;
             flex-direction: column !important;
-            min-height: calc(297mm - 24mm) !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
             box-shadow: none !important;
             border: 1px solid #d1d5db;
             margin-top: 0 !important;
             border-radius: 0 !important;
+            overflow: visible !important;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .emp-card:not(.overall-summary-print) > .flex {
+            overflow: visible !important;
           }
           .emp-hdr { padding: 4px 10px !important; }
           .emp-hdr .company-name { font-size: 5.5pt !important; letter-spacing: 0.03em !important; margin-bottom: 0 !important; }
@@ -461,22 +469,29 @@ export function AttendanceReportSection() {
           .sum-card { padding: 3px 5px !important; }
           .sum-val { font-size: 10pt !important; line-height: 1.05 !important; }
           .sum-lbl { font-size: 5.5pt !important; letter-spacing: 0 !important; }
-          /* daily table grows to fill remaining page — ~31 rows distributed evenly */
+          /*
+            Daily rows: size for ~31 days/page. Cap height so short ranges
+            (e.g. 10 days) stay compact on one page instead of stretching/overflowing.
+          */
           .emp-card:not(.overall-summary-print) .att-table-wrap {
-            flex: 1 1 auto !important;
-            display: flex !important;
-            flex-direction: column !important;
+            flex: 0 0 auto !important;
+            display: block !important;
             min-height: 0 !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
           .emp-card:not(.overall-summary-print) .att-table {
-            flex: 1 1 auto !important;
-            height: 100% !important;
+            flex: none !important;
+            height: auto !important;
             font-size: 7pt !important;
             table-layout: fixed !important;
             width: 100% !important;
           }
           .emp-card:not(.overall-summary-print) .att-table tbody tr {
-            height: calc(218mm / var(--day-rows, 31));
+            /* 218mm / 31 ≈ 7mm; never taller than that for short periods */
+            height: min(7mm, calc(218mm / var(--day-rows, 31))) !important;
+            max-height: 7mm !important;
           }
           .emp-card:not(.overall-summary-print) .att-table th,
           .emp-card:not(.overall-summary-print) .att-table td {
@@ -499,6 +514,9 @@ export function AttendanceReportSection() {
             padding: 2px 8px !important;
             font-size: 6pt !important;
             line-height: 1.15 !important;
+          }
+          .overall-summary-table-wrap {
+            overflow: visible !important;
           }
           .att-table .badge-dot { display: none !important; }
           .att-table .ot-rate { display: none !important; }
