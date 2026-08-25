@@ -9,6 +9,7 @@ import { computePayrollFromDays } from '../../services/payrollCalculation';
 import { buildAttendanceReportWhatsAppMessage } from '@/lib/attendanceReportEmailHtml';
 import { getCurrentPayrollYearMonth, getPayrollPeriodBounds } from '@/lib/payrollPeriod';
 import { buildBaitalshaarReportBasename } from '@/lib/reportPdf/baitalshaarReportFilename';
+import { setPrintPageOrientation } from '@/lib/printPageOrientation';
 import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
 import {
   countWeekendDaysInRange,
@@ -118,6 +119,23 @@ function getMissingDates(days: AttendanceReportDay[], calFrom: string, calTo: st
 
 const ALL = '';
 
+type PrintOrientation = 'portrait' | 'landscape';
+
+/** Short ranges print better landscape; full months (~28–31 days) fit portrait on one page. */
+function suggestPrintOrientation(dayCount: number): PrintOrientation {
+  if (dayCount > 0 && dayCount < 28) return 'landscape';
+  return 'portrait';
+}
+
+function countInclusiveDays(from: string, to: string): number {
+  if (!from || !to) return 0;
+  return (
+    Math.round(
+      (new Date(to + 'T00:00:00').getTime() - new Date(from + 'T00:00:00').getTime()) / 86400000
+    ) + 1
+  );
+}
+
 function getDefaultPayrollDates(): { from: string; to: string } {
   return getPayrollPeriodBounds(getCurrentPayrollYearMonth());
 }
@@ -140,6 +158,13 @@ export function AttendanceReportSection() {
   const [localReport, setLocalReport] = useState<AttendanceReportEmployeeReport[]>([]);
   const [originalReport, setOriginalReport] = useState<AttendanceReportEmployeeReport[]>([]);
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved' | 'error'>>({});
+  const [printOrientation, setPrintOrientation] = useState<PrintOrientation>(() =>
+    suggestPrintOrientation(countInclusiveDays(getDefaultPayrollDates().from, getDefaultPayrollDates().to))
+  );
+
+  useEffect(() => {
+    setPrintOrientation(suggestPrintOrientation(countInclusiveDays(fromDate, toDate)));
+  }, [fromDate, toDate]);
 
   useEffect(() => {
     if (!employeePickerOpen) return;
@@ -269,6 +294,36 @@ export function AttendanceReportSection() {
     );
   };
 
+  const runAttendancePrint = (
+    mode: 'employees' | 'overall',
+    orientation: PrintOrientation
+  ) => {
+    const prevTitle = document.title;
+    const basename = buildBaitalshaarReportBasename({
+      department: department === ALL ? null : department,
+      from: reportFrom || fromDate,
+      to: reportTo || toDate,
+    });
+    document.title =
+      mode === 'overall' ? `${basename}_Overall_Summary` : basename;
+    const clearPageSize = setPrintPageOrientation(orientation);
+    const bodyClass =
+      mode === 'overall' ? 'print-attendance-overall' : 'print-attendance';
+    document.body.classList.add(bodyClass);
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      document.body.classList.remove(bodyClass);
+      clearPageSize();
+      document.title = prevTitle;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
+    window.setTimeout(restore, 60_000);
+  };
+
   const hasReport = localReport.length > 0;
 
   // ── Summary page computations ──
@@ -387,22 +442,62 @@ export function AttendanceReportSection() {
     <>
       <style>{`
         @media print {
-          @page { size: A4 portrait; margin: 12mm 14mm; }
-          @page landscape-page { size: A4 landscape; margin: 10mm 12mm; }
-          body.print-attendance * { visibility: hidden; }
-          body.print-attendance #attendance-print-area,
-          body.print-attendance #attendance-print-area * { visibility: visible; }
-          body.print-attendance #attendance-print-area { position: absolute; top: 0; left: 0; width: 100%; }
+          /* @page size is injected at print time via setPrintPageOrientation. */
+          /*
+            Hide everything that is not the active print root (and its ancestors).
+            visibility:hidden still occupies layout → blank pages from Leave/Salary/Overall.
+            :has() keeps ancestors of the print root so nested content can show.
+          */
+          body.print-attendance *:not(:has(#attendance-print-area)):not(#attendance-print-area):not(#attendance-print-area *) {
+            display: none !important;
+          }
+          body.print-attendance *:has(#attendance-print-area) {
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: none !important;
+            width: 100% !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            border: none !important;
+            overflow: visible !important;
+          }
+          body.print-attendance #attendance-print-area {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+          }
+          body.print-attendance #attendance-print-area * {
+            visibility: visible !important;
+          }
+
+          body.print-attendance-overall *:not(:has(#attendance-overall-print-area)):not(#attendance-overall-print-area):not(#attendance-overall-print-area *) {
+            display: none !important;
+          }
+          body.print-attendance-overall *:has(#attendance-overall-print-area) {
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: none !important;
+            width: 100% !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            border: none !important;
+            overflow: visible !important;
+          }
+          body.print-attendance-overall #attendance-overall-print-area {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+          }
+          body.print-attendance-overall #attendance-overall-print-area * {
+            visibility: visible !important;
+          }
+
           .print-page-break { page-break-after: always; break-after: page; margin: 0 !important; }
           /* one employee per page — break before each card except the first */
-          .emp-card + .emp-card { page-break-before: always; break-before: page; }
+          body.print-attendance .emp-card + .emp-card { page-break-before: always; break-before: page; }
           .emp-card { page-break-after: auto !important; break-after: auto !important; margin-top: 0 !important; }
-          /* overall summary: landscape; flow across pages — TOTAL stays after last row when space allows */
-          .overall-summary-print {
-            page: landscape-page;
-            page-break-before: always;
-            break-before: page;
-          }
           .overall-summary-print .summary-print-header {
             break-inside: avoid;
             page-break-inside: avoid;
@@ -444,7 +539,7 @@ export function AttendanceReportSection() {
           .no-print { display: none !important; }
           /* preserve background colours */
           .emp-hdr, .emp-summary { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-          /* portrait employee card — natural height (no forced full-page stretch) */
+          /* employee card — natural height (do NOT use break-inside:avoid; it creates blank pages when tall) */
           .emp-card:not(.overall-summary-print) {
             display: flex !important;
             flex-direction: column !important;
@@ -456,11 +551,10 @@ export function AttendanceReportSection() {
             margin-top: 0 !important;
             border-radius: 0 !important;
             overflow: visible !important;
-            page-break-inside: avoid;
-            break-inside: avoid;
           }
           .emp-card:not(.overall-summary-print) > .flex {
             overflow: visible !important;
+            display: flex !important;
           }
           .emp-hdr { padding: 4px 10px !important; }
           .emp-hdr .company-name { font-size: 5.5pt !important; letter-spacing: 0.03em !important; margin-bottom: 0 !important; }
@@ -470,8 +564,8 @@ export function AttendanceReportSection() {
           .sum-val { font-size: 10pt !important; line-height: 1.05 !important; }
           .sum-lbl { font-size: 5.5pt !important; letter-spacing: 0 !important; }
           /*
-            Daily rows: size for ~31 days/page. Cap height so short ranges
-            (e.g. 10 days) stay compact on one page instead of stretching/overflowing.
+            Daily rows sized for ~31 days/page in portrait (~218mm) or short ranges in landscape (~150mm).
+            Cap so short ranges stay compact instead of stretching/overflowing.
           */
           .emp-card:not(.overall-summary-print) .att-table-wrap {
             flex: 0 0 auto !important;
@@ -487,14 +581,28 @@ export function AttendanceReportSection() {
             font-size: 7pt !important;
             table-layout: fixed !important;
             width: 100% !important;
+            display: table !important;
+          }
+          .emp-card:not(.overall-summary-print) .att-table thead {
+            display: table-header-group !important;
+          }
+          .emp-card:not(.overall-summary-print) .att-table tbody {
+            display: table-row-group !important;
+          }
+          .emp-card:not(.overall-summary-print) .att-table tr {
+            display: table-row !important;
           }
           .emp-card:not(.overall-summary-print) .att-table tbody tr {
-            /* 218mm / 31 ≈ 7mm; never taller than that for short periods */
-            height: min(7mm, calc(218mm / var(--day-rows, 31))) !important;
-            max-height: 7mm !important;
+            /* Portrait: pack ~31 days into ~230mm. Landscape: shorter page (~150mm). */
+            height: min(
+              ${printOrientation === 'landscape' ? '7mm' : '6.8mm'},
+              calc(${printOrientation === 'landscape' ? '150mm' : '230mm'} / var(--day-rows, 31))
+            ) !important;
+            max-height: ${printOrientation === 'landscape' ? '7mm' : '6.8mm'} !important;
           }
           .emp-card:not(.overall-summary-print) .att-table th,
           .emp-card:not(.overall-summary-print) .att-table td {
+            display: table-cell !important;
             padding: 2px 4px !important;
             line-height: 1.2 !important;
             vertical-align: middle !important;
@@ -535,8 +643,8 @@ export function AttendanceReportSection() {
           /* make edit inputs invisible in print */
           .att-table input, .att-table select { -webkit-appearance: none; appearance: none; border: none !important; background: transparent !important; padding: 0 !important; font-size: inherit !important; color: inherit !important; outline: none !important; box-shadow: none !important; width: auto !important; }
           /* header signature column */
-          .emp-hdr-sig { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; min-height: 16mm !important; width: 40mm !important; border: 1pt solid #94a3b8 !important; }
-          .emp-hdr-sig span { color: #e2e8f0 !important; font-size: 10pt !important; }
+          .emp-hdr-sig { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; min-height: 12mm !important; width: 36mm !important; border: 1pt solid #94a3b8 !important; }
+          .emp-hdr-sig span { color: #e2e8f0 !important; font-size: 8pt !important; }
         }
       `}</style>
 
@@ -628,7 +736,7 @@ export function AttendanceReportSection() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button" onClick={handleGenerate} disabled={loading}
               className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
@@ -641,32 +749,50 @@ export function AttendanceReportSection() {
             >
               Download CSV
             </button>
+            <div className="flex items-center gap-2 px-2 py-1 rounded border border-gray-200 bg-gray-50 text-sm">
+              <span className="text-gray-600 font-medium whitespace-nowrap">Print layout</span>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="att-print-orientation"
+                  checked={printOrientation === 'portrait'}
+                  onChange={() => setPrintOrientation('portrait')}
+                  className="accent-blue-600"
+                />
+                <span>Portrait</span>
+              </label>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="radio"
+                  name="att-print-orientation"
+                  checked={printOrientation === 'landscape'}
+                  onChange={() => setPrintOrientation('landscape')}
+                  className="accent-blue-600"
+                />
+                <span>Landscape</span>
+              </label>
+              <span className="hidden sm:inline text-xs text-gray-400 border-l border-gray-200 pl-2">
+                {printOrientation === 'portrait'
+                  ? 'Employees: ~30–31 days'
+                  : 'Employees: shorter ranges'}
+              </span>
+            </div>
             <button
               type="button"
               disabled={!hasReport || loading}
               className="px-4 py-2 text-sm rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40"
-              onClick={() => {
-                const prevTitle = document.title;
-                document.title = buildBaitalshaarReportBasename({
-                  department: department === ALL ? null : department,
-                  from: reportFrom || fromDate,
-                  to: reportTo || toDate,
-                });
-                document.body.classList.add('print-attendance');
-                let restored = false;
-                const restore = () => {
-                  if (restored) return;
-                  restored = true;
-                  document.body.classList.remove('print-attendance');
-                  document.title = prevTitle;
-                  window.removeEventListener('afterprint', restore);
-                };
-                window.addEventListener('afterprint', restore);
-                window.print();
-                window.setTimeout(restore, 60_000);
-              }}
+              onClick={() => runAttendancePrint('employees', printOrientation)}
             >
-              Print / Save as PDF
+              Print employees
+            </button>
+            <button
+              type="button"
+              disabled={!hasReport || loading}
+              className="px-4 py-2 text-sm rounded border border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 disabled:opacity-40"
+              onClick={() => runAttendancePrint('overall', 'landscape')}
+              title="Print Overall Summary only (always landscape)"
+            >
+              Print Overall Summary
             </button>
             {hasReport && (
               <button
@@ -1178,10 +1304,14 @@ export function AttendanceReportSection() {
             </div>
           );
         })}
+      </div>
 
-        {/* ── Overall Summary Page ── */}
+        {/* ── Overall Summary (print separately — landscape) ── */}
         {hasReport && (
-          <div className="emp-card overall-summary-print bg-white rounded-lg shadow mt-6 overflow-hidden">
+          <div
+            id="attendance-overall-print-area"
+            className="emp-card overall-summary-print bg-white rounded-lg shadow mt-6 overflow-hidden"
+          >
             <div className="summary-print-header">
             <div
               className="emp-hdr bg-gradient-to-r from-indigo-900 to-indigo-800 text-white px-6 py-4"
@@ -1361,7 +1491,6 @@ export function AttendanceReportSection() {
             </div>
           </div>
         )}
-      </div>
 
       {!loading && localReport.length === 0 && !error && fromDate && toDate && (
         <p className="mt-6 p-4 text-center text-gray-500 no-print">

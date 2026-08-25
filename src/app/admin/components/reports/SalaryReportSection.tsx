@@ -15,6 +15,7 @@ import {
   payrollMonthLabel,
 } from '@/lib/payrollPeriod';
 import { buildBaitalshaarReportBasename } from '@/lib/reportPdf/baitalshaarReportFilename';
+import { setPrintPageOrientation } from '@/lib/printPageOrientation';
 import { PayrollReportDeliveryPanel } from './PayrollReportDeliveryPanel';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -886,12 +887,14 @@ export function SalaryReportSection() {
       from: displayFrom,
       to: displayTo,
     });
+    const clearPageSize = setPrintPageOrientation('landscape');
     document.body.classList.add('print-salary');
     let restored = false;
     const restore = () => {
       if (restored) return;
       restored = true;
       document.body.classList.remove('print-salary');
+      clearPageSize();
       document.title = prevTitle;
       window.removeEventListener('afterprint', restore);
     };
@@ -938,7 +941,7 @@ export function SalaryReportSection() {
           body.print-salary #salary-print-area {
             position: absolute; top: 0; left: 0; width: 100%;
           }
-          @page { size: A4 landscape; margin: 6mm 8mm; }
+          /* @page size injected at print time via setPrintPageOrientation */
           .sal-page-break { page-break-after: always; break-after: page; margin: 0 !important; }
           .sal-page-break-before { page-break-before: always; break-before: page; }
           .sal-card { box-shadow: none !important; border: 1px solid #d1d5db; border-radius: 0 !important; margin-top: 0 !important; overflow: visible !important; }

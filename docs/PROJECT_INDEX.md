@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-08-03 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-08-25 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -204,6 +204,7 @@ src/
 │   ├── payrollReportWhatsApp.ts / payrollReportMailto.ts
 │   ├── attendanceReportEmailHtml.ts / salaryReportEmailHtml.ts
 │   ├── capturePrintAreaPdf.ts / reportPdf/
+│   ├── printPageOrientation.ts   # Inject @page size at print time (portrait/landscape)
 │   └── projectDisplayName.ts
 └── app/
     ├── page.tsx                  # Home attendance UI
@@ -391,6 +392,11 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-08-25 | Fix attendance print blank pages: drop visibility:hidden (Leave/Salary/Overall still took space); hide non-print via :has(); remove break-inside:avoid on emp cards | `AttendanceReportSection` print CSS |
+| 2026-08-25 | Attendance print split: Print employees (portrait/landscape) vs Print Overall Summary (always landscape, separate job) | `AttendanceReportSection`, `printPageOrientation.ts` |
+| 2026-08-25 | Attendance Overall Summary always landscape (named `@page`) while employee pages follow Portrait/Landscape toggle | `printPageOrientation.ts`, `AttendanceReportSection` |
+| 2026-08-25 | Fix attendance Portrait print: Salary’s global `@page landscape` on same Reports tab overrode it; inject page size at print time | `printPageOrientation.ts`, Attendance/Salary report print |
+| 2026-08-25 | Attendance print: Portrait/Landscape toggle (auto short range→landscape, full month→portrait); drop named landscape page that forced Chrome landscape | `AttendanceReportSection` |
 | 2026-08-03 | Attendance print: cap day-row height for short ranges + kill overflow scrollbars so ≤~31 days stay on one page | `AttendanceReportSection` print CSS |
 | 2026-08-03 | Attendance Report employee filter: multi-select checkboxes (2+ employees); API `employee_id` comma-separated | `AttendanceReportSection`, `useAttendanceReport`, `fetchAttendanceRowsForReport`, `/api/attendance-report` |
 | 2026-07-29 | Project rename from Manage Projects: PATCH updates `project_id` + `project_name` and cascades `Attendance_projects` | `/api/admin-projects` PATCH, `ProjectsTab` |
