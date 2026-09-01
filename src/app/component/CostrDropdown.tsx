@@ -50,7 +50,7 @@ const ConstrDropdown = ({employee_id, input_index, position}:ConstrDropdownProps
   // const [hours, setHours] = useState('');
   const [projects, setProjects] = useState<string[]>([]);
   let [hours, setHours] = useState<number[] | number>();
-  let [overtime, setOvertime] = useState<number[] | number>(Array.from({ length: 7 }, (_, i) => i));
+  let [overtime, setOvertime] = useState<number[] | number>(Array.from({ length: 13 }, (_, i) => i));
   const [show_H, showHours] = useState<string | null>(null);
 
   // const dispatch = useDispatch();

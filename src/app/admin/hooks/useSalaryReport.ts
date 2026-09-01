@@ -25,7 +25,7 @@ export function useSalaryReport() {
         const params = new URLSearchParams({ from: fromDate, to: toDate });
         if (department) params.set('department', department);
         if (employeeId) params.set('employee_id', employeeId);
-        const res = await fetch(`/api/salary-report?${params}`);
+        const res = await fetch(`/api/salary-report?${params}`, { cache: 'no-store' });
         const data = await res.json();
         if (!res.ok) {
           setError(data.error ?? data.details ?? 'Failed to load salary report');

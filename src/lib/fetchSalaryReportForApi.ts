@@ -5,6 +5,8 @@ import { buildProjectNameLookup } from '@/lib/projectDisplayName';
 import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
 import { fetchAttendanceRowsForReport } from '@/lib/fetchAttendanceRowsForReport';
 import { fetchPriorSickLeaveDays } from '@/lib/fetchPriorSickLeaveDays';
+import { fetchPriorWorkProjectsForSickLeave } from '@/lib/fetchPriorWorkProjectsForSickLeave';
+import { collectSickLeaveEmployeeIds } from '@/app/admin/services/inheritSickLeaveProjects';
 import {
   buildEmployeeDepartmentResolver,
   type EmployeeDepartmentHistoryRow,
@@ -119,6 +121,10 @@ export async function fetchSalaryReportForApi(
     from,
     employeeIds,
   });
+  const lookbackWorkDaysByEmployee = await fetchPriorWorkProjectsForSickLeave(supabase, {
+    from,
+    employeeIds: collectSickLeaveEmployeeIds(attRows),
+  });
   const { data: empData, error: empErr } = await supabase
     .from('Employee')
     .select('employee_id, name, department, salary')
@@ -158,6 +164,7 @@ export async function fetchSalaryReportForApi(
     fromDate: from,
     toDate: to,
     priorSickLeaveDaysByEmployee,
+    lookbackWorkDaysByEmployee,
   });
 
   return { report, from, to, error: null };

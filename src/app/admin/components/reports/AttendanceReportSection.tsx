@@ -1271,7 +1271,7 @@ export function AttendanceReportSection() {
                                 />
                               ) : (
                                 day.projects && day.projects !== '—'
-                                  ? <span className="cell-project line-clamp-2">{day.projects}</span>
+                                  ? <span className={`cell-project line-clamp-2${day.status_code === 'SL' ? ' text-orange-800' : ''}`}>{day.projects}</span>
                                   : <span className="text-gray-300">—</span>
                               )}
                             </td>

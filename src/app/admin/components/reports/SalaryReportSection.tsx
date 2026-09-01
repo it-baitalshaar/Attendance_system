@@ -8,6 +8,7 @@ import { fetchProjectsService } from '../../services/projectService';
 import { pivotSalaryReportByProject, buildSalaryReconciliationSummary } from '../../services/projectCostReportService';
 import type { SalaryReportEmployee, ProjectCostEntry } from '../../types/salaryReport';
 import type { ProjectCostReport, ProjectEmployeeEntry, SalaryReconciliationSummary } from '../../types/projectCostReport';
+import { formatSickLeaveChargeLabel, formatSickLeaveRowSub, attachUnchargedSickLeaveToLargestProject } from '../../services/inheritSickLeaveProjects';
 import {
   getPayrollPeriodBounds,
   getCurrentPayrollYearMonth,
@@ -95,9 +96,16 @@ function StatCell({
 
 function ProjectTable({ projects }: { projects: ProjectCostEntry[] }) {
   if (projects.length === 0) return null;
-  const totalBase = projects.reduce((s, p) => s + p.baseValue, 0);
+  const totalBase = projects.reduce(
+    (s, p) => s + p.baseValue + (p.sickLeaveValue ?? 0),
+    0
+  );
   const totalOtVal = projects.reduce((s, p) => s + p.overtimeValue, 0);
   const totalVal = totalBase + totalOtVal;
+  const totalHrs = projects.reduce(
+    (s, p) => s + p.workingHours + (p.sickLeaveHours ?? 0),
+    0
+  );
   const totalOtNormal = projects.reduce((s, p) => s + p.otNormal, 0);
   const totalOtHoliday = projects.reduce((s, p) => s + p.otHoliday, 0);
   const totalOtPublic = projects.reduce((s, p) => s + p.otPublicHoliday, 0);
@@ -123,42 +131,71 @@ function ProjectTable({ projects }: { projects: ProjectCostEntry[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {projects.map((p) => (
-            <tr key={p.projectName} className="hover:bg-gray-50">
-              <td className="px-4 py-2 font-medium text-gray-800">{p.projectName}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                {p.workingHours > 0 ? p.workingHours : <span className="text-gray-300">—</span>}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                {p.baseValue > 0 ? fmt(p.baseValue, 2) : <span className="text-gray-300">—</span>}
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={p.overtimeHours} />
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={p.otNormal} color="text-amber-700" />
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={p.otHoliday} color="text-amber-700" />
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={p.otPublicHoliday} color="text-amber-700" />
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums text-amber-700">
-                {p.overtimeValue > 0 ? fmt(p.overtimeValue, 2) : <span className="text-gray-300">—</span>}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-700">
-                {fmt(p.baseValue + p.overtimeValue, 2)}
-              </td>
-            </tr>
-          ))}
+          {projects.flatMap((p) => {
+            const workRow = (
+              <tr key={p.projectName} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-medium text-gray-800">{p.projectName}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                  {p.workingHours > 0 ? p.workingHours : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
+                  {p.baseValue > 0 ? fmt(p.baseValue, 2) : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={p.overtimeHours} />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={p.otNormal} color="text-amber-700" />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={p.otHoliday} color="text-amber-700" />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={p.otPublicHoliday} color="text-amber-700" />
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-amber-700">
+                  {p.overtimeValue > 0 ? fmt(p.overtimeValue, 2) : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-700">
+                  {fmt(p.baseValue + p.overtimeValue, 2)}
+                </td>
+              </tr>
+            );
+            if (!(p.sickLeaveHours > 0)) return [workRow];
+            const slRow = (
+              <tr key={`${p.projectName}-sl`} className="bg-orange-50/80">
+                <td className="px-4 py-2 text-orange-900">
+                  <div className="font-medium">Sick leave · {p.projectName}</div>
+                  <div className="text-xs font-normal text-orange-800/80">
+                    {formatSickLeaveRowSub(
+                      p.sickLeaveHours,
+                      p.sickLeaveCharges?.map((c) => c.date)
+                    )}
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-orange-900">
+                  {p.sickLeaveHours}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-orange-800">
+                  {fmt(p.sickLeaveValue, 2)}
+                </td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-orange-900">
+                  {fmt(p.sickLeaveValue, 2)}
+                </td>
+              </tr>
+            );
+            return [workRow, slRow];
+          })}
         </tbody>
         <tfoot>
           <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
             <td className="px-4 py-2.5">TOTAL</td>
-            <td className="px-3 py-2.5 text-right tabular-nums">
-              {projects.reduce((s, p) => s + p.workingHours, 0)}
-            </td>
+            <td className="px-3 py-2.5 text-right tabular-nums">{totalHrs}</td>
             <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
               {fmt(totalBase, 2)}
             </td>
@@ -185,11 +222,24 @@ function ProjectTable({ projects }: { projects: ProjectCostEntry[] }) {
   );
 }
 
-function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] }) {
+function EmployeeCostTable({
+  projectName,
+  employees,
+}: {
+  projectName: string;
+  employees: ProjectEmployeeEntry[];
+}) {
   if (employees.length === 0) return null;
-  const totalBase = employees.reduce((s, e) => s + e.baseValue, 0);
+  const totalBase = employees.reduce(
+    (s, e) => s + e.baseValue + (e.sickLeaveValue ?? 0),
+    0
+  );
   const totalOtVal = employees.reduce((s, e) => s + e.overtimeValue, 0);
   const totalVal = totalBase + totalOtVal;
+  const totalHrs = employees.reduce(
+    (s, e) => s + e.workingHours + (e.sickLeaveHours ?? 0),
+    0
+  );
   const totalOtNormal = employees.reduce((s, e) => s + e.otNormal, 0);
   const totalOtHoliday = employees.reduce((s, e) => s + e.otHoliday, 0);
   const totalOtPublic = employees.reduce((s, e) => s + e.otPublicHoliday, 0);
@@ -216,39 +266,72 @@ function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] })
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {employees.map((e) => (
-            <tr key={e.employeeId} className="hover:bg-gray-50">
-              <td className="px-4 py-2">
-                <div className="font-medium text-gray-800">{e.employeeName}</div>
-                <div className="text-xs text-gray-400 font-mono">{e.employeeId}</div>
-              </td>
-              <td className="px-3 py-2 text-gray-600">{e.department}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                {e.workingHours > 0 ? e.workingHours : <span className="text-gray-300">—</span>}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                {e.baseValue > 0 ? fmt(e.baseValue, 2) : <span className="text-gray-300">—</span>}
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={e.overtimeHours} />
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={e.otNormal} color="text-amber-700" />
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={e.otHoliday} color="text-amber-700" />
-              </td>
-              <td className="px-3 py-2 text-right">
-                <OtHoursCell n={e.otPublicHoliday} color="text-amber-700" />
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums text-amber-700">
-                {e.overtimeValue > 0 ? fmt(e.overtimeValue, 2) : <span className="text-gray-300">—</span>}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-700">
-                {fmt(e.totalValue, 2)}
-              </td>
-            </tr>
-          ))}
+          {employees.flatMap((e) => {
+            const mainRow = (
+              <tr key={e.employeeId} className="hover:bg-gray-50">
+                <td className="px-4 py-2">
+                  <div className="font-medium text-gray-800">{e.employeeName}</div>
+                  <div className="text-xs text-gray-400 font-mono">{e.employeeId}</div>
+                </td>
+                <td className="px-3 py-2 text-gray-600">{e.department}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                  {e.workingHours > 0 ? e.workingHours : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
+                  {e.baseValue > 0 ? fmt(e.baseValue, 2) : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={e.overtimeHours} />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={e.otNormal} color="text-amber-700" />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={e.otHoliday} color="text-amber-700" />
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <OtHoursCell n={e.otPublicHoliday} color="text-amber-700" />
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-amber-700">
+                  {e.overtimeValue > 0 ? fmt(e.overtimeValue, 2) : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-slate-700">
+                  {fmt(e.baseValue + e.overtimeValue, 2)}
+                </td>
+              </tr>
+            );
+            if (!(e.sickLeaveHours > 0)) return [mainRow];
+            const slRow = (
+              <tr key={`${e.employeeId}-sl`} className="bg-orange-50/80">
+                <td className="px-4 py-2 text-orange-900" colSpan={2}>
+                  <div className="font-medium">Sick leave · {projectName}</div>
+                  <div className="text-xs font-normal text-orange-800/80">
+                    {formatSickLeaveRowSub(
+                      e.sickLeaveHours,
+                      e.sickLeaveCharges?.map((c) => c.date)
+                    )}
+                    {' · '}
+                    {e.employeeName}
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-orange-900">
+                  {e.sickLeaveHours}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-orange-800">
+                  {fmt(e.sickLeaveValue, 2)}
+                </td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right text-gray-300">—</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold text-orange-900">
+                  {fmt(e.sickLeaveValue, 2)}
+                </td>
+              </tr>
+            );
+            return [mainRow, slRow];
+          })}
         </tbody>
         <tfoot>
           <tr className="bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
@@ -256,7 +339,7 @@ function EmployeeCostTable({ employees }: { employees: ProjectEmployeeEntry[] })
               TOTAL
             </td>
             <td className="px-3 py-2.5 text-right tabular-nums">
-              {employees.reduce((s, e) => s + e.workingHours, 0)}
+              {totalHrs}
             </td>
             <td className="px-3 py-2.5 text-right tabular-nums text-emerald-700">
               {fmt(totalBase, 2)}
@@ -880,6 +963,27 @@ export function SalaryReportSection() {
   const displayTo = reportTo || toDate;
   const periodLabel = formatPeriodLabel(displayFrom, displayTo);
 
+  const chargedReport = useMemo(
+    () =>
+      report.map((emp) => {
+        const charged = emp.projects.reduce((s, p) => s + (p.sickLeaveHours ?? 0), 0);
+        const remaining = Math.max(0, (emp.sickLeaveHours ?? 0) - charged);
+        if (remaining <= HOURS_MATCH_TOLERANCE) return emp;
+        const projects = attachUnchargedSickLeaveToLargestProject(
+          emp.projects,
+          remaining,
+          emp.hourlyRate,
+          emp.sickLeaveDates ?? []
+        );
+        return {
+          ...emp,
+          projects,
+          sickLeaveChargedHours: projects.reduce((s, p) => s + (p.sickLeaveHours ?? 0), 0),
+        };
+      }),
+    [report]
+  );
+
   const handlePrint = () => {
     const prevTitle = document.title;
     document.title = buildBaitalshaarReportBasename({
@@ -906,15 +1010,15 @@ export function SalaryReportSection() {
   const projectReport = useMemo(
     () =>
       pivotSalaryReportByProject(
-        report,
+        chargedReport,
         projectFilter === ALL ? null : projectFilter
       ),
-    [report, projectFilter]
+    [chargedReport, projectFilter]
   );
 
   const reconciliationSummary = useMemo(
-    () => (report.length > 0 ? buildSalaryReconciliationSummary(report) : null),
-    [report]
+    () => (chargedReport.length > 0 ? buildSalaryReconciliationSummary(chargedReport) : null),
+    [chargedReport]
   );
 
   const filterLabel = [
@@ -984,9 +1088,9 @@ export function SalaryReportSection() {
         <div className="p-5 border-b">
           <h2 className="text-xl font-semibold mb-1">Salary &amp; Project Cost Report</h2>
           <p className="text-xs text-gray-400 mb-4">
-            Uses the same payroll rules as the Attendance Report. Overall Summary lists Cost Δ /
-            Hrs Δ with a Reason (e.g. Sick Leave vs missing project hours). OT shows ×1.25 / ×1.5 /
-            ×2.5 separately.
+            Uses the same payroll rules as the Attendance Report. Paid sick leave is charged to
+            the project from the previous working day so employee and project totals match.
+            Remaining Hrs Δ is missing project hours. OT shows ×1.25 / ×1.5 / ×2.5 separately.
           </p>
 
           {!filtersLoading && (
@@ -1175,7 +1279,7 @@ export function SalaryReportSection() {
         )}
 
         {viewMode === 'employee' &&
-          report.map((empReport: SalaryReportEmployee) => {
+          chargedReport.map((empReport: SalaryReportEmployee) => {
             const {
               employee,
               periodDays,
@@ -1190,11 +1294,16 @@ export function SalaryReportSection() {
               totalSalary,
               sickLeaveHours,
               sickLeaveDays,
+              sickLeaveChargedHours = 0,
               projects,
             } = empReport;
 
-            const loggedProjectHours = projects.reduce((s, p) => s + p.workingHours, 0);
+            const loggedProjectHours = projects.reduce(
+              (s, p) => s + p.workingHours + (p.sickLeaveHours ?? 0),
+              0
+            );
             const hoursGap = totalHours - loggedProjectHours;
+            const unchargedSickLeaveHours = Math.max(0, sickLeaveHours - sickLeaveChargedHours);
 
             return (
               <div
@@ -1318,8 +1427,8 @@ export function SalaryReportSection() {
                       </h3>
                     </div>
                     {hoursGap > HOURS_MATCH_TOLERANCE &&
-                      sickLeaveHours > 0 &&
-                      Math.abs(hoursGap - sickLeaveHours) <= HOURS_MATCH_TOLERANCE && (
+                      unchargedSickLeaveHours > 0 &&
+                      Math.abs(hoursGap - unchargedSickLeaveHours) <= HOURS_MATCH_TOLERANCE && (
                         <div className="mx-4 mb-2 px-3 py-2 rounded bg-sky-50 border border-sky-100 text-sm text-sky-900">
                           Work Hrs ({totalHours}h) exceed logged project hours ({loggedProjectHours}h)
                           by <strong>{hoursGap}h</strong> because of{' '}
@@ -1327,35 +1436,42 @@ export function SalaryReportSection() {
                             Sick Leave
                             {sickLeaveDays > 0 ? ` (${sickLeaveDays} day${sickLeaveDays !== 1 ? 's' : ''})` : ''}
                           </strong>
-                          — paid in salary, not charged to projects.
+                          — no previous working-day project was found to charge.
                         </div>
                       )}
                     {hoursGap > HOURS_MATCH_TOLERANCE &&
                       !(
-                        sickLeaveHours > 0 &&
-                        Math.abs(hoursGap - sickLeaveHours) <= HOURS_MATCH_TOLERANCE
+                        unchargedSickLeaveHours > 0 &&
+                        Math.abs(hoursGap - unchargedSickLeaveHours) <= HOURS_MATCH_TOLERANCE
                       ) && (
                         <div className="mx-4 mb-2 px-3 py-2 rounded bg-amber-50 border border-amber-100 text-sm text-amber-900">
                           Work Hrs ({totalHours}h) vs logged ({loggedProjectHours}h) — gap{' '}
                           <strong>{hoursGap}h</strong>
-                          {sickLeaveHours > 0 && (
+                          {unchargedSickLeaveHours > 0 && (
                             <>
                               {' '}
-                              (of which <strong>{Math.min(hoursGap, sickLeaveHours)}h</strong> is
+                              (of which <strong>{Math.min(hoursGap, unchargedSickLeaveHours)}h</strong> is
                               Sick Leave; remaining may need project hours fixed)
                             </>
                           )}
-                          {sickLeaveHours <= 0 && <> — check attendance project rows.</>}
+                          {unchargedSickLeaveHours <= 0 && <> — check attendance project rows.</>}
                         </div>
                       )}
+                    {hoursGap <= HOURS_MATCH_TOLERANCE && sickLeaveChargedHours > 0 && (
+                      <div className="mx-4 mb-2 px-3 py-2 rounded bg-orange-50 border border-orange-100 text-sm text-orange-900">
+                        Sick leave {sickLeaveChargedHours}h charged to the previous working day&apos;s
+                        project so employee and project totals match.
+                      </div>
+                    )}
                     <ProjectTable projects={projects} />
                   </>
                 ) : (
                   <div className="px-6 py-3 text-xs text-gray-400 italic">
                     No project tracking data for this period.
-                    {sickLeaveHours > 0 && (
+                    {unchargedSickLeaveHours > 0 && (
                       <span className="block mt-1 text-sky-700 not-italic">
-                        Sick Leave {sickLeaveHours}h is paid in salary but not charged to projects.
+                        Sick Leave {unchargedSickLeaveHours}h is paid in salary but no previous
+                        working-day project was found to charge.
                       </span>
                     )}
                   </div>
@@ -1425,7 +1541,30 @@ export function SalaryReportSection() {
                   Employee Cost Breakdown
                 </h3>
               </div>
-              <EmployeeCostTable employees={projReport.employees} />
+              {projReport.totalSickLeaveHours > 0 && (
+                <div className="mx-4 mb-2 px-3 py-2 rounded bg-orange-50 border border-orange-100 text-sm text-orange-900">
+                  {projReport.employees
+                    .filter((e) => e.sickLeaveHours > 0)
+                    .map((e) => (
+                      <div key={e.employeeId}>
+                        {formatSickLeaveChargeLabel(
+                          projReport.projectName,
+                          e.sickLeaveHours,
+                          e.sickLeaveValue,
+                          e.sickLeaveCharges?.map((c) => c.date)
+                        )}
+                        <span className="text-orange-800/80">
+                          {' '}
+                          — {e.employeeName} ({e.employeeId})
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+              <EmployeeCostTable
+                projectName={projReport.projectName}
+                employees={projReport.employees}
+              />
             </div>
           ))}
       </div>

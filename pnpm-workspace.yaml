@@ -1,2 +1,5 @@
-ignoredBuiltDependencies:
-  - unrs-resolver
+# Settings for pnpm (not a multi-package monorepo).
+# Approve lifecycle scripts for transitive deps that need them.
+allowBuilds:
+  core-js: true
+  unrs-resolver: true

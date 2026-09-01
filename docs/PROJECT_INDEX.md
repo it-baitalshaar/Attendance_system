@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-08-25 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-09-01 (merged pages-pdf + sick-leave index) | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -13,7 +13,7 @@
 | Field worker attendance submit | `src/app/page.tsx` → `useHomeSubmit` → `Track_Attendance` + `Attendance` |
 | Weekend / holiday OT defaults | `OvertimeCalendarContext` + `overtimeCalendar.ts` + `HomeCalendarDayBanner` + Admin → Departments tab |
 | Admin dashboard tab | `src/app/admin/page.tsx` → tab via `?tab=` |
-| Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `fetchAttendanceRowsForReport.ts` + `employeeDepartmentAtDate.ts` |
+| Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `inheritSickLeaveProjects.ts` + `fetchAttendanceRowsForReport.ts` + `employeeDepartmentAtDate.ts` |
 | Office BioTime sync | `src/app/api/office/biotime/sync/route.ts` + `scripts/office-biotime-sync.js` |
 | Office employee emails | `src/lib/officeEmployeeReport.ts` + `/api/office/send-employee-report` |
 | Office overall summary (no salary) | `OfficeEmployeesTab` monthly report → Overall Summary (from `/api/office/report`) |
@@ -30,6 +30,8 @@
 pnpm dev          # http://localhost:3000
 pnpm build && pnpm start
 ```
+
+**pnpm 10+:** lifecycle scripts for `core-js` / `unrs-resolver` are approved in `pnpm-workspace.yaml` (`allowBuilds`). If `pnpm dev` fails with `ERR_PNPM_IGNORED_BUILDS`, fix those entries (must be `true`/`false`, not placeholders) then `pnpm install`.
 
 **Deploy:** Vercel. **DB:** Supabase hosted. **Cron:** optional via `CRON_SECRET` + Edge Function `trigger-office-employee-reports-due`.
 
@@ -197,6 +199,7 @@ src/
 │   ├── payrollCalculation.ts     # (re-exported from admin/services)
 │   ├── fetchAttendanceReportForApi.ts / fetchSalaryReportForApi.ts
 │   ├── fetchAttendanceRowsForReport.ts  # report attendance query (paginated, 1000/page) + historical dept filter
+│   ├── fetchPriorWorkProjectsForSickLeave.ts  # 45-day lookback so SL at period start inherits a project
 │   ├── employeeDepartmentAtDate.ts      # resolve dept at date from history
 │   ├── officeEmployeeReport.ts   # Office email report builder
 │   ├── officeAttendanceReconcileRpc.ts
@@ -288,8 +291,9 @@ docs/
 | `attendanceReportService` | `buildAttendanceReport()` — day cards, OT buckets |
 | `payrollCalculation` | **Single source of payroll math** (hourly rate, OT multipliers) |
 | `sickLeaveLaw` | Calendar-year SL pay tiers (1–15 → 8h, 16–45 → 4h, 46+ → 0h) + YTD summary |
-| `salaryReportService` | `buildSalaryReport()` — project costs + OT buckets (`otNormal` / `otHoliday` / `otPublicHoliday`) |
-| `projectCostReportService` | Project pivot + reconciliation (Hrs Δ / Cost Δ + Sick Leave variance reason) |
+| `inheritSickLeaveProjects` | Charge paid SL hours to the previous working day's project (walk back past weekend/vacation/SL) |
+| `salaryReportService` | `buildSalaryReport()` — project costs + OT buckets (`otNormal` / `otHoliday` / `otPublicHoliday`) + inherited SL |
+| `projectCostReportService` | Project pivot + reconciliation (Hrs Δ / Cost Δ; uncharged SL still explains leftover gaps) |
 | `payrollReportDeliveryService` | Saved emails + WhatsApp + send helpers |
 | `reportService` | Leave report fetch |
 | `remindersService` | `attendance_reminder_*` tables |
@@ -339,12 +343,13 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | Hourly rate | `monthly_salary ÷ (calendar_days_in_month × 8)` using report `from` date |
 | Base pay | Σ `working_hours × hourly_rate` per day (includes SL / excused A when hours present) |
 | OT multipliers | normal ×1.25, holiday ×1.5, public_holiday ×2.5 (`constants/overtime.ts`) |
+| OT hours selectable (home) | Construction + Maintenance project OT dropdown: **0–12** hours (`CostrDropdown`, `MaintenanceDropdown`) |
 | OT bucketing | From `Attendance_projects.overtime_type` + attendance status fallback |
-| Salary vs project cost | Overall Summary Cost Δ = attendance salary − project logged cost. Hrs Δ = Work Hrs − Logged Hrs. **Sick Leave** paid hours explain expected gaps (Reason column / sky banner — not charged to projects). Remaining unexplained hours → fix in Attendance Report. UI: mismatches-only filter, sort by \|Cost Δ\|, click employee → card. |
+| Salary vs project cost | Overall Summary Cost Δ = attendance salary − project logged cost. Hrs Δ = Work Hrs − Logged Hrs. **Paid Sick Leave** is charged to the previous working day's project (`inheritSickLeaveProjects`) so employee and project totals match. Line format: `Sick leave {project}, {hours}h, {amount} · {date}`. If no prior project is found, leftover Hrs Δ is still explained as SL (sky banner). Remaining unexplained hours → fix in Attendance Report. |
 | OT display (salary report) | Show OT ×1.25 / W.OT ×1.5 / H.OT ×2.5 hours — not a blended OT Rate |
 | Payroll period default | 26th prev month → 25th selected month (`lib/payrollPeriod.ts`) |
 | AWO | Flat deduction `8 × hourly_rate` per AWO day (shown as negative PAY) |
-| Sick Leave (SL) | **Calendar-year law** (`sickLeaveLaw.ts`): days 1–15 → **8h** full pay, 16–45 → **4h** half pay, 46+ → **0h** unpaid (Jan 1–Dec 31). Prior-year SL days fetched so ordinals continue across payroll periods. Project column hidden. Overall Summary shows SL (period), SL YTD, Full / Half / Unpaid. |
+| Sick Leave (SL) | **Calendar-year law** (`sickLeaveLaw.ts`): days 1–15 → **8h** full pay, 16–45 → **4h** half pay, 46+ → **0h** unpaid (Jan 1–Dec 31). Prior-year SL days fetched so ordinals continue across payroll periods. **Project:** inherit from the most recent prior day with logged project hours (skips weekend/vacation/other SL). Attendance PROJECT cell shows `Sick leave · {name} {hours}hrs`. Salary/project reports include those hours and amount. Lookback: `fetchPriorWorkProjectsForSickLeave` (45 days before period start). Overall Summary shows SL (period), SL YTD, Full / Half / Unpaid. |
 | Report inline edit | `/api/attendance-report-edit` syncs notes `Attendance type:` with status so rebuild does not revert |
 
 **Report delivery:** UI opens mailto/WhatsApp; user attaches PDF from Print. Saved emails in `payroll_report_emails`.
@@ -392,11 +397,17 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-09-01 | Rebase: keep sick-leave index and restore print/PDF changelog from `pages pdf` | `docs/PROJECT_INDEX.md` |
+| 2026-08-31 | Paid sick leave charged to previous working day's project so employee vs project totals match | `inheritSickLeaveProjects`, attendance/salary reports, index §12 |
+| 2026-08-31 | Employee/project tables show a **Sick leave** row (hours + amount) under the prior-day project so TOTAL matches salary | `SalaryReportSection` ProjectTable / EmployeeCostTable |
+| 2026-08-31 | Fallback: uncharged SL hours attach to the employee’s largest project (UI + API) so the row always appears | `attachUnchargedSickLeaveToLargestProject` |
 | 2026-08-25 | Fix attendance print blank pages: drop visibility:hidden (Leave/Salary/Overall still took space); hide non-print via :has(); remove break-inside:avoid on emp cards | `AttendanceReportSection` print CSS |
 | 2026-08-25 | Attendance print split: Print employees (portrait/landscape) vs Print Overall Summary (always landscape, separate job) | `AttendanceReportSection`, `printPageOrientation.ts` |
 | 2026-08-25 | Attendance Overall Summary always landscape (named `@page`) while employee pages follow Portrait/Landscape toggle | `printPageOrientation.ts`, `AttendanceReportSection` |
 | 2026-08-25 | Fix attendance Portrait print: Salary’s global `@page landscape` on same Reports tab overrode it; inject page size at print time | `printPageOrientation.ts`, Attendance/Salary report print |
 | 2026-08-25 | Attendance print: Portrait/Landscape toggle (auto short range→landscape, full month→portrait); drop named landscape page that forced Chrome landscape | `AttendanceReportSection` |
+| 2026-08-11 | Fix `pnpm-workspace.yaml` allowBuilds placeholders so `pnpm dev` no longer fails with `ERR_PNPM_IGNORED_BUILDS` | `pnpm-workspace.yaml`, index §1 |
+| 2026-08-11 | Construction + Maintenance overtime dropdown max raised to 12 hours (was 6 / 4) | `CostrDropdown`, `MaintenanceDropdown`, index §12 |
 | 2026-08-03 | Attendance print: cap day-row height for short ranges + kill overflow scrollbars so ≤~31 days stay on one page | `AttendanceReportSection` print CSS |
 | 2026-08-03 | Attendance Report employee filter: multi-select checkboxes (2+ employees); API `employee_id` comma-separated | `AttendanceReportSection`, `useAttendanceReport`, `fetchAttendanceRowsForReport`, `/api/attendance-report` |
 | 2026-07-29 | Project rename from Manage Projects: PATCH updates `project_id` + `project_name` and cascades `Attendance_projects` | `/api/admin-projects` PATCH, `ProjectsTab` |

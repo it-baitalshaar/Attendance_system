@@ -14,9 +14,9 @@ function sumProjectCosts(projects: SalaryReportEmployee['projects']) {
   let ot = 0;
   let hours = 0;
   for (const p of projects) {
-    base += p.baseValue;
+    base += p.baseValue + (p.sickLeaveValue ?? 0);
     ot += p.overtimeValue;
-    hours += p.workingHours;
+    hours += p.workingHours + (p.sickLeaveHours ?? 0);
   }
   return { base, ot, total: base + ot, hours };
 }
@@ -90,7 +90,7 @@ export function buildSalaryReconciliationSummary(
     const classified = classifyVariance({
       hoursVariance,
       variance,
-      sickLeaveHours: emp.sickLeaveHours,
+      sickLeaveHours: Math.max(0, emp.sickLeaveHours - (emp.sickLeaveChargedHours ?? 0)),
     });
 
     return {
@@ -188,7 +188,10 @@ export function pivotSalaryReportByProject(
         otPublicHoliday: p.otPublicHoliday,
         overtimeRate: p.overtimeRate,
         overtimeValue: p.overtimeValue,
-        totalValue: p.baseValue + p.overtimeValue,
+        totalValue: p.baseValue + p.overtimeValue + (p.sickLeaveValue ?? 0),
+        sickLeaveHours: p.sickLeaveHours ?? 0,
+        sickLeaveValue: p.sickLeaveValue ?? 0,
+        sickLeaveCharges: p.sickLeaveCharges ?? [],
       });
       map.set(p.projectName, list);
     }
@@ -202,11 +205,19 @@ export function pivotSalaryReportByProject(
       return {
         projectName,
         employees,
-        totalWorkingHours: employees.reduce((s, e) => s + e.workingHours, 0),
-        totalBaseValue: employees.reduce((s, e) => s + e.baseValue, 0),
+        totalWorkingHours: employees.reduce(
+          (s, e) => s + e.workingHours + (e.sickLeaveHours ?? 0),
+          0
+        ),
+        totalBaseValue: employees.reduce(
+          (s, e) => s + e.baseValue + (e.sickLeaveValue ?? 0),
+          0
+        ),
         totalOvertimeHours: employees.reduce((s, e) => s + e.overtimeHours, 0),
         totalOvertimeValue: employees.reduce((s, e) => s + e.overtimeValue, 0),
         totalCost: employees.reduce((s, e) => s + e.totalValue, 0),
+        totalSickLeaveHours: employees.reduce((s, e) => s + e.sickLeaveHours, 0),
+        totalSickLeaveValue: employees.reduce((s, e) => s + e.sickLeaveValue, 0),
       };
     })
     .sort((a, b) => a.projectName.localeCompare(b.projectName));

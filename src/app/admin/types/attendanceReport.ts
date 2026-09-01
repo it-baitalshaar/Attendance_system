@@ -40,6 +40,12 @@ export interface AttendanceReportDay {
   notes: string | null;
   /** Present only when status_code === 'SL'. Payable hours already applied to working_hours. */
   sick_leave?: AttendanceReportDaySickLeave | null;
+  /**
+   * Paid SL hours inherited from the previous working day's project(s).
+   * Empty/null when the SL day already had logged projects or no prior project was found.
+   * Salary/project reports charge these hours so totals match.
+   */
+  sick_leave_projects?: { name: string; hours: number }[] | null;
 }
 
 /** Per-employee SL law rollup for the Overall Summary. */
@@ -61,27 +67,31 @@ export interface AttendanceReportEmployeeReport {
 /**
  * Maps DB status + status_attendance to display code per spec.
  */
+export function dateOnly(date: string | null | undefined): string {
+  return String(date ?? '').trim().slice(0, 10);
+}
+
 export function statusToCode(
   status: string | null | undefined,
   status_attendance: string | null | undefined
 ): string {
   const s = (status ?? '').toLowerCase();
-  const sa = (status_attendance ?? '').trim();
+  const sa = (status_attendance ?? '').trim().toLowerCase();
 
-  if (s === 'vacation') return 'V';
+  if (s === 'vacation' || sa === 'vacation') return 'V';
+  if (sa === 'sick leave' || sa === 'sick_leave') return 'SL';
   if (s === 'present') {
-    if (sa === 'Present') return 'P';
-    if (sa === 'Weekend') return 'W';
-    if (sa === 'Holiday-Work') return 'H';
-    if (sa === 'Half Day AM') return 'HDAM';
-    if (sa === 'Half Day PM') return 'HDPM';
+    if (sa === 'present') return 'P';
+    if (sa === 'weekend') return 'W';
+    if (sa === 'holiday-work' || sa === 'holiday_work') return 'H';
+    if (sa === 'half day am' || sa === 'half_day_am') return 'HDAM';
+    if (sa === 'half day pm' || sa === 'half_day_pm') return 'HDPM';
     return 'P';
   }
   if (s === 'absent') {
-    if (sa === 'Absence without excuse') return 'AWO';
-    if (sa === 'Sick Leave') return 'SL';
-    if (sa === 'Absence with excuse') return 'A';
+    if (sa === 'absence without excuse') return 'AWO';
+    if (sa === 'absence with excuse') return 'A';
     return 'AWO';
   }
-  return sa || '—';
+  return (status_attendance ?? '').trim() || '—';
 }

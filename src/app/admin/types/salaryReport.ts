@@ -3,6 +3,12 @@
  * Calculated from Attendance + Attendance_projects raw data.
  */
 
+export interface SickLeaveProjectCharge {
+  date: string;
+  hours: number;
+  amount: number;
+}
+
 export interface ProjectCostEntry {
   projectName: string;
   workingHours: number;
@@ -17,6 +23,10 @@ export interface ProjectCostEntry {
   /** @deprecated Blended average of OT multipliers; prefer otNormal/otHoliday/otPublicHoliday */
   overtimeRate: number;
   overtimeValue: number;   // OT buckets × multipliers × hourlyRate  (قيمة الإضافي)
+  /** Paid SL hours charged to this project (inherited from the previous working day). */
+  sickLeaveHours: number;
+  sickLeaveValue: number;
+  sickLeaveCharges: SickLeaveProjectCharge[];
 }
 
 export interface SalaryReportEmployee {
@@ -40,9 +50,13 @@ export interface SalaryReportEmployee {
   overtimeAmount: number;    // sum of all daily OT earned
   // Final
   totalSalary: number;       // round(baseSalary + overtimeAmount)
-  // Sick leave (paid in salary, not charged to projects)
+  // Sick leave (paid in salary; charged to the previous working day's project when known)
   sickLeaveHours: number;    // Σ working_hours on SL days
   sickLeaveDays: number;     // count of SL days in period
-  // Project breakdown (actual logged hours)
+  /** SL hours successfully charged to a prior-day project. */
+  sickLeaveChargedHours: number;
+  /** SL dates in the period (YYYY-MM-DD), used to label the project SL row. */
+  sickLeaveDates: string[];
+  // Project breakdown (logged hours + inherited SL)
   projects: ProjectCostEntry[];
 }

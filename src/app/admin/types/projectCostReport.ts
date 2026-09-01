@@ -13,6 +13,10 @@ export interface ProjectEmployeeEntry {
   overtimeRate: number;
   overtimeValue: number;
   totalValue: number;
+  /** Paid SL hours for this employee charged to this project. */
+  sickLeaveHours: number;
+  sickLeaveValue: number;
+  sickLeaveCharges: { date: string; hours: number; amount: number }[];
 }
 
 export interface ProjectCostReport {
@@ -23,6 +27,8 @@ export interface ProjectCostReport {
   totalOvertimeHours: number;
   totalOvertimeValue: number;
   totalCost: number;
+  totalSickLeaveHours: number;
+  totalSickLeaveValue: number;
 }
 
 export interface EmployeeReconciliationRow {
@@ -39,7 +45,7 @@ export interface EmployeeReconciliationRow {
   projectHours: number;
   totalHours: number;
   hoursVariance: number;
-  /** Payable SL hours in period (not charged to projects). */
+  /** Payable SL hours in period (charged to prior-day project when known). */
   sickLeaveHours: number;
   sickLeaveDays: number;
   /** Portion of positive Hrs Δ explained by sick leave. */

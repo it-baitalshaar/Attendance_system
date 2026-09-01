@@ -43,7 +43,10 @@ export async function GET(request: Request) {
       );
     }
 
-    return NextResponse.json({ report, from: outFrom, to: outTo });
+    return NextResponse.json(
+      { report, from: outFrom, to: outTo },
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
   } catch (err) {
     console.error('[salary-report] Server error:', err);
     return NextResponse.json(

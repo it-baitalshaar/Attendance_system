@@ -79,7 +79,7 @@ const MaintenanceDropdown = ({employee_id, input_index, departments}:Maintenance
   // const [hours, setHours] = useState('');
   const [projects, setProjects] = useState<string[]>([]);
   let [hours, setHours] = useState<number[] | number>();
-  let [overtime, setOvertime] = useState<number[] | number>(Array.from({ length: 5 }, (_, i) => i));
+  let [overtime, setOvertime] = useState<number[] | number>(Array.from({ length: 13 }, (_, i) => i));
   
   // const dispatch = useDispatch();
   const dispatch = useDispatch<AppDispatch>();

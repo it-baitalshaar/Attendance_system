@@ -7,7 +7,7 @@ import type {
   AttendanceReportEmployeeReport,
   AttendanceReportDay,
 } from '../types/attendanceReport';
-import { statusToCode } from '../types/attendanceReport';
+import { dateOnly, statusToCode } from '../types/attendanceReport';
 import { resolveProjectDisplayName } from '@/lib/projectDisplayName';
 import { bucketOvertimeHours } from './payrollCalculation';
 import { maxRegularHoursForStatus } from '@/app/lib/employeeRegularHours';
@@ -15,6 +15,14 @@ import {
   assignSickLeaveTiers,
   summarizeEmployeeSickLeave,
 } from './sickLeaveLaw';
+import type { LookbackWorkDay } from './inheritSickLeaveProjects';
+import {
+  allocateSickLeaveHours,
+  formatSickLeaveProjectsText,
+  hasLoggedProjects,
+  latestLookbackProjects,
+  mergeProjectParts,
+} from './inheritSickLeaveProjects';
 
 export interface RawAttendanceRow {
   id: string;
@@ -56,6 +64,11 @@ export interface BuildReportInput {
    * Optional — defaults to empty (treats period SL days as starting at ordinal 1).
    */
   priorSickLeaveDaysByEmployee?: Map<string, string[]>;
+  /**
+   * Work days with projects before the report `from` date, keyed by employee_id.
+   * Used so an SL day at the start of the period can inherit the previous project's name.
+   */
+  lookbackWorkDaysByEmployee?: Map<string, LookbackWorkDay[]>;
 }
 
 /**
@@ -65,6 +78,8 @@ export interface BuildReportInput {
  * - Sick Leave: calendar-year law (1–15 → 8h, 16–45 → 4h, 46+ → 0h); see sickLeaveLaw.ts
  * - Overtime by payroll type from each project row (overtime_type), with legacy fallback from day status when type is missing
  * - Project text: "Name Xhrs + Name Yhrs", NULL → "Unknown"
+ * - Sick Leave with no logged projects inherits the previous working day's project
+ *   (charged to that project on salary/project reports)
  * - Sort by employee_id, date asc
  */
 export function buildAttendanceReport(
@@ -76,6 +91,7 @@ export function buildAttendanceReport(
     projectNameById,
     employees,
     priorSickLeaveDaysByEmployee = new Map(),
+    lookbackWorkDaysByEmployee = new Map(),
   } = input;
 
   const attendanceById = new Map<string, RawAttendanceRow>();
@@ -83,9 +99,10 @@ export function buildAttendanceReport(
 
   const projectsByAttendanceId = new Map<string, RawAttendanceProjectRow[]>();
   attProjRows.forEach((r) => {
-    const list = projectsByAttendanceId.get(r.attendance_id) ?? [];
+    const attId = String(r.attendance_id ?? '');
+    const list = projectsByAttendanceId.get(attId) ?? [];
     list.push(r);
-    projectsByAttendanceId.set(r.attendance_id, list);
+    projectsByAttendanceId.set(attId, list);
   });
 
   const employeeMap = new Map<string, RawEmployeeRow>();
@@ -93,7 +110,7 @@ export function buildAttendanceReport(
 
   // Group by employee_id + date (one day record per key)
   type Key = string;
-  const key = (empId: string, d: string) => `${empId}|${d}`;
+  const key = (empId: string, d: string) => `${empId}|${dateOnly(d)}`;
   const dayDataByKey = new Map<
     Key,
     {
@@ -122,7 +139,7 @@ export function buildAttendanceReport(
 
   for (const att of attRows) {
     const k = key(att.employee_id, att.date);
-    const projRows = projectsByAttendanceId.get(att.id) ?? [];
+    const projRows = projectsByAttendanceId.get(String(att.id ?? '')) ?? [];
     let working_hours = 0;
     const projectParts: { name: string; hours: number }[] = [];
 
@@ -229,9 +246,13 @@ export function buildAttendanceReport(
     const emp = employeeMap.get(empId);
     const days: AttendanceReportDay[] = [];
     const dates = Array.from(
-      new Set(attRows.filter((r) => r.employee_id === empId).map((r) => r.date))
+      new Set(attRows.filter((r) => r.employee_id === empId).map((r) => dateOnly(r.date)))
     ).sort();
     const periodSlDates: string[] = [];
+    let lastWorkProjects = latestLookbackProjects(
+      lookbackWorkDaysByEmployee.get(empId),
+      dates[0] ?? '9999-99-99'
+    );
 
     for (const date of dates) {
       const k = key(empId, date);
@@ -239,12 +260,12 @@ export function buildAttendanceReport(
       if (!d) continue;
 
       const statusCode = statusToCode(d.status, d.status_attendance);
+      const loggedParts = mergeProjectParts(d.projectParts);
       const hoursByProjectName = new Map<string, number>();
-      d.projectParts.forEach((p) => {
-        const current = hoursByProjectName.get(p.name) ?? 0;
-        hoursByProjectName.set(p.name, current + p.hours);
+      loggedParts.forEach((p) => {
+        hoursByProjectName.set(p.name, p.hours);
       });
-      const projectsText =
+      const loggedProjectsText =
         hoursByProjectName.size === 0
           ? ''
           : Array.from(hoursByProjectName.entries())
@@ -255,6 +276,27 @@ export function buildAttendanceReport(
         statusCode === 'SL' ? slAssignments.get(k) ?? null : null;
       if (statusCode === 'SL') periodSlDates.push(date);
 
+      let inheritedParts: { name: string; hours: number }[] | null = null;
+      let projectsText = loggedProjectsText;
+
+      if (statusCode === 'SL' && hasLoggedProjects(loggedParts)) {
+        projectsText = formatSickLeaveProjectsText(loggedParts);
+      } else if (statusCode === 'SL' && lastWorkProjects.length > 0) {
+        const paidHours = d.working_hours ?? 0;
+        inheritedParts =
+          paidHours > 0
+            ? allocateSickLeaveHours(paidHours, lastWorkProjects)
+            : lastWorkProjects.map((p) => ({ name: p.name, hours: 0 }));
+        const displayParts =
+          paidHours > 0 ? inheritedParts : lastWorkProjects.map((p) => ({ name: p.name, hours: 0 }));
+        projectsText = formatSickLeaveProjectsText(displayParts);
+        if (paidHours <= 0) inheritedParts = null;
+      }
+
+      if (statusCode !== 'SL' && hasLoggedProjects(loggedParts)) {
+        lastWorkProjects = loggedParts;
+      }
+
       days.push({
         date,
         status_code: statusCode,
@@ -264,8 +306,10 @@ export function buildAttendanceReport(
           holiday: d.overtime_holiday,
           public_holiday: d.overtime_public_holiday,
         },
-        // Sick Leave: project is optional — never show project allocation on the report.
-        projects: statusCode === 'SL' ? '—' : projectsText || '—',
+        projects:
+          statusCode === 'SL'
+            ? projectsText || '—'
+            : loggedProjectsText || '—',
         notes: d.notes,
         sick_leave: slAssignment
           ? {
@@ -275,6 +319,10 @@ export function buildAttendanceReport(
               paid_hours: slAssignment.paid_hours,
             }
           : null,
+        sick_leave_projects:
+          statusCode === 'SL' && inheritedParts && inheritedParts.length > 0
+            ? inheritedParts
+            : null,
       });
     }
 
