@@ -203,7 +203,10 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      if (trimmed !== current.project_name || trimmed !== current.project_id) {
+      // Rename only when the name itself changed. Comparing project_id here
+      // rewrites the primary key on a type/status edit whenever id and name
+      // differ, and Attendance_projects_project_id_fkey rejects that update.
+      if (trimmed !== current.project_name) {
         const [{ data: sameId }, { data: sameName }] = await Promise.all([
           supabase
             .from('projects')

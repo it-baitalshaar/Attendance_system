@@ -35,7 +35,7 @@ interface ProjectsTabProps {
       department?: ProjectDepartment;
       project_status?: ProjectStatus;
     }
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   onClearMessage: () => void;
 }
 
@@ -93,12 +93,12 @@ export function ProjectsTab({
     }
     setSubmitting(true);
     try {
-      await onUpdateProject(editingProject.project_id, {
+      const saved = await onUpdateProject(editingProject.project_id, {
         project_name: editName.trim(),
         department: editDepartment,
         project_status: editStatus,
       });
-      setEditingProject(null);
+      if (saved) setEditingProject(null);
     } finally {
       setSubmitting(false);
     }
@@ -305,6 +305,15 @@ export function ProjectsTab({
                   </p>
                 </div>
               </div>
+              {message && (
+                <p
+                  className={`mt-4 text-sm ${
+                    messageType === 'error' ? 'text-red-500' : 'text-green-500'
+                  }`}
+                >
+                  {message}
+                </p>
+              )}
               <div className="mt-4 flex gap-2 justify-end">
                 <button
                   type="button"

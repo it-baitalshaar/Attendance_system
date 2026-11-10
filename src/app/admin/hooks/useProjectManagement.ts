@@ -58,7 +58,7 @@ export function useProjectManagement() {
       department?: ProjectDepartment;
       project_status?: ProjectStatus;
     }
-  ) => {
+  ): Promise<boolean> => {
     setMessage('');
     try {
       const result = await updateProjectService(projectId, updates);
@@ -69,11 +69,13 @@ export function useProjectManagement() {
       );
       setMessageType('success');
       await loadProjects();
+      return true;
     } catch (err) {
       setMessage(
         err instanceof Error ? err.message : 'Failed to update project'
       );
       setMessageType('error');
+      return false;
     }
   };
 

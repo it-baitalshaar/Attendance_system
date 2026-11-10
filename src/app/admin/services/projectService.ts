@@ -81,15 +81,16 @@ export async function updateProjectService(
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to update project');
-  }
-
-  const data = (await res.json()) as {
+  const data = (await res.json().catch(() => ({}))) as {
     project_id?: string;
     renamed?: boolean;
+    error?: string;
+    ok?: boolean;
   };
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to update project');
+  }
   return {
     project_id: data.project_id ?? projectId,
     renamed: Boolean(data.renamed),

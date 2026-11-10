@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-09-01 (merged pages-pdf + sick-leave index) | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-11-10 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -100,7 +100,7 @@ pnpm build && pnpm start
 | POST | `/api/payroll-report/send-email` | admin | Server Gmail send (optional) |
 | POST | `/api/payroll-report/pdf` | admin | Server PDF gen (optional) |
 | GET/POST/PATCH/DELETE | `/api/admin-users` | super user | User CRUD |
-| GET/POST/PATCH/DELETE | `/api/admin-projects` | admin | Project CRUD; PATCH rename updates `project_id` + `project_name` and cascades to `Attendance_projects` |
+| GET/POST/PATCH/DELETE | `/api/admin-projects` | admin | Project CRUD; PATCH renames `project_id` only when the name changes (type/status edits must not touch the key — `Attendance_projects` FK), then cascades attendance rows |
 | POST | `/api/admin-set-password` | — | Set password for new users |
 | POST | `/api/admin-update-password` | session | Admin self password change |
 | POST | `/api/set-password` | — | User password set |
@@ -397,6 +397,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-11-10 | Project type/status save no longer rewrites `project_id` when the name is unchanged (FK on `Attendance_projects` was rejecting the whole update) | `/api/admin-projects` PATCH, `ProjectsTab` |
 | 2026-09-01 | Rebase: keep sick-leave index and restore print/PDF changelog from `pages pdf` | `docs/PROJECT_INDEX.md` |
 | 2026-08-31 | Paid sick leave charged to previous working day's project so employee vs project totals match | `inheritSickLeaveProjects`, attendance/salary reports, index §12 |
 | 2026-08-31 | Employee/project tables show a **Sick leave** row (hours + amount) under the prior-day project so TOTAL matches salary | `SalaryReportSection` ProjectTable / EmployeeCostTable |
