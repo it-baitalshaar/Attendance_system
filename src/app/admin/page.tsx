@@ -56,6 +56,9 @@ function AdminPageContent() {
     employees,
     newEmployee,
     departments,
+    autoEmployeeId,
+    employeeIdEdited,
+    applyAutoEmployeeId,
     loading: employeesLoading,
     message: employeesMessage,
     handleInputChange,
@@ -170,6 +173,9 @@ function AdminPageContent() {
           departments={dbDepartments.length > 0 ? dbDepartments.map((d) => d.name) : departments}
           loading={employeesLoading}
           message={employeesMessage}
+          autoEmployeeId={autoEmployeeId}
+          employeeIdEdited={employeeIdEdited}
+          onUseAutoEmployeeId={applyAutoEmployeeId}
           onInputChange={handleInputChange}
           onSubmit={handleSubmit}
           manageEmployeeId={manageEmployeeId}

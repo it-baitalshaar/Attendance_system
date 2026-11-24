@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-11-10 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-11-24 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -136,6 +136,10 @@ pnpm build && pnpm start
 
 **Departments (field):** `Construction`, `Maintenance`, `Saqiya` (`src/app/constants/departments.ts`).
 
+**Employee ID series:** `SA####` = Saqiya; `BS####` = Bait Alshaar (Construction + Maintenance + all BioTime office employees). `office_employees.employee_code` uses the same codes, so new IDs must be checked against both tables (`employeeIdService`).
+
+**Prefix = hiring company, not current department.** An employee hired under Bait Alshaar keeps their `BS` code after transfer to Al Saqia (e.g. `BS0054` = MOHAMMED SHAHJHAN GAZI sits in Al Saqia; `BS0037`–`BS0043` office staff likewise). So a `BS` code in an `Al Saqia` department is **correct, not a data error** — do not "fix" it. The auto-suggested ID for a *new* hire follows the selected department (Saqiya → `SA`, Construction/Maintenance → `BS`).
+
 **Attendance statuses (common):** `Present`, `AWO`, `SL`, `A`, `Vacation`, `Weekend`, `Holiday-Work`, half-day variants.
 
 ### 6.2 Office module (BioTime / biometric)
@@ -259,7 +263,7 @@ docs/
 | Hook | Tab / feature |
 |------|---------------|
 | `useAdminAuth` | Auth, tab state, profile password |
-| `useEmployeeManagement` | Employees tab CRUD + manage modal |
+| `useEmployeeManagement` | Employees tab CRUD + manage modal + auto Employee ID suggestion (SA/BS series from `Employee` + `office_employees`) |
 | `useEmployeeFilters` | Employee list filters |
 | `useDepartmentManagement` | Departments tab |
 | `useProjectManagement` | Projects tab |
@@ -281,6 +285,7 @@ docs/
 | Service | Responsibility |
 |---------|----------------|
 | `employeeService` | Employee CRUD |
+| `employeeIdService` | Next Employee ID per department: **SA** = Saqiya, **BS** = Construction/Maintenance/office. Max serial scanned across `Employee.employee_id` + `office_employees.employee_code` (live: SA0046, BS0054 → next SA0047 / BS0055). Exposes `formatEmployeeId`, `parseEmployeeIdSerial`, `fetchEmployeeIdPools`, `invalidateEmployeeIdPools` |
 | `employeeHistoryService` | `Employee_history` |
 | `departmentService` | Departments CRUD + employee counts + `weekend_days` |
 | `holidayService` | `department_holidays` CRUD (admin) |
@@ -397,6 +402,8 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-11-24 | Data fix: `office_employees` `SA0037` name was a Django password hash (`pbkdf2_sha256$…`) from the 2026-03-11 import → corrected to **TAHIR NASIM**. Sync paths never write `name`, so it cannot regress. `BS` codes sitting in the Al Saqia office department are intentional transfers (hired under Bait Alshaar) — leave them | `office_employees` data, index §6.1 |
+| 2026-11-24 | Add Employee: Employee ID auto-fills with the next free ID and re-fills on every department change; stays editable with a "Use {next}" reset; duplicate IDs (checked against `Employee` + BioTime `office_employees`) are rejected. **SA** = Saqiya (`SA0047` next), **BS** = Construction/Maintenance/office (`BS0055` next) | `employeeIdService`, `useEmployeeManagement`, `EmployeesTab` |
 | 2026-11-10 | Project type/status save no longer rewrites `project_id` when the name is unchanged (FK on `Attendance_projects` was rejecting the whole update) | `/api/admin-projects` PATCH, `ProjectsTab` |
 | 2026-09-01 | Rebase: keep sick-leave index and restore print/PDF changelog from `pages pdf` | `docs/PROJECT_INDEX.md` |
 | 2026-08-31 | Paid sick leave charged to previous working day's project so employee vs project totals match | `inheritSickLeaveProjects`, attendance/salary reports, index §12 |

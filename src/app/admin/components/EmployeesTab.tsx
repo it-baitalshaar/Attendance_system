@@ -16,6 +16,9 @@ interface EmployeesTabProps {
   departments: string[];
   loading: boolean;
   message: string;
+  autoEmployeeId?: string;
+  employeeIdEdited?: boolean;
+  onUseAutoEmployeeId?: () => void;
   onInputChange: (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => void;
@@ -37,6 +40,9 @@ export function EmployeesTab({
   departments,
   loading,
   message,
+  autoEmployeeId,
+  employeeIdEdited,
+  onUseAutoEmployeeId,
   onInputChange,
   onSubmit,
   manageEmployeeId,
@@ -84,14 +90,44 @@ export function EmployeesTab({
               <label className="block text-sm font-medium mb-1">
                 Employee ID
               </label>
-              <input
-                type="text"
-                name="employee_id"
-                value={newEmployee.employee_id}
-                onChange={onInputChange}
-                className="w-full p-2 border rounded"
-                required
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  name="employee_id"
+                  value={newEmployee.employee_id}
+                  onChange={onInputChange}
+                  placeholder={autoEmployeeId || 'e.g. BS0055'}
+                  className="w-full p-2 border rounded font-mono"
+                  required
+                />
+                {autoEmployeeId &&
+                  newEmployee.employee_id !== autoEmployeeId && (
+                    <button
+                      type="button"
+                      onClick={onUseAutoEmployeeId}
+                      className="shrink-0 px-3 text-sm border border-blue-600 text-blue-700 rounded hover:bg-blue-50"
+                      title="Use the next free ID"
+                    >
+                      Use {autoEmployeeId}
+                    </button>
+                  )}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {newEmployee.department ? (
+                  <>
+                    Next free ID for {newEmployee.department}:{' '}
+                    <span className="font-mono font-medium text-gray-700">
+                      {autoEmployeeId}
+                    </span>{' '}
+                    — from Employee + BioTime. Editable; verify against BioTime.
+                    {employeeIdEdited && (
+                      <span className="text-amber-600"> Manual override.</span>
+                    )}
+                  </>
+                ) : (
+                  'Select a department to auto-fill the next ID (SA for Saqiya, BS for Construction/Maintenance).'
+                )}
+              </p>
             </div>
 
             <div>

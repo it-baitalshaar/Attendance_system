@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   addEmployeeService,
   fetchEmployeesService,
@@ -9,6 +9,12 @@ import {
   addEmployeeHistoryService,
 } from '../services/employeeHistoryService';
 import { fetchDepartmentsService } from '../services/departmentService';
+import {
+  EmployeeIdPrefix,
+  fetchEmployeeIdPools,
+  invalidateEmployeeIdPools,
+  prefixForDepartment,
+} from '../services/employeeIdService';
 import { Employee, EmployeeHistoryRecord, EmployeeUpdatePayload } from '../types/admin';
 
 interface NewEmployeeState {
@@ -29,6 +35,12 @@ export function useEmployeeManagement() {
     salary: '',
   });
   const [departments, setDepartments] = useState<string[]>([]);
+  const [nextEmployeeIds, setNextEmployeeIds] = useState<
+    Record<EmployeeIdPrefix, string>
+  >({ SA: 'SA0001', BS: 'BS0001' });
+  const [existingEmployeeIds, setExistingEmployeeIds] = useState<string[]>([]);
+  const [employeeIdEdited, setEmployeeIdEdited] = useState(false);
+  const employeeIdEditedRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [manageEmployeeId, setManageEmployeeId] = useState<string | null>(null);
@@ -43,12 +55,24 @@ export function useEmployeeManagement() {
     setLoading(true);
     setMessage('');
     try {
-      const [employeesRes, deptList] = await Promise.all([
+      const [employeesRes, deptList, pools] = await Promise.all([
         fetchEmployeesService(),
         fetchDepartmentsService(),
+        fetchEmployeeIdPools().catch(() => null),
       ]);
       setEmployees(employeesRes.employees);
       setDepartments(deptList.map((d) => d.name));
+      if (pools) {
+        setNextEmployeeIds(pools.nextIds);
+        setExistingEmployeeIds(pools.existingIds);
+        // Fill the ID field automatically while it is still the auto value.
+        setNewEmployee((prev) => {
+          if (!prev.department) return prev;
+          if (employeeIdEditedRef.current) return prev;
+          const auto = pools.nextIds[prefixForDepartment(prev.department)];
+          return prev.employee_id === auto ? prev : { ...prev, employee_id: auto };
+        });
+      }
     } catch (error) {
       console.error('Error fetching employees:', error);
       setMessage('Failed to load employees');
@@ -171,21 +195,73 @@ export function useEmployeeManagement() {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
+
+    if (name === 'department') {
+      // Changing department always re-suggests the ID for that series.
+      const auto = value ? nextEmployeeIds[prefixForDepartment(value)] : '';
+      employeeIdEditedRef.current = false;
+      setEmployeeIdEdited(false);
+      setNewEmployee((prev) => ({
+        ...prev,
+        department: value,
+        employee_id: auto || prev.employee_id,
+      }));
+      return;
+    }
+
+    if (name === 'employee_id') {
+      // Manual edits are allowed (needed to match BioTime) and are kept.
+      employeeIdEditedRef.current = true;
+      setEmployeeIdEdited(true);
+    }
+
     setNewEmployee((prev) => ({ ...prev, [name]: value }));
   };
 
+  const autoEmployeeId = newEmployee.department
+    ? nextEmployeeIds[prefixForDepartment(newEmployee.department)]
+    : '';
+
+  const applyAutoEmployeeId = useCallback(() => {
+    if (!autoEmployeeId) return;
+    employeeIdEditedRef.current = false;
+    setEmployeeIdEdited(false);
+    setNewEmployee((prev) => ({ ...prev, employee_id: autoEmployeeId }));
+  }, [autoEmployeeId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const employeeId = newEmployee.employee_id.trim();
+    if (!employeeId) {
+      setMessage('Employee ID is required.');
+      return;
+    }
+
+    const duplicate = existingEmployeeIds.some(
+      (id) => id.trim().toUpperCase() === employeeId.toUpperCase()
+    );
+    if (duplicate) {
+      setMessage(
+        'Employee ID already exists in the Employee list or BioTime. Please use another ID.'
+      );
+      return;
+    }
+
     setLoading(true);
     setMessage('');
 
     try {
       const payload = {
         ...newEmployee,
+        employee_id: employeeId,
         salary: newEmployee.salary.trim() === '' ? undefined : Number(newEmployee.salary),
       };
       await addEmployeeService(payload);
       setMessage('Employee added successfully!');
+      invalidateEmployeeIdPools();
+      employeeIdEditedRef.current = false;
+      setEmployeeIdEdited(false);
       setNewEmployee({
         name: '',
         position: '',
@@ -206,6 +282,10 @@ export function useEmployeeManagement() {
     employees,
     newEmployee,
     departments,
+    nextEmployeeIds,
+    autoEmployeeId,
+    employeeIdEdited,
+    applyAutoEmployeeId,
     loading,
     message,
     handleInputChange,
