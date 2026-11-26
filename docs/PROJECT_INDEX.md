@@ -264,7 +264,7 @@ docs/
 |------|---------------|
 | `useAdminAuth` | Auth, tab state, profile password |
 | `useEmployeeManagement` | Employees tab CRUD + manage modal + auto Employee ID suggestion (SA/BS series from `Employee` + `office_employees`) |
-| `useEmployeeFilters` | Employee list filters |
+| `useEmployeeFilters` | Employee list filters + **sort** (name / ID / department / position / status, asc/desc; ID sort is numeric-aware, blank values sink) |
 | `useDepartmentManagement` | Departments tab |
 | `useProjectManagement` | Projects tab |
 | `useUserManagement` | Users tab (super user) |
@@ -402,6 +402,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-11-24 | Employee List sorting: "Sort:" dropdown (Name / ID / Department / Position / Status, ascending or descending) + clickable column headers with ▲▼ indicator and `aria-sort`. Numeric-aware ID sort (`SA0002` before `SA0013`), blanks last, `Reset` restores Name A–Z | `useEmployeeFilters`, `EmployeeFilters`, `EmployeesTab` |
 | 2026-11-24 | Data fix: `office_employees` `SA0037` name was a Django password hash (`pbkdf2_sha256$…`) from the 2026-03-11 import → corrected to **TAHIR NASIM**. Sync paths never write `name`, so it cannot regress. `BS` codes sitting in the Al Saqia office department are intentional transfers (hired under Bait Alshaar) — leave them | `office_employees` data, index §6.1 |
 | 2026-11-24 | Add Employee: Employee ID auto-fills with the next free ID and re-fills on every department change; stays editable with a "Use {next}" reset; duplicate IDs (checked against `Employee` + BioTime `office_employees`) are rejected. **SA** = Saqiya (`SA0047` next), **BS** = Construction/Maintenance/office (`BS0055` next) | `employeeIdService`, `useEmployeeManagement`, `EmployeesTab` |
 | 2026-11-10 | Project type/status save no longer rewrites `project_id` when the name is unchanged (FK on `Attendance_projects` was rejecting the whole update) | `/api/admin-projects` PATCH, `ProjectsTab` |

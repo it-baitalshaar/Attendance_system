@@ -1,4 +1,8 @@
-import { useEmployeeFilters } from '../hooks/useEmployeeFilters';
+import {
+  EmployeeSortKey,
+  parseSortValue,
+  useEmployeeFilters,
+} from '../hooks/useEmployeeFilters';
 import { EmployeeFilters, ManageEmployeePanel } from './employees';
 import { Employee, EmployeeHistoryRecord } from '../types/admin';
 
@@ -64,8 +68,32 @@ export function EmployeesTab({
     setFilterDepartment,
     setFilterStatus,
     setFilterPosition,
+    sortValue,
+    setSortValue,
+    toggleSort,
     resetFilters,
   } = useEmployeeFilters(employees);
+
+  const { key: sortKey, direction: sortDirection } = parseSortValue(sortValue);
+
+  const sortAria = (
+    key: EmployeeSortKey
+  ): 'ascending' | 'descending' | 'none' =>
+    sortKey === key ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none';
+
+  const sortableHeader = (key: EmployeeSortKey, label: string) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(key)}
+      className="inline-flex items-center gap-1 font-medium uppercase tracking-wider text-gray-500 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+      title={`Sort by ${label.toLowerCase()} (${sortKey === key && sortDirection === 'asc' ? 'descending next' : 'ascending next'})`}
+    >
+      {label}
+      <span className={sortKey === key ? 'text-blue-600' : 'text-gray-300'}>
+        {sortKey === key ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+      </span>
+    </button>
+  );
 
   return (
     <>
@@ -224,6 +252,8 @@ export function EmployeesTab({
             onDepartmentChange={setFilterDepartment}
             onStatusChange={setFilterStatus}
             onPositionChange={setFilterPosition}
+            sortValue={sortValue}
+            onSortChange={setSortValue}
             onReset={resetFilters}
           />
         </div>
@@ -238,20 +268,20 @@ export function EmployeesTab({
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
+                  <th aria-sort={sortAria('name')} className="px-6 py-3 text-left text-xs">
+                    {sortableHeader('name', 'Name')}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID
+                  <th aria-sort={sortAria('employee_id')} className="px-6 py-3 text-left text-xs">
+                    {sortableHeader('employee_id', 'ID')}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Position
+                  <th aria-sort={sortAria('position')} className="px-6 py-3 text-left text-xs">
+                    {sortableHeader('position', 'Position')}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Department
+                  <th aria-sort={sortAria('department')} className="px-6 py-3 text-left text-xs">
+                    {sortableHeader('department', 'Department')}
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
+                  <th aria-sort={sortAria('status')} className="px-6 py-3 text-left text-xs">
+                    {sortableHeader('status', 'Status')}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions

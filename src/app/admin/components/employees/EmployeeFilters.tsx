@@ -1,4 +1,8 @@
-import { FILTER_ALL } from '../../hooks/useEmployeeFilters';
+import {
+  FILTER_ALL,
+  SORT_OPTIONS,
+  EmployeeSortValue,
+} from '../../hooks/useEmployeeFilters';
 
 export interface EmployeeFiltersProps {
   searchQuery: string;
@@ -12,6 +16,9 @@ export interface EmployeeFiltersProps {
   onDepartmentChange: (value: string) => void;
   onStatusChange: (value: string) => void;
   onPositionChange: (value: string) => void;
+  /** Current sort (e.g. "name-asc") */
+  sortValue?: EmployeeSortValue;
+  onSortChange?: (value: EmployeeSortValue) => void;
   onReset?: () => void;
   searchPlaceholder?: string;
   /** Optional custom class for the container */
@@ -34,6 +41,8 @@ export function EmployeeFilters({
   onDepartmentChange,
   onStatusChange,
   onPositionChange,
+  sortValue,
+  onSortChange,
   onReset,
   searchPlaceholder = 'Search by name, ID, or department...',
   className = '',
@@ -88,6 +97,21 @@ export function EmployeeFilters({
             </option>
           ))}
         </select>
+        {onSortChange && (
+          <select
+            value={sortValue}
+            onChange={(e) => onSortChange(e.target.value as EmployeeSortValue)}
+            className="px-3 py-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            aria-label="Sort employees"
+            title="Sort order"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                Sort: {opt.label}
+              </option>
+            ))}
+          </select>
+        )}
         {onReset && (
           <button
             type="button"
