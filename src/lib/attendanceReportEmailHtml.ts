@@ -65,14 +65,22 @@ export function buildAttendanceReportWhatsAppMessage(input: {
   filterLabel: string;
   employeeCount: number;
   grandTotalSalary: number;
+  /** Days still missing hours / non-standard hours (submit-guard rules). */
+  issueCount?: number;
+  employeesWithIssues?: number;
 }): string {
   const period = formatPeriodLabel(input.from, input.to);
+  const issueCount = input.issueCount ?? 0;
+  const employeesWithIssues = input.employeesWithIssues ?? 0;
   return [
     'Attendance Report',
     `Period: ${period}`,
     `Scope: ${input.filterLabel}`,
     `Employees: ${input.employeeCount}`,
     input.grandTotalSalary > 0 ? `Total Salary: ${fmt(input.grandTotalSalary)}` : '',
+    issueCount > 0
+      ? `WARNING: ${issueCount} incomplete day${issueCount !== 1 ? 's' : ''} across ${employeesWithIssues} employee${employeesWithIssues !== 1 ? 's' : ''} — fix before payroll`
+      : '',
     '',
     'Please attach the report PDF (saved from Print / Save as PDF in the admin app).',
   ]

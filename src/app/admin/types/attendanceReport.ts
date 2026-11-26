@@ -65,6 +65,18 @@ export interface AttendanceReportEmployeeReport {
 }
 
 /**
+ * Submit-guard override saved on Track_Attendance when a supervisor submitted
+ * an incomplete day on purpose. Shown in the monthly report so the gap is
+ * explained rather than silently red.
+ */
+export interface AttendanceReportSubmissionOverride {
+  date: string;
+  department: string | null;
+  reason: string | null;
+  issues: unknown;
+}
+
+/**
  * Maps DB status + status_attendance to display code per spec.
  */
 export function dateOnly(date: string | null | undefined): string {

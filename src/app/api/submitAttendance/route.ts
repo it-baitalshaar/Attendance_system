@@ -234,7 +234,13 @@ import {
 import {
   capRegularHoursAcrossProjects,
   maxRegularHoursForStatus,
+  sumPositiveHours,
 } from '@/app/lib/employeeRegularHours';
+import {
+  validateAttendanceSubmission,
+  type AttendanceSubmissionRow,
+  type AttendanceValidationIssue,
+} from '@/app/lib/attendanceSubmissionValidation';
 
 type SimpleStatus = 'present' | 'absent' | 'vacation';
 
@@ -339,6 +345,70 @@ async function trackAttendance(
     submitted_by: submitted_by ?? userData?.user?.id,
   });
   if (insertErr) console.error('Track_Attendance insert error', insertErr);
+}
+
+/**
+ * Persists the supervisor's override reason for an incomplete submission.
+ * Best-effort: the migration may not be applied yet, and a failed update must
+ * never fail the attendance save itself.
+ */
+async function saveValidationOverride(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
+  department: string,
+  targetDate: string,
+  reason: string,
+  issues: AttendanceValidationIssue[]
+): Promise<void> {
+  const trimmed = reason.trim();
+  if (!trimmed) return;
+  try {
+    const { error } = await supabase
+      .from('Track_Attendance')
+      .update({
+        validation_override_reason: trimmed,
+        validation_issues: issues,
+      })
+      .eq('date', targetDate)
+      .eq('department', department);
+
+    if (!error) return;
+    const msg = String(error.message ?? '').toLowerCase();
+    const missingColumns =
+      error.code === '42703' ||
+      msg.includes('validation_override_reason') ||
+      msg.includes('validation_issues');
+    if (missingColumns) {
+      console.warn(
+        '[submitAttendance] Override columns missing — run supabase/migrations/add_attendance_validation_override.sql'
+      );
+    } else {
+      console.warn('[submitAttendance] Could not store validation override:', error.message);
+    }
+  } catch (err) {
+    console.warn('[submitAttendance] Validation override update failed:', err);
+  }
+}
+
+/** Adds employee names to validation issues (payloads only carry IDs). */
+async function withEmployeeNames(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerComponentClient>>,
+  issues: AttendanceValidationIssue[]
+): Promise<AttendanceValidationIssue[]> {
+  if (issues.length === 0) return issues;
+  const ids = Array.from(new Set(issues.map((i) => i.employee_id).filter(Boolean)));
+  if (ids.length === 0) return issues;
+  const { data, error } = await supabase
+    .from('Employee')
+    .select('employee_id, name')
+    .in('employee_id', ids);
+  if (error || !data) return issues;
+  const nameById = new Map(
+    (data as { employee_id: string; name: string | null }[]).map((r) => [r.employee_id, r.name])
+  );
+  return issues.map((issue) => ({
+    ...issue,
+    employee_name: nameById.get(issue.employee_id) ?? issue.employee_name ?? issue.employee_id,
+  }));
 }
 
 interface AttendanceProject {
@@ -498,6 +568,36 @@ export async function POST(request: Request) {
       const isEdit = !!existingTrack;
       const trackId = existingTrack?.id ?? crypto.randomUUID();
 
+      // ---- Completeness guard (absence reasons; departments without hours) ----
+      const overrideReasonRaw = body?.validation_override_reason;
+      const overrideReason =
+        typeof overrideReasonRaw === 'string' ? overrideReasonRaw.trim() : '';
+      const simplifiedRows: AttendanceSubmissionRow[] = payload.entries.map((entry) => ({
+        employee_id: entry.employee_id,
+        employee_name: entry.employee_id,
+        status: entry.status,
+        attendance_type: null,
+        notes: entry.notes ?? null,
+        hours: 0,
+        overtime_hours: 0,
+      }));
+      const simplifiedIssues = await withEmployeeNames(
+        supabase,
+        validateAttendanceSubmission(simplifiedRows, { checkHours: false })
+      );
+      if (simplifiedIssues.length > 0 && !overrideReason) {
+        return NextResponse.json(
+          {
+            code: 'ATTENDANCE_VALIDATION',
+            error: `${simplifiedIssues.length} attendance issue${
+              simplifiedIssues.length !== 1 ? 's' : ''
+            } must be fixed or given a reason before submitting.`,
+            issues: simplifiedIssues,
+          },
+          { status: 409 }
+        );
+      }
+
       if (isEdit) {
         await trackAttendance(
           supabase,
@@ -558,6 +658,10 @@ export async function POST(request: Request) {
 
       if (!isEdit) {
         await trackAttendance(supabase, trackId, department, targetDate, payload.submitted_by, false);
+      }
+
+      if (simplifiedIssues.length > 0 && overrideReason) {
+        await saveValidationOverride(supabase, department, targetDate, overrideReason, simplifiedIssues);
       }
 
       const present = payload.entries.filter((e) => e.status === 'present').length;
@@ -657,6 +761,44 @@ export async function POST(request: Request) {
     };
 
     console.log("legacy submit: length ", employees.length, " department ", department, " date ", targetDate, " isEditTrack ", isEditTrack)
+
+    // ---- Completeness guard: hours + absence reasons ----
+    const overrideReasonRaw = body?.validation_override_reason;
+    const overrideReason =
+      typeof overrideReasonRaw === 'string' ? overrideReasonRaw.trim() : '';
+    const validationRows: AttendanceSubmissionRow[] = employees.map(
+      (emp: {
+        employee_id: string;
+        name?: string;
+        projects?: { projectId?: { hours?: number; overtime?: number; note?: string | null }[] };
+      }, i: number) => {
+        const empStat = employees_statis[i]?.employee_status?.[0] ?? {};
+        const projectRows = emp?.projects?.projectId ?? [];
+        return {
+          employee_id: emp.employee_id,
+          employee_name: emp.name ?? emp.employee_id,
+          status: empStat.status_attendance ?? 'present',
+          attendance_type: empStat.status_employee ?? null,
+          notes: empStat.note ?? projectRows[0]?.note ?? null,
+          hours: sumPositiveHours(projectRows.map((p) => Number(p?.hours) || 0)),
+          overtime_hours: sumPositiveHours(projectRows.map((p) => Number(p?.overtime) || 0)),
+        };
+      }
+    );
+    const validationIssues = validateAttendanceSubmission(validationRows, { checkHours: true });
+    if (validationIssues.length > 0 && !overrideReason) {
+      return NextResponse.json(
+        {
+          code: 'ATTENDANCE_VALIDATION',
+          error: `${validationIssues.length} attendance issue${
+            validationIssues.length !== 1 ? 's' : ''
+          } must be fixed or given a reason before submitting.`,
+          issues: validationIssues,
+        },
+        { status: 409 }
+      );
+    }
+
     if (employees.length > 0)
     {
       for (let i = 0; i < employees.length; i++) {
@@ -852,6 +994,10 @@ export async function POST(request: Request) {
     }
     else {
       console.log("error")
+    }
+
+    if (validationIssues.length > 0 && overrideReason) {
+      await saveValidationOverride(supabase, department, targetDate, overrideReason, validationIssues);
     }
 
     const payload = {

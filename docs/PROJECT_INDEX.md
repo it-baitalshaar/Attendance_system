@@ -1,7 +1,7 @@
 # PROJECT_INDEX — AI & Developer Map
 
 > **Purpose:** Single-file project index for fast AI context. Read this first before editing.
-> **Last indexed:** 2026-11-24 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
+> **Last indexed:** 2026-11-26 | **Stack:** Next.js 14 (App Router) + Supabase + Redux Persist + Tailwind
 > **Update rule:** When you add routes, tables, migrations, or major features — append a line to §Changelog and update the relevant section.
 
 ---
@@ -11,6 +11,7 @@
 | Task | Start here |
 |------|------------|
 | Field worker attendance submit | `src/app/page.tsx` → `useHomeSubmit` → `Track_Attendance` + `Attendance` |
+| Attendance completeness rules (submit guard + report warnings) | `src/app/lib/attendanceSubmissionValidation.ts` — single source of truth for 8h / 4.5h / 3.5h / OT checks |
 | Weekend / holiday OT defaults | `OvertimeCalendarContext` + `overtimeCalendar.ts` + `HomeCalendarDayBanner` + Admin → Departments tab |
 | Admin dashboard tab | `src/app/admin/page.tsx` → tab via `?tab=` |
 | Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `inheritSickLeaveProjects.ts` + `fetchAttendanceRowsForReport.ts` + `employeeDepartmentAtDate.ts` |
@@ -91,8 +92,8 @@ pnpm build && pnpm start
 
 | Method | Route | Auth | Purpose |
 |--------|-------|------|---------|
-| POST | `/api/submitAttendance` | session | Legacy/server attendance submit |
-| GET | `/api/attendance-report` | admin | Attendance report JSON; `employee_id` accepts one ID or comma-separated IDs |
+| POST | `/api/submitAttendance` | session | Legacy/server attendance submit. Runs the completeness guard first — returns `409 { code: 'ATTENDANCE_VALIDATION', issues }` unless `validation_override_reason` (≥5 chars) is supplied |
+| GET | `/api/attendance-report` | admin | Attendance report JSON; `employee_id` accepts one ID or comma-separated IDs. Also returns `submissions[]` (submit-guard override reasons from `Track_Attendance`) |
 | PATCH | `/api/attendance-report-edit` | admin + service role | Edit attendance rows in reports |
 | GET | `/api/salary-report` | admin | Salary + project cost report JSON |
 | GET/PATCH | `/api/payroll-report/delivery` | admin | WhatsApp number settings |
@@ -126,7 +127,7 @@ pnpm build && pnpm start
 | `departments` | `id` | `name`, `theme_id`, `allow_future_attendance`, `weekend_days[]`, OT toggles |
 | `department_holidays` | `id` | Named dates → default holiday OT (×2.5); `department_id` NULL = all depts |
 | `projects` | `project_id` (**text, no DB default**) | Project list for hour allocation. `project_id` = `project_name` by convention — inserts must set both (`/api/admin-projects` POST); rename via PATCH updates both and cascades `Attendance_projects.project_id`. Also `overtime_rate` is NOT NULL with no default but **unused** (real OT rates live on `Attendance_projects`) — insert `0` |
-| `Track_Attendance` | composite | Daily submit lock: one row per user per day |
+| `Track_Attendance` | composite | Daily submit lock: one row per user per day. Optional submit-guard audit: `validation_override_reason`, `validation_issues` (jsonb) — set when a supervisor submitted an incomplete day on purpose |
 | `Attendance` | `id` | Per-employee daily record; **`department`** = roster at submit time (historical reports) |
 | `Attendance_projects` | — | Per-project hours + `overtime_hours` + `overtime_type` |
 | `attendance_reminder_settings` | `department` | Enable + schedule for construction reminders |
@@ -203,6 +204,7 @@ src/
 │   ├── payrollCalculation.ts     # (re-exported from admin/services)
 │   ├── fetchAttendanceReportForApi.ts / fetchSalaryReportForApi.ts
 │   ├── fetchAttendanceRowsForReport.ts  # report attendance query (paginated, 1000/page) + historical dept filter
+│   ├── attendanceSubmissionValidation.ts  # attendance completeness rules — submit guard + report warnings (single source)
 │   ├── fetchPriorWorkProjectsForSickLeave.ts  # 45-day lookback so SL at period start inherits a project
 │   ├── employeeDepartmentAtDate.ts      # resolve dept at date from history
 │   ├── officeEmployeeReport.ts   # Office email report builder
@@ -334,6 +336,7 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | `add_attendance_department.sql` | `Attendance.department` for historical dept on each row |
 | `add_department_weekend_days.sql` | `departments.weekend_days` (0=Sun…6=Sat) for weekend OT default |
 | `add_department_holidays.sql` | `department_holidays` table + RLS |
+| `add_attendance_validation_override.sql` | `Track_Attendance.validation_override_reason` + `validation_issues` (submit-guard override audit) |
 | `add_attendance_projects_overtime_type.sql` | `overtime_type` on project rows |
 | `add_payroll_report_delivery.sql` | `payroll_report_emails` + settings |
 
@@ -356,6 +359,7 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | AWO | Flat deduction `8 × hourly_rate` per AWO day (shown as negative PAY) |
 | Sick Leave (SL) | **Calendar-year law** (`sickLeaveLaw.ts`): days 1–15 → **8h** full pay, 16–45 → **4h** half pay, 46+ → **0h** unpaid (Jan 1–Dec 31). Prior-year SL days fetched so ordinals continue across payroll periods. **Project:** inherit from the most recent prior day with logged project hours (skips weekend/vacation/other SL). Attendance PROJECT cell shows `Sick leave · {name} {hours}hrs`. Salary/project reports include those hours and amount. Lookback: `fetchPriorWorkProjectsForSickLeave` (45 days before period start). Overall Summary shows SL (period), SL YTD, Full / Half / Unpaid. |
 | Report inline edit | `/api/attendance-report-edit` syncs notes `Attendance type:` with status so rebuild does not revert |
+| Attendance completeness guard | Single source: `attendanceSubmissionValidation.ts`. Construction + Maintenance only (`collectsAttendanceHours`). Rules: `zero_hours` (Present 0h), `hours_not_standard` (**Present under 8h**; Half Day must match 4.5h AM / 3.5h PM exactly — over-long stays are allowed when OT is logged), `over_8_no_ot` (>8h regular with no OT), `weekend_no_hours` (submit only — report treats a 0h weekend as a rest day; weekend/holiday hours may otherwise vary freely), `ot_without_hours` (OT with 0 regular), `no_absence_reason` (all departments). Submit blocks with `409 ATTENDANCE_VALIDATION` unless an override reason (≥5 chars) is typed; the reason is stored on `Track_Attendance`. The Attendance Report shows the same issues per employee + in the Overall Summary and labels overridden days as explained |
 
 **Report delivery:** UI opens mailto/WhatsApp; user attaches PDF from Print. Saved emails in `payroll_report_emails`.
 
@@ -402,6 +406,8 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-11-26 | **Guard verified end-to-end** (50/50 rule cases + live 409s). Rule refinement: over-8h regular is only flagged when no OT is logged (a 10h + 2h OT day is legitimate), Half Day must still match exactly, and weekend/holiday hours are unconstrained except for the 0h submit rule | `attendanceSubmissionValidation`, index §12 §16 |
+| 2026-11-26 | Attendance completeness guard: shared `attendanceSubmissionValidation.ts` blocks submit when hours are missing/non-standard/OT-mismatched or an absence reason is missing, with a "Submit anyway" typed reason saved on `Track_Attendance`. Attendance Report + Overall Summary now show the same issues per employee (merged with missing-days banner), an issues pill, a "Show only employees with issues" filter, an Issues column, and grey "Override: …" lines for explained days. WhatsApp summary carries the issue count | `attendanceSubmissionValidation`, `useHomeSubmit`, `HomeModals`, `/api/submitAttendance`, `/api/attendance-report`, `AttendanceReportSection`, `useAttendanceReport`, `attendanceReportEmailHtml`, migration `add_attendance_validation_override.sql`, index §0 §5 §6.1 §8 §11 §12 |
 | 2026-11-24 | Employee List sorting: "Sort:" dropdown (Name / ID / Department / Position / Status, ascending or descending) + clickable column headers with ▲▼ indicator and `aria-sort`. Numeric-aware ID sort (`SA0002` before `SA0013`), blanks last, `Reset` restores Name A–Z | `useEmployeeFilters`, `EmployeeFilters`, `EmployeesTab` |
 | 2026-11-24 | Data fix: `office_employees` `SA0037` name was a Django password hash (`pbkdf2_sha256$…`) from the 2026-03-11 import → corrected to **TAHIR NASIM**. Sync paths never write `name`, so it cannot regress. `BS` codes sitting in the Al Saqia office department are intentional transfers (hired under Bait Alshaar) — leave them | `office_employees` data, index §6.1 |
 | 2026-11-24 | Add Employee: Employee ID auto-fills with the next free ID and re-fills on every department change; stays editable with a "Use {next}" reset; duplicate IDs (checked against `Employee` + BioTime `office_employees`) are rejected. **SA** = Saqiya (`SA0047` next), **BS** = Construction/Maintenance/office (`BS0055` next) | `employeeIdService`, `useEmployeeManagement`, `EmployeesTab` |
@@ -458,6 +464,7 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 ## 17. Conventions for AI edits
 
 1. **Payroll math:** Never reimplement in UI — extend `payrollCalculation.ts` or `buildAttendanceReport`.
+2. **Attendance completeness:** Never reimplement hour thresholds — extend `attendanceSubmissionValidation.ts` (used by submit guard, API, and report).
 2. **New admin tab:** Add to `VALID_TABS` in `admin/page.tsx`, create hook + service + component.
 3. **New API route:** Use `createSupabaseServerClient`; admin routes check `profiles.role === 'admin'`.
 4. **New DB column:** Add migration SQL in `supabase/migrations/` + update service types + §6 table entry here.

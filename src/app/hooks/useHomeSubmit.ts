@@ -1,10 +1,15 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { createSupabbaseFrontendClient } from '@/lib/supabase';
 import type { AttendanceStatus } from '@/redux/slice';
 import { HomeEmployee } from '../types/home';
 import { ReportData } from '../types/home';
+import {
+  validateAttendanceSubmission,
+  type AttendanceSubmissionRow,
+  type AttendanceValidationIssue,
+} from '@/app/lib/attendanceSubmissionValidation';
 
 export interface HomeSubmitState {
   employeeList: HomeEmployee[];
@@ -25,23 +30,90 @@ export interface HomeSubmitState {
   setUserHasUnlocked: (v: boolean) => void;
 }
 
+function sumPositive(values: unknown[]): number {
+  return values.reduce<number>((sum, v) => {
+    const n = Number(v);
+    return sum + (Number.isFinite(n) && n > 0 ? n : 0);
+  }, 0);
+}
+
 export function useHomeSubmit(state: HomeSubmitState) {
-  const [confirmModal, setConfirmModal] = useState<'idle' | 'open' | 'submitting'>('idle');
+  const [confirmModal, setConfirmModal] = useState<'idle' | 'open' | 'issues' | 'submitting'>('idle');
   const [reportModal, setReportModal] = useState(false);
   const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [validationIssues, setValidationIssues] = useState<AttendanceValidationIssue[]>([]);
+  const [overrideReason, setOverrideReason] = useState('');
   const isSubmittingRef = useRef(false);
   const { setExistingSubmission, setCardsLocked, setEditMode, setUserHasUnlocked } = state;
+
+  /** Rows used by the shared validator — mirrors the payload built at submit time. */
+  const buildValidationRows = useCallback((): { rows: AttendanceSubmissionRow[]; checkHours: boolean } => {
+    if (state.showEntryMode) {
+      const rows = state.employeeList.map((e) => {
+        const reduxEmp = state.employees.find((r: any) => r.employee_id === e.employee_id);
+        const projectRows = reduxEmp?.projects?.projectId ?? [];
+        return {
+          employee_id: e.employee_id,
+          employee_name: e.name,
+          status: (reduxEmp?.employee_status?.[0]?.status_attendance ?? 'present') as string,
+          attendance_type: reduxEmp?.employee_status?.[0]?.status_employee ?? null,
+          notes: reduxEmp?.employee_status?.[0]?.note ?? null,
+          hours: sumPositive(projectRows.map((p: any) => p?.hours)),
+          overtime_hours: sumPositive(projectRows.map((p: any) => p?.overtime)),
+        };
+      });
+      return { rows, checkHours: true };
+    }
+
+    // Simplified flow (e.g. Al Saqiya) — no per-project hours are collected.
+    const rows = state.employeeList.map((e) => {
+      const entry = state.attendanceEntries[e.employee_id];
+      return {
+        employee_id: e.employee_id,
+        employee_name: e.name,
+        status: entry?.status ?? 'present',
+        attendance_type: null,
+        notes: entry?.notes ?? null,
+        hours: 0,
+        overtime_hours: 0,
+      };
+    });
+    return { rows, checkHours: false };
+  }, [state.employeeList, state.employees, state.attendanceEntries, state.showEntryMode]);
+
+  const clearValidation = useCallback(() => {
+    setValidationIssues([]);
+    setOverrideReason('');
+  }, []);
 
   const handleSubmitClick = () => {
     if (!state.selectedDepartment) {
       alert('Please select a department.');
       return;
     }
+
+    const { rows, checkHours } = buildValidationRows();
+    const issues = validateAttendanceSubmission(rows, { checkHours });
+
+    if (issues.length > 0) {
+      setValidationIssues(issues);
+      setOverrideReason('');
+      setConfirmModal('issues');
+      return;
+    }
+
+    clearValidation();
     setConfirmModal('open');
   };
 
-  const handleConfirmSubmit = async () => {
+  const handleBackToCards = () => {
+    clearValidation();
+    setConfirmModal('idle');
+  };
+
+  const handleConfirmSubmit = async (reason?: string) => {
     if (isSubmittingRef.current) return;
+    const overrideText = (reason ?? '').trim();
     isSubmittingRef.current = true;
     const supabase = createSupabbaseFrontendClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -93,30 +165,23 @@ export function useHomeSubmit(state: HomeSubmitState) {
             employees_statis,
             department: state.departmentForFetch,
             selectedDate: state.selectedDate,
+            ...(overrideText ? { validation_override_reason: overrideText } : {}),
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
+          if (data?.code === 'ATTENDANCE_VALIDATION' && Array.isArray(data?.issues)) {
+            setValidationIssues(data.issues as AttendanceValidationIssue[]);
+            setConfirmModal('issues');
+            isSubmittingRef.current = false;
+            return;
+          }
           alert(data?.error || 'Failed to submit attendance.');
-          setConfirmModal('open');
+          setConfirmModal(overrideText ? 'issues' : 'open');
           isSubmittingRef.current = false;
           return;
         }
       } else {
-        const missingReason = state.employeeList.filter((e) => {
-          const entry = state.attendanceEntries[e.employee_id];
-          if ((entry?.status ?? 'present') !== 'absent') return false;
-          const notes = entry?.notes ?? '';
-          return !['Sick Leave', 'Absence with excuse', 'Absence without excuse'].some((r) =>
-            notes.includes(r)
-          );
-        });
-        if (missingReason.length > 0) {
-          alert('Please select a reason for absence for all absent employees.');
-          setConfirmModal('open');
-          isSubmittingRef.current = false;
-          return;
-        }
         entries = state.employeeList.map((e) => ({
           employee_id: e.employee_id,
           status: (state.attendanceEntries[e.employee_id]?.status ?? 'present') as AttendanceStatus,
@@ -132,18 +197,26 @@ export function useHomeSubmit(state: HomeSubmitState) {
               submitted_by: user.id,
               entries,
             },
+            ...(overrideText ? { validation_override_reason: overrideText } : {}),
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
+          if (data?.code === 'ATTENDANCE_VALIDATION' && Array.isArray(data?.issues)) {
+            setValidationIssues(data.issues as AttendanceValidationIssue[]);
+            setConfirmModal('issues');
+            isSubmittingRef.current = false;
+            return;
+          }
           alert(data?.error || 'Failed to submit attendance.');
-          setConfirmModal('open');
+          setConfirmModal(overrideText ? 'issues' : 'open');
           isSubmittingRef.current = false;
           return;
         }
       }
 
       setConfirmModal('idle');
+      clearValidation();
       setCardsLocked(true);
       setEditMode(true);
       setUserHasUnlocked(false);
@@ -167,7 +240,7 @@ export function useHomeSubmit(state: HomeSubmitState) {
       setReportModal(true);
     } catch {
       alert('Error submitting attendance.');
-      setConfirmModal('open');
+      setConfirmModal(overrideText ? 'issues' : 'open');
     } finally {
       isSubmittingRef.current = false;
     }
@@ -230,7 +303,12 @@ export function useHomeSubmit(state: HomeSubmitState) {
     setReportModal,
     handleSubmitClick,
     handleConfirmSubmit,
+    handleBackToCards,
     handleEditAttendance,
     openReportModal,
+    validationIssues,
+    setValidationIssues,
+    overrideReason,
+    setOverrideReason,
   };
 }

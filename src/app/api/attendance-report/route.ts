@@ -53,11 +53,61 @@ async function fetchAttendanceProjectRows(
   return { rows: out, error: null };
 }
 
+export interface ReportSubmissionOverride {
+  date: string;
+  department: string | null;
+  reason: string | null;
+  issues: unknown;
+}
+
+/**
+ * Stored submit-guard overrides for the range, so the report can label an
+ * incomplete day as "explained by supervisor" instead of a silent error.
+ * Best-effort: returns [] when the migration has not been applied yet.
+ */
+async function fetchSubmissionOverrides(
+  supabase: SupabaseClient,
+  from: string,
+  to: string,
+  department: string | null
+): Promise<ReportSubmissionOverride[]> {
+  const buildQuery = (columns: string) => {
+    let query = supabase.from('Track_Attendance').select(columns).gte('date', from).lte('date', to);
+    if (department) query = query.eq('department', department);
+    return query;
+  };
+
+  const { data, error } = await buildQuery(
+    'date, department, validation_override_reason, validation_issues'
+  );
+
+  if (!error) {
+    return ((data ?? []) as {
+      date?: string | null;
+      department?: string | null;
+      validation_override_reason?: string | null;
+      validation_issues?: unknown;
+    }[]).map((r) => ({
+      date: String(r.date ?? '').slice(0, 10),
+      department: r.department ?? null,
+      reason: r.validation_override_reason ?? null,
+      issues: r.validation_issues ?? null,
+    }));
+  }
+
+  if (isUndefinedColumnError(error)) {
+    // Migration not applied yet — no override data available.
+    return [];
+  }
+
+  console.warn('[attendance-report] Could not load submission overrides:', error.message);
+  return [];
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const fromDate = searchParams.get('from');
   const toDate = searchParams.get('to');
-
   if (!fromDate || !toDate) {
     return NextResponse.json(
       { error: 'Query params "from" and "to" (YYYY-MM-DD) are required' },
@@ -94,6 +144,7 @@ export async function GET(request: Request) {
     if (rows.length === 0) {
       return NextResponse.json({
         report: [],
+        submissions: [],
         from: from,
         to: to,
       });
@@ -216,8 +267,11 @@ export async function GET(request: Request) {
       lookbackWorkDaysByEmployee,
     });
 
+    const submissions = await fetchSubmissionOverrides(supabase, from, to, department);
+
     return NextResponse.json({
       report,
+      submissions,
       from,
       to,
       ...(projectsError && attProj.length === 0 && { projectsUnavailable: true, projectsError }),

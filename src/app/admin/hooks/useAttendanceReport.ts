@@ -1,14 +1,19 @@
 import { useState, useCallback } from 'react';
-import type { AttendanceReportEmployeeReport } from '../types/attendanceReport';
+import type {
+  AttendanceReportEmployeeReport,
+  AttendanceReportSubmissionOverride,
+} from '../types/attendanceReport';
 
 export interface AttendanceReportState {
   report: AttendanceReportEmployeeReport[];
+  submissions: AttendanceReportSubmissionOverride[];
   from: string;
   to: string;
 }
 
 export function useAttendanceReport() {
   const [report, setReport] = useState<AttendanceReportEmployeeReport[]>([]);
+  const [submissions, setSubmissions] = useState<AttendanceReportSubmissionOverride[]>([]);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,9 +45,11 @@ export function useAttendanceReport() {
         if (!res.ok) {
           setError(data.error ?? data.details ?? 'Failed to load report');
           setReport([]);
+          setSubmissions([]);
           return;
         }
         setReport(data.report ?? []);
+        setSubmissions(Array.isArray(data.submissions) ? data.submissions : []);
         setFrom(data.from ?? fromDate);
         setTo(data.to ?? toDate);
         if (data.projectsUnavailable) {
@@ -60,6 +67,7 @@ export function useAttendanceReport() {
       } catch (e) {
         setError('Failed to load report');
         setReport([]);
+        setSubmissions([]);
       } finally {
         setLoading(false);
       }
@@ -67,5 +75,5 @@ export function useAttendanceReport() {
     []
   );
 
-  return { report, from, to, loading, error, projectsWarning, fetchReport };
+  return { report, submissions, from, to, loading, error, projectsWarning, fetchReport };
 }

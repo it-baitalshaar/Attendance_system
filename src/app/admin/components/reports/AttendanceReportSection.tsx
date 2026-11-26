@@ -1,10 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAttendanceReport } from '../../hooks/useAttendanceReport';
 import { fetchDepartmentsService } from '../../services/departmentService';
 import { fetchEmployeesService } from '../../services/employeeService';
 import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../types/attendanceReport';
+import {
+  collectsAttendanceHours,
+  countIssues,
+  findEmployeeReportIssues,
+  type AttendanceValidationIssue,
+} from '@/app/lib/attendanceSubmissionValidation';
 import { computePayrollFromDays } from '../../services/payrollCalculation';
 import { buildAttendanceReportWhatsAppMessage } from '@/lib/attendanceReportEmailHtml';
 import { getCurrentPayrollYearMonth, getPayrollPeriodBounds } from '@/lib/payrollPeriod';
@@ -141,7 +147,7 @@ function getDefaultPayrollDates(): { from: string; to: string } {
 }
 
 export function AttendanceReportSection() {
-  const { report, from: reportFrom, to: reportTo, loading, error, projectsWarning, fetchReport } = useAttendanceReport();
+  const { report, submissions, from: reportFrom, to: reportTo, loading, error, projectsWarning, fetchReport } = useAttendanceReport();
   const [fromDate, setFromDate] = useState(() => getDefaultPayrollDates().from);
   const [toDate, setToDate] = useState(() => getDefaultPayrollDates().to);
   const [department, setDepartment] = useState(ALL);
@@ -155,6 +161,7 @@ export function AttendanceReportSection() {
   const [employees, setEmployees] = useState<{ employee_id: string; name: string; department: string }[]>([]);
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
+  const [onlyIssues, setOnlyIssues] = useState(false);
   const [localReport, setLocalReport] = useState<AttendanceReportEmployeeReport[]>([]);
   const [originalReport, setOriginalReport] = useState<AttendanceReportEmployeeReport[]>([]);
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved' | 'error'>>({});
@@ -402,6 +409,55 @@ export function AttendanceReportSection() {
       otNormalAmt: 0, otHolidayAmt: 0, otPublicHolidayAmt: 0, awoDeductionAmt: 0, totalSalary: 0,
     }
   );
+
+  // ── Data-quality warnings (shared rules with the submit guard) ──
+  /** Override reasons saved at submit time, keyed by date + department (lowercased). */
+  const overrideLookup = useMemo(() => {
+    const byDateDept = new Map<string, string>();
+    const byDate = new Map<string, string>();
+    for (const s of submissions) {
+      const reason = (s.reason ?? '').trim();
+      if (!reason) continue;
+      byDateDept.set(`${s.date}|${(s.department ?? '').trim().toLowerCase()}`, reason);
+      byDate.set(s.date, reason);
+    }
+    return { byDateDept, byDate };
+  }, [submissions]);
+
+  const getOverrideReason = (date: string, employeeDepartment: string | null | undefined): string => {
+    const dept = (employeeDepartment ?? '').trim().toLowerCase();
+    return (
+      overrideLookup.byDateDept.get(`${date}|${dept}`) ??
+      (department !== ALL ? overrideLookup.byDate.get(date) ?? '' : '')
+    );
+  };
+
+  const issuesByEmployee = useMemo(() => {
+    const map = new Map<string, AttendanceValidationIssue[]>();
+    for (const emp of localReport) {
+      // Al Saqiya cards do not collect hours — absence reasons only.
+      // If project rows failed to load, every day would look like 0h — skip instead.
+      const checkHours =
+        !projectsWarning && collectsAttendanceHours(emp.employee.department);
+      map.set(
+        emp.employee.id,
+        findEmployeeReportIssues(emp.days, { checkHours })
+      );
+    }
+    return map;
+  }, [localReport, projectsWarning]);
+
+  const employeesWithIssues = localReport.filter(
+    (emp) => (issuesByEmployee.get(emp.employee.id)?.length ?? 0) > 0
+  );
+  const totalIssueDays = employeesWithIssues.reduce(
+    (sum, emp) => sum + countIssues(issuesByEmployee.get(emp.employee.id) ?? []).total,
+    0
+  );
+  // Never filter while editing — a card would vanish as soon as its last issue is fixed.
+  const renderedReport = onlyIssues && !editMode
+    ? localReport.filter((emp) => (issuesByEmployee.get(emp.employee.id)?.length ?? 0) > 0)
+    : localReport;
 
   const handleDownloadCsv = () => {
     if (!hasReport) return;
@@ -812,6 +868,22 @@ export function AttendanceReportSection() {
                 Reset Changes
               </button>
             )}
+            {hasReport && employeesWithIssues.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setOnlyIssues((v) => !v)}
+                className={`px-4 py-2 text-sm rounded border font-medium ${
+                  onlyIssues
+                    ? 'bg-red-100 border-red-400 text-red-800 hover:bg-red-200'
+                    : 'border-red-300 bg-white text-red-700 hover:bg-red-50'
+                }`}
+                title="Filter the report to employees with incomplete hours"
+              >
+                {onlyIssues
+                  ? 'Show all employees'
+                  : `Show only employees with issues (${employeesWithIssues.length})`}
+              </button>
+            )}
           </div>
 
           {editMode && hasReport && (
@@ -821,6 +893,24 @@ export function AttendanceReportSection() {
           )}
           {error && <p className="mt-3 text-red-500 text-sm">{error}</p>}
           {projectsWarning && !error && <p className="mt-3 text-amber-600 text-sm">{projectsWarning}</p>}
+
+          {hasReport && employeesWithIssues.length > 0 && (
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm">
+              <p className="font-semibold text-red-800">
+                {employeesWithIssues.length} of {localReport.length} employee
+                {localReport.length !== 1 ? 's' : ''} {employeesWithIssues.length !== 1 ? 'have' : 'has'} incomplete
+                attendance ({totalIssueDays} issue{totalIssueDays !== 1 ? 's' : ''}).
+              </p>
+              <p className="text-xs text-red-700 mt-1">
+                Fix these before printing for payroll, or re-submit the day from the attendance page.
+                Days a supervisor already explained are shown in grey on the employee card.
+              </p>
+              <p className="text-xs text-red-700 mt-1">
+                {employeesWithIssues.slice(0, 8).map((e) => e.employee.name).join(' · ')}
+                {employeesWithIssues.length > 8 ? ` · +${employeesWithIssues.length - 8} more` : ''}
+              </p>
+            </div>
+          )}
 
           <PayrollReportDeliveryPanel
             reportKind="attendance"
@@ -853,6 +943,8 @@ export function AttendanceReportSection() {
                     : 'All Departments',
                 employeeCount: localReport.length,
                 grandTotalSalary: grandTotals.totalSalary,
+                issueCount: totalIssueDays,
+                employeesWithIssues: employeesWithIssues.length,
               })
             }
           />
@@ -861,8 +953,17 @@ export function AttendanceReportSection() {
 
       {/* Printable report area */}
       <div id="attendance-print-area">
-        {localReport.map((empReport: AttendanceReportEmployeeReport) => {
+        {renderedReport.map((empReport: AttendanceReportEmployeeReport) => {
           const deptTheme = getDeptTheme(empReport.employee.department);
+          // Per-day data-quality issues (same rules as the submit guard).
+          const employeeIssues = issuesByEmployee.get(empReport.employee.id) ?? [];
+          const openIssues = employeeIssues.filter(
+            (issue) => !getOverrideReason(issue.date ?? '', empReport.employee.department)
+          );
+          const explainedIssues = employeeIssues.filter((issue) =>
+            getOverrideReason(issue.date ?? '', empReport.employee.department)
+          );
+          const issueCounts = countIssues(employeeIssues);
           const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, otNormal, otHoliday, otPublicHoliday, absentDays } = computeSummary(empReport.days);
           const recordedDays = empReport.days.length;
           const calFrom = reportFrom || fromDate;
@@ -946,6 +1047,17 @@ export function AttendanceReportSection() {
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0 mt-1 text-sm text-slate-300">
                     <span className="font-mono bg-slate-600 px-2 py-0.5 rounded text-xs">{empReport.employee.id}</span>
                     <span>{empReport.employee.department}</span>
+                    {issueCounts.total > 0 && (
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                          openIssues.length > 0 ? 'bg-red-500 text-white' : 'bg-amber-400 text-slate-900'
+                        }`}
+                      >
+                        {openIssues.length > 0
+                          ? `${openIssues.length} issue${openIssues.length !== 1 ? 's' : ''}`
+                          : `${explainedIssues.length} explained`}
+                      </span>
+                    )}
                     {empReport.employee.salary != null && empReport.employee.salary > 0 && (
                       <>
                         <span className="text-slate-500">·</span>
@@ -1033,17 +1145,58 @@ export function AttendanceReportSection() {
                 </div>
               </div>
 
-              {/* ── Missing Days Banner ── */}
-              {missingDates.length > 0 && (
-                <div className="missing-banner px-5 py-2 bg-yellow-50 border-b border-yellow-100 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold text-yellow-700 uppercase tracking-wide shrink-0">
-                    {missingDates.length} day{missingDates.length > 1 ? 's' : ''} with no record:
-                  </span>
-                  <span className="text-xs text-yellow-700">
-                    {missingDates.map((d) => formatDateShort(d)).join(' · ')}
-                  </span>
-                </div>
-              )}
+              {/* ── Data-quality banner: missing days + incomplete hours (merged) ── */}
+              {(missingDates.length > 0 || openIssues.length > 0 || explainedIssues.length > 0) && (() => {
+                const rows = [
+                  ...missingDates.map((d) => ({
+                    key: `missing-${d}`,
+                    cls: 'text-red-700',
+                    text: `${formatDateShort(d)} · On ${formatWeekdayShort(d)} — no attendance record`,
+                  })),
+                  ...openIssues.map((issue, idx) => ({
+                    key: `open-${issue.code}-${issue.date}-${idx}`,
+                    cls: issue.severity === 'warning' ? 'text-amber-700' : 'text-red-700',
+                    text: `${issue.date ? `${formatDateShort(issue.date)} · ` : ''}${issue.message}`,
+                  })),
+                  ...explainedIssues.map((issue, idx) => ({
+                    key: `explained-${issue.code}-${issue.date}-${idx}`,
+                    cls: 'text-slate-500',
+                    text: `${issue.date ? `${formatDateShort(issue.date)} · ` : ''}${issue.message} — Override: ${getOverrideReason(issue.date ?? '', empReport.employee.department)}`,
+                  })),
+                ];
+                // Keep both the screen card and the printed page bounded.
+                const shown = rows.slice(0, 10);
+                const hidden = rows.length - shown.length;
+                const openCount = missingDates.length + openIssues.length;
+
+                return (
+                  <div className="missing-banner px-5 py-2 bg-yellow-50 border-b border-yellow-100">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-xs font-semibold text-yellow-700 uppercase tracking-wide shrink-0">
+                        {openCount} issue{openCount !== 1 ? 's' : ''}
+                        {explainedIssues.length > 0 ? ` · ${explainedIssues.length} explained` : ''}
+                      </span>
+                      {openCount === 0 && explainedIssues.length > 0 && (
+                        <span className="text-xs text-slate-500">
+                          All gaps have a supervisor reason. Nothing to fix.
+                        </span>
+                      )}
+                    </div>
+                    <ul className="mt-1 space-y-0.5">
+                      {shown.map((row) => (
+                        <li key={row.key} className={`text-xs ${row.cls}`}>
+                          {row.text}
+                        </li>
+                      ))}
+                      {hidden > 0 && (
+                        <li className="text-xs text-gray-500 italic">
+                          +{hidden} more day{hidden !== 1 ? 's' : ''}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                );
+              })()}
 
 
               {/* ── Daily Attendance Table ── */}
@@ -1336,12 +1489,18 @@ export function AttendanceReportSection() {
               className="emp-summary border-b"
               style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
             >
-              <div className="grid grid-cols-4 divide-x divide-gray-100">
+              <div className="grid grid-cols-5 divide-x divide-gray-100">
                 {[
                   { label: 'Calendar Days',  value: summaryCalendarDays,                         color: 'text-slate-700' },
                   { label: 'Weekend Days',   value: summaryPeriodWeekends,                        color: 'text-slate-500', hint: summaryWeekendLabel },
                   { label: 'Work Days',      value: summaryCalendarDays - summaryPeriodWeekends,  color: 'text-emerald-600' },
                   { label: 'Employees',      value: localReport.length,                                color: 'text-indigo-600' },
+                  {
+                    label: 'Employees with issues',
+                    value: employeesWithIssues.length,
+                    color: employeesWithIssues.length > 0 ? 'text-red-600' : 'text-emerald-600',
+                    hint: employeesWithIssues.length > 0 ? `${totalIssueDays} day(s)` : 'All complete',
+                  },
                 ].map(({ label, value, color, hint }) => (
                   <div key={label} className="sum-card p-3 text-center">
                     <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
@@ -1380,6 +1539,7 @@ export function AttendanceReportSection() {
                 <thead>
                   <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
                     <th className="px-4 py-2.5 text-left font-semibold">Employee</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-red-600" title="Days with missing or non-standard hours (submit guard rules)">Issues</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-emerald-700">Worked</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-emerald-600">P</th>
                     <th className="px-3 py-2.5 text-center font-semibold text-amber-600">H</th>
@@ -1406,6 +1566,14 @@ export function AttendanceReportSection() {
                       <td className="px-4 py-2">
                         <div className="font-medium text-gray-800">{s.employee.name}</div>
                         <div className="text-xs text-gray-400 font-mono">{s.employee.id} · {s.employee.department}</div>
+                      </td>
+                      <td className="px-3 py-2 text-center tabular-nums">
+                        {(() => {
+                          const n = issuesByEmployee.get(s.employee.id)?.length ?? 0;
+                          return n > 0
+                            ? <span className="font-bold text-red-600">{n}</span>
+                            : <span className="text-gray-300">—</span>;
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-center font-bold text-emerald-700">{s.workedDays}</td>
                       <td className="px-3 py-2 text-center tabular-nums text-emerald-600">{s.present      || <span className="text-gray-300">—</span>}</td>
@@ -1457,6 +1625,9 @@ export function AttendanceReportSection() {
                   ))}
                   <tr className="summary-total-row footer-bar bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
                     <td className="px-4 py-2.5">TOTAL — {localReport.length} employee{localReport.length !== 1 ? 's' : ''}</td>
+                    <td className="px-3 py-2.5 text-center text-red-600">
+                      {totalIssueDays > 0 ? totalIssueDays : '—'}
+                    </td>
                     <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{grandTotals.workedDays}</td>
                     <td className="px-3 py-2.5 text-center text-emerald-600">{grandTotals.present      || '—'}</td>
                     <td className="px-3 py-2.5 text-center text-amber-600">{grandTotals.holidayWork    || '—'}</td>

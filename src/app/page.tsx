@@ -152,6 +152,10 @@ export default function Home() {
         absentCount={state.absentCount}
         vacationCount={state.vacationCount}
         onConfirmSubmit={submit.handleConfirmSubmit}
+        onBackToCards={submit.handleBackToCards}
+        validationIssues={submit.validationIssues}
+        overrideReason={submit.overrideReason}
+        setOverrideReason={submit.setOverrideReason}
         reportModal={submit.reportModal}
         reportData={submit.reportData}
         setReportModal={submit.setReportModal}
