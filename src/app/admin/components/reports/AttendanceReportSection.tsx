@@ -11,6 +11,20 @@ import {
   findEmployeeReportIssues,
   type AttendanceValidationIssue,
 } from '@/app/lib/attendanceSubmissionValidation';
+import {
+  ATTENDANCE_REPORT_TEMPLATE_OPTIONS,
+  defaultAttendanceReportTemplate,
+  forgetRememberedTemplate,
+  rememberTemplate,
+  resolveTemplateForDepartment,
+  type AttendanceReportTemplate,
+} from '@/app/lib/attendanceReportTemplate';
+import {
+  missingDatesInWindow,
+  readRememberedHidePreJoin,
+  rememberHidePreJoin,
+  resolveExpectedWindow,
+} from '@/app/lib/attendanceReportPreJoin';
 import { computePayrollFromDays } from '../../services/payrollCalculation';
 import { buildAttendanceReportWhatsAppMessage } from '@/lib/attendanceReportEmailHtml';
 import { getCurrentPayrollYearMonth, getPayrollPeriodBounds } from '@/lib/payrollPeriod';
@@ -80,6 +94,7 @@ function getMeta(code: string) {
 
 function computeSummary(days: AttendanceReportDay[]) {
   let present = 0, absent = 0, vacation = 0, weekend = 0, holidayWork = 0;
+  let halfDayAm = 0, halfDayPm = 0;
   let totalHours = 0, totalOT = 0;
   let otNormal = 0, otHoliday = 0, otPublicHoliday = 0;
   const absentDays: AttendanceReportDay[] = [];
@@ -88,6 +103,8 @@ function computeSummary(days: AttendanceReportDay[]) {
     const c = d.status_code;
     if (c === 'P') present++;
     else if (c === 'H') holidayWork++;
+    else if (c === 'HDAM') halfDayAm++;
+    else if (c === 'HDPM') halfDayPm++;
     else if (ABSENT_CODES.has(c)) { absent++; absentDays.push(d); }
     else if (c === 'V') vacation++;
     else if (c === 'W') weekend++;
@@ -99,28 +116,9 @@ function computeSummary(days: AttendanceReportDay[]) {
     totalOT += (d.overtime.normal ?? 0) + (d.overtime.holiday ?? 0) + (d.overtime.public_holiday ?? 0);
   }
   const workedDays = present + holidayWork;
-  return { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, totalOT, otNormal, otHoliday, otPublicHoliday, absentDays };
-}
-
-function toLocalIso(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function getMissingDates(days: AttendanceReportDay[], calFrom: string, calTo: string): string[] {
-  if (!calFrom || !calTo) return [];
-  const recorded = new Set(days.map((d) => d.date));
-  const missing: string[] = [];
-  const cur = new Date(calFrom + 'T00:00:00');
-  const end = new Date(calTo + 'T00:00:00');
-  while (cur <= end) {
-    const iso = toLocalIso(cur);
-    if (!recorded.has(iso)) missing.push(iso);
-    cur.setDate(cur.getDate() + 1);
-  }
-  return missing;
+  /** Attendance-only template: every day the employee actually showed up, half days included. */
+  const attendedDays = present + holidayWork + halfDayAm + halfDayPm;
+  return { present, absent, vacation, weekend, holidayWork, halfDayAm, halfDayPm, workedDays, attendedDays, totalHours, totalOT, otNormal, otHoliday, otPublicHoliday, absentDays };
 }
 
 const ALL = '';
@@ -151,6 +149,18 @@ export function AttendanceReportSection() {
   const [fromDate, setFromDate] = useState(() => getDefaultPayrollDates().from);
   const [toDate, setToDate] = useState(() => getDefaultPayrollDates().to);
   const [department, setDepartment] = useState(ALL);
+  /**
+   * Report template. `standard` = hours + salary (original); `attendance-only` = status counts.
+   * Remembered per department in localStorage, defaulting from the selected department
+   * (Al Saqiya → attendance-only, everything else → standard).
+   */
+  const [template, setTemplate] = useState<AttendanceReportTemplate>(() => defaultAttendanceReportTemplate(ALL));
+  const attendanceOnly = template === 'attendance-only';
+  /**
+   * Hide days before an employee's joining date. Remembered per department,
+   * default ON — a pre-joining day is never a payroll absence.
+   */
+  const [hidePreJoin, setHidePreJoin] = useState<boolean>(() => readRememberedHidePreJoin(ALL));
   /** Empty = all employees; otherwise only the checked IDs. */
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
@@ -172,6 +182,31 @@ export function AttendanceReportSection() {
   useEffect(() => {
     setPrintOrientation(suggestPrintOrientation(countInclusiveDays(fromDate, toDate)));
   }, [fromDate, toDate]);
+
+  /** Switch template to the remembered / default layout for the selected department. */
+  useEffect(() => {
+    setTemplate(resolveTemplateForDepartment(department === ALL ? null : department));
+    setHidePreJoin(readRememberedHidePreJoin(department === ALL ? null : department));
+  }, [department]);
+
+  const handleHidePreJoinChange = (value: boolean) => {
+    setHidePreJoin(value);
+    rememberHidePreJoin(department === ALL ? null : department, value);
+  };
+
+  const handleTemplateChange = (value: AttendanceReportTemplate) => {
+    setTemplate(value);
+    rememberTemplate(department === ALL ? null : department, value);
+  };
+
+  const handleTemplateReset = () => {
+    const scope = department === ALL ? null : department;
+    forgetRememberedTemplate(scope);
+    setTemplate(defaultAttendanceReportTemplate(scope));
+  };
+
+  const templateIsDefault =
+    template === defaultAttendanceReportTemplate(department === ALL ? null : department);
 
   useEffect(() => {
     if (!employeePickerOpen) return;
@@ -351,16 +386,29 @@ export function AttendanceReportSection() {
     ? `${formatDateShort(calFrom)} – ${formatDateShort(calTo)}`
     : '';
   const summaryCalFrom = calFrom;
+  const summaryCalTo = calTo;
   const employeeSummaries = localReport.map((emp) => {
     const s = computeSummary(emp.days);
+    // Attendance-only template never computes pay (Al Saqiya has no hours and no salary).
     const payroll =
-      emp.employee.salary != null && emp.employee.salary > 0 && summaryCalFrom
+      !attendanceOnly && emp.employee.salary != null && emp.employee.salary > 0 && summaryCalFrom
         ? computePayrollFromDays(emp.days, emp.employee.salary, summaryCalFrom)
         : null;
     const sl = emp.sickLeave;
+    const expectedWindow = resolveExpectedWindow({
+      calFrom: summaryCalFrom,
+      calTo: summaryCalTo,
+      joiningDate: emp.employee.joining_date,
+      hidePreJoin,
+    });
+    const missingDays = missingDatesInWindow(emp.days, expectedWindow).length;
     return {
       employee: emp.employee,
       ...s,
+      recordedDays: emp.days.length,
+      missingDays,
+      preJoinDays: expectedWindow.preJoinDates.length,
+      expectedDays: expectedWindow.days,
       awo: s.absentDays.filter((d) => d.status_code === 'AWO').length,
       sl: s.absentDays.filter((d) => d.status_code === 'SL').length,
       a: s.absentDays.filter((d) => d.status_code === 'A').length,
@@ -379,8 +427,12 @@ export function AttendanceReportSection() {
   const grandTotals = employeeSummaries.reduce(
     (acc, s) => ({
       workedDays: acc.workedDays + s.workedDays,
+      attendedDays: acc.attendedDays + s.attendedDays,
       present: acc.present + s.present,
       holidayWork: acc.holidayWork + s.holidayWork,
+      halfDayAm: acc.halfDayAm + s.halfDayAm,
+      halfDayPm: acc.halfDayPm + s.halfDayPm,
+      missingDays: acc.missingDays + s.missingDays,
       weekend: acc.weekend + s.weekend,
       vacation: acc.vacation + s.vacation,
       absent: acc.absent + s.absent,
@@ -403,7 +455,8 @@ export function AttendanceReportSection() {
       totalSalary: acc.totalSalary + (s.totalSalary ?? 0),
     }),
     {
-      workedDays: 0, present: 0, holidayWork: 0, weekend: 0, vacation: 0, absent: 0,
+      workedDays: 0, attendedDays: 0, present: 0, holidayWork: 0, halfDayAm: 0, halfDayPm: 0,
+      missingDays: 0, weekend: 0, vacation: 0, absent: 0,
       awo: 0, sl: 0, a: 0, slYtdTotal: 0, slFull: 0, slHalf: 0, slUnpaid: 0,
       totalHours: 0, otNormal: 0, otHoliday: 0, otPublicHoliday: 0, totalOT: 0,
       otNormalAmt: 0, otHolidayAmt: 0, otPublicHolidayAmt: 0, awoDeductionAmt: 0, totalSalary: 0,
@@ -436,16 +489,17 @@ export function AttendanceReportSection() {
     const map = new Map<string, AttendanceValidationIssue[]>();
     for (const emp of localReport) {
       // Al Saqiya cards do not collect hours — absence reasons only.
+      // The attendance-only template hides hours entirely, so hour rules would be noise.
       // If project rows failed to load, every day would look like 0h — skip instead.
       const checkHours =
-        !projectsWarning && collectsAttendanceHours(emp.employee.department);
+        !attendanceOnly && !projectsWarning && collectsAttendanceHours(emp.employee.department);
       map.set(
         emp.employee.id,
         findEmployeeReportIssues(emp.days, { checkHours })
       );
     }
     return map;
-  }, [localReport, projectsWarning]);
+  }, [localReport, projectsWarning, attendanceOnly]);
 
   const employeesWithIssues = localReport.filter(
     (emp) => (issuesByEmployee.get(emp.employee.id)?.length ?? 0) > 0
@@ -454,6 +508,8 @@ export function AttendanceReportSection() {
     (sum, emp) => sum + countIssues(issuesByEmployee.get(emp.employee.id) ?? []).total,
     0
   );
+  /** The pre-join toggle only makes sense when at least one loaded employee has a joining date. */
+  const hasJoiningDates = localReport.some((emp) => !!emp.employee.joining_date);
   // Never filter while editing — a card would vanish as soon as its last issue is fixed.
   const renderedReport = onlyIssues && !editMode
     ? localReport.filter((emp) => (issuesByEmployee.get(emp.employee.id)?.length ?? 0) > 0)
@@ -461,25 +517,38 @@ export function AttendanceReportSection() {
 
   const handleDownloadCsv = () => {
     if (!hasReport) return;
-    const header = [
-      'Employee ID', 'Employee Name', 'Department', 'Salary',
-      'Date', 'Status', 'SL Tier',
-      'Work Hrs', 'OT (×1.25)',
-      'W.OT (×1.5)', 'H.OT (×2.5)',
-      'Project', 'Notes',
-    ];
+    // Attendance-only template exports status columns (no hours / OT / salary).
+    const header = attendanceOnly
+      ? ['Employee ID', 'Employee Name', 'Department', 'Date', 'Status', 'SL Tier', 'Notes']
+      : [
+          'Employee ID', 'Employee Name', 'Department', 'Salary',
+          'Date', 'Status', 'SL Tier',
+          'Work Hrs', 'OT (×1.25)',
+          'W.OT (×1.5)', 'H.OT (×2.5)',
+          'Project', 'Notes',
+        ];
     const rows: string[] = [header.join(',')];
     localReport.forEach((emp) => {
       emp.days.forEach((day) => {
-        rows.push([
-          csvEscape(emp.employee.id), csvEscape(emp.employee.name),
-          csvEscape(emp.employee.department), csvEscape(emp.employee.salary ?? ''),
-          csvEscape(day.date), csvEscape(day.status_code),
-          csvEscape(day.sick_leave?.tier ?? ''),
-          csvEscape(day.working_hours), csvEscape(day.overtime.normal),
-          csvEscape(day.overtime.holiday), csvEscape(day.overtime.public_holiday),
-          csvEscape(day.projects), csvEscape(day.notes ?? ''),
-        ].join(','));
+        rows.push(
+          attendanceOnly
+            ? [
+                csvEscape(emp.employee.id), csvEscape(emp.employee.name),
+                csvEscape(emp.employee.department),
+                csvEscape(day.date), csvEscape(day.status_code),
+                csvEscape(day.sick_leave?.tier ?? ''),
+                csvEscape(day.notes ?? ''),
+              ].join(',')
+            : [
+                csvEscape(emp.employee.id), csvEscape(emp.employee.name),
+                csvEscape(emp.employee.department), csvEscape(emp.employee.salary ?? ''),
+                csvEscape(day.date), csvEscape(day.status_code),
+                csvEscape(day.sick_leave?.tier ?? ''),
+                csvEscape(day.working_hours), csvEscape(day.overtime.normal),
+                csvEscape(day.overtime.holiday), csvEscape(day.overtime.public_holiday),
+                csvEscape(day.projects), csvEscape(day.notes ?? ''),
+              ].join(',')
+        );
       });
     });
     const csv = '﻿' + rows.join('\r\n');
@@ -487,7 +556,8 @@ export function AttendanceReportSection() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `attendance-report_${fromDate || 'from'}_${toDate || 'to'}.csv`;
+    const suffix = attendanceOnly ? 'attendance' : 'hours-salary';
+    link.download = `attendance-report_${suffix}_${fromDate || 'from'}_${toDate || 'to'}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -711,6 +781,63 @@ export function AttendanceReportSection() {
           <p className="text-xs text-gray-400 mb-4">
             P = Present · W = Weekend · H = Holiday-Work · AWO = Absent (no excuse) · SL = Sick Leave · A = Absent (excused) · V = Vacation
           </p>
+
+          {/* Template — the original hours+salary report, or status-only counts */}
+          <div className="mb-4 p-3 rounded border border-gray-200 bg-gray-50">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[260px] flex-1">
+                <label className="block text-sm font-medium mb-1">Template</label>
+                <select
+                  value={template}
+                  onChange={(e) => handleTemplateChange(e.target.value as AttendanceReportTemplate)}
+                  className="w-full p-2 border rounded bg-white"
+                >
+                  {ATTENDANCE_REPORT_TEMPLATE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 pb-2">
+                <span className="text-xs text-gray-500">
+                  {ATTENDANCE_REPORT_TEMPLATE_OPTIONS.find((o) => o.value === template)?.hint}
+                </span>
+                {!templateIsDefault && (
+                  <button
+                    type="button"
+                    onClick={handleTemplateReset}
+                    className="text-xs underline text-blue-700 whitespace-nowrap"
+                    title="Forget my choice for this department and use its default template"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              The template is remembered per department. Al Saqiya defaults to Attendance only.
+            </p>
+            {hasJoiningDates && (
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hidePreJoin}
+                    onChange={(e) => handleHidePreJoinChange(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                  <span>
+                    Hide days before the joining date
+                    <span className="text-xs text-gray-400">
+                      {' '}— days before an employee joined are not counted as missing
+                    </span>
+                  </span>
+                </label>
+                <span className="ml-2 text-xs text-gray-400">
+                  Remembered per department. {hidePreJoin ? 'On' : 'Off'}.
+                </span>
+              </div>
+            )}
+          </div>
 
           {!filtersLoading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -942,9 +1069,10 @@ export function AttendanceReportSection() {
                     ? department
                     : 'All Departments',
                 employeeCount: localReport.length,
-                grandTotalSalary: grandTotals.totalSalary,
+                grandTotalSalary: attendanceOnly ? 0 : grandTotals.totalSalary,
                 issueCount: totalIssueDays,
                 employeesWithIssues: employeesWithIssues.length,
+                template,
               })
             }
           />
@@ -964,16 +1092,25 @@ export function AttendanceReportSection() {
             getOverrideReason(issue.date ?? '', empReport.employee.department)
           );
           const issueCounts = countIssues(employeeIssues);
-          const { present, absent, vacation, weekend, holidayWork, workedDays, totalHours, otNormal, otHoliday, otPublicHoliday, absentDays } = computeSummary(empReport.days);
+          const { present, absent, vacation, weekend, holidayWork, halfDayAm, halfDayPm, workedDays, totalHours, otNormal, otHoliday, otPublicHoliday, absentDays } = computeSummary(empReport.days);
           const recordedDays = empReport.days.length;
           const calFrom = reportFrom || fromDate;
           const calTo = reportTo || toDate;
-          const calendarDays = calFrom && calTo
-            ? Math.round((new Date(calTo + 'T00:00:00').getTime() - new Date(calFrom + 'T00:00:00').getTime()) / 86400000) + 1
-            : recordedDays;
-          const missingDates = getMissingDates(empReport.days, calFrom, calTo);
+          /** Days before the joining date are not expected attendance (see attendanceReportPreJoin.ts). */
+          const expectedWindow = resolveExpectedWindow({
+            calFrom,
+            calTo,
+            joiningDate: empReport.employee.joining_date,
+            hidePreJoin,
+          });
+          const calendarDays = expectedWindow.days || recordedDays;
+          const missingDates = missingDatesInWindow(empReport.days, expectedWindow);
+          const preJoinDates = expectedWindow.preJoinDates;
+          const joiningDateLabel = empReport.employee.joining_date
+            ? formatDateShort(String(empReport.employee.joining_date).slice(0, 10))
+            : '';
           const periodLabel = calFrom && calTo
-            ? `${formatDateShort(calFrom)} – ${formatDateShort(calTo)}`
+            ? `${formatDateShort(expectedWindow.from)} – ${formatDateShort(calTo)}`
             : empReport.days.length > 0
               ? `${formatDateShort(empReport.days[0].date)} – ${formatDateShort(empReport.days[empReport.days.length - 1].date)}`
               : '';
@@ -986,7 +1123,7 @@ export function AttendanceReportSection() {
             ? [awoCount > 0 ? `AWO: ${awoCount}` : '', slCount > 0 ? `SL: ${slCount}` : '', aCount > 0 ? `A: ${aCount}` : ''].filter(Boolean).join(' · ')
             : undefined;
 
-          // Salary calculation (only when salary is set)
+          // Salary calculation (only when salary is set). Attendance-only template never shows pay.
           const empSalary = empReport.employee.salary;
           let salarySummary: {
             monthDays: number;
@@ -999,7 +1136,7 @@ export function AttendanceReportSection() {
             awoDeduction: number;
             totalSalary: number;
           } | null = null;
-          if (empSalary != null && empSalary > 0 && calFrom) {
+          if (!attendanceOnly && empSalary != null && empSalary > 0 && calFrom) {
             const payroll = computePayrollFromDays(empReport.days, empSalary, calFrom);
             salarySummary = {
               monthDays: payroll.monthDays,
@@ -1016,10 +1153,10 @@ export function AttendanceReportSection() {
 
           // Dynamic column visibility — hide columns that are all empty for this employee (always show all in edit mode)
           const showDailySalary = salarySummary !== null;
-          const showWorkHours = editMode || empReport.days.some(d => d.working_hours > 0);
-          const showOtNormal = editMode || empReport.days.some(d => d.overtime.normal > 0);
-          const showOtHoliday = editMode || empReport.days.some(d => d.overtime.holiday > 0);
-          const showOtPublicHoliday = editMode || empReport.days.some(d => d.overtime.public_holiday > 0);
+          const showWorkHours = !attendanceOnly && (editMode || empReport.days.some(d => d.working_hours > 0));
+          const showOtNormal = !attendanceOnly && (editMode || empReport.days.some(d => d.overtime.normal > 0));
+          const showOtHoliday = !attendanceOnly && (editMode || empReport.days.some(d => d.overtime.holiday > 0));
+          const showOtPublicHoliday = !attendanceOnly && (editMode || empReport.days.some(d => d.overtime.public_holiday > 0));
           const showProjects = editMode || empReport.days.some(d => d.projects && d.projects !== '—');
           const showNotes = editMode || empReport.days.some(d => d.notes && d.notes !== '—');
 
@@ -1058,7 +1195,7 @@ export function AttendanceReportSection() {
                           : `${explainedIssues.length} explained`}
                       </span>
                     )}
-                    {empReport.employee.salary != null && empReport.employee.salary > 0 && (
+                    {!attendanceOnly && empReport.employee.salary != null && empReport.employee.salary > 0 && (
                       <>
                         <span className="text-slate-500">·</span>
                         <span>
@@ -1098,6 +1235,9 @@ export function AttendanceReportSection() {
                     <span>
                       <span className="font-semibold text-slate-200">{periodLabel}</span>
                       <span className="ml-1.5">· {calendarDays} days</span>
+                      {joiningDateLabel && hidePreJoin && preJoinDates.length > 0 && (
+                        <span className="ml-1.5">· Joined {joiningDateLabel}</span>
+                      )}
                     </span>
                     <span className="font-medium text-slate-300 uppercase tracking-wide whitespace-nowrap">
                       Supervisor / Engineer Signature →
@@ -1121,21 +1261,42 @@ export function AttendanceReportSection() {
                 style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
               >
                 <div className="grid grid-cols-8 divide-x divide-gray-100">
-                  {[
-                    {
-                      label: 'Worked',
-                      value: workedDays,
-                      color: 'text-emerald-600',
-                      sub: holidayWork > 0 ? `${present}P + ${holidayWork}H` : present > 0 ? `${present}P` : undefined,
-                    },
-                    { label: 'Weekend',    value: weekend,                  color: weekend > 0          ? 'text-slate-600'     : 'text-gray-300' },
-                    { label: 'Vacation',   value: vacation,                 color: vacation > 0         ? 'text-blue-600'      : 'text-gray-300' },
-                    { label: 'Absent',     value: absent,                   color: absent > 0           ? 'text-red-600'       : 'text-gray-300', sub: absentSub },
-                    { label: 'Work Hrs',   value: `${totalHours}h`,         color: totalHours > 0       ? 'text-slate-700'     : 'text-gray-300' },
-                    { label: 'OT ×1.25',  value: `${otNormal}h`,           color: otNormal > 0         ? deptTheme.accentText : 'text-gray-300' },
-                    { label: 'W.OT ×1.5', value: `${otHoliday}h`,          color: otHoliday > 0        ? 'text-amber-500'     : 'text-gray-300' },
-                    { label: 'P.H OT ×2', value: `${otPublicHoliday}h`,    color: otPublicHoliday > 0  ? 'text-rose-500'      : 'text-gray-300' },
-                  ].map(({ label, value, color, sub }) => (
+                  {(attendanceOnly
+                    ? [
+                        {
+                          label: 'Attended',
+                          value: present + holidayWork + halfDayAm + halfDayPm,
+                          color: 'text-emerald-600',
+                          sub: holidayWork > 0 ? `${present}P + ${holidayWork}H` : present > 0 ? `${present}P` : undefined,
+                        },
+                        { label: 'Half Day AM', value: halfDayAm, color: halfDayAm > 0 ? 'text-teal-600' : 'text-gray-300' },
+                        { label: 'Half Day PM', value: halfDayPm, color: halfDayPm > 0 ? 'text-teal-600' : 'text-gray-300' },
+                        { label: 'Weekend',     value: weekend,   color: weekend > 0   ? 'text-slate-600' : 'text-gray-300' },
+                        { label: 'Vacation',    value: vacation,  color: vacation > 0  ? 'text-blue-600'  : 'text-gray-300' },
+                        { label: 'Absent',      value: absent,    color: absent > 0    ? 'text-red-600'   : 'text-gray-300', sub: absentSub },
+                        {
+                          label: 'Not recorded',
+                          value: missingDates.length,
+                          color: missingDates.length > 0 ? 'text-amber-600' : 'text-gray-300',
+                        },
+                        { label: 'Days',        value: recordedDays, color: 'text-slate-700' },
+                      ]
+                    : [
+                        {
+                          label: 'Worked',
+                          value: workedDays,
+                          color: 'text-emerald-600',
+                          sub: holidayWork > 0 ? `${present}P + ${holidayWork}H` : present > 0 ? `${present}P` : undefined,
+                        },
+                        { label: 'Weekend',    value: weekend,                  color: weekend > 0          ? 'text-slate-600'     : 'text-gray-300' },
+                        { label: 'Vacation',   value: vacation,                 color: vacation > 0         ? 'text-blue-600'      : 'text-gray-300' },
+                        { label: 'Absent',     value: absent,                   color: absent > 0           ? 'text-red-600'       : 'text-gray-300', sub: absentSub },
+                        { label: 'Work Hrs',   value: `${totalHours}h`,         color: totalHours > 0       ? 'text-slate-700'     : 'text-gray-300' },
+                        { label: 'OT ×1.25',  value: `${otNormal}h`,           color: otNormal > 0         ? deptTheme.accentText : 'text-gray-300' },
+                        { label: 'W.OT ×1.5', value: `${otHoliday}h`,          color: otHoliday > 0        ? 'text-amber-500'     : 'text-gray-300' },
+                        { label: 'P.H OT ×2', value: `${otPublicHoliday}h`,    color: otPublicHoliday > 0  ? 'text-rose-500'      : 'text-gray-300' },
+                      ]
+                  ).map(({ label, value, color, sub }) => (
                     <div key={label} className="sum-card p-3 text-center">
                       <div className={`sum-val text-2xl font-bold ${color}`}>{value}</div>
                       <div className="sum-lbl text-xs text-gray-400 mt-0.5 font-medium uppercase tracking-wide leading-tight">{label}</div>
@@ -1146,7 +1307,7 @@ export function AttendanceReportSection() {
               </div>
 
               {/* ── Data-quality banner: missing days + incomplete hours (merged) ── */}
-              {(missingDates.length > 0 || openIssues.length > 0 || explainedIssues.length > 0) && (() => {
+              {(missingDates.length > 0 || openIssues.length > 0 || explainedIssues.length > 0 || preJoinDates.length > 0) && (() => {
                 const rows = [
                   ...missingDates.map((d) => ({
                     key: `missing-${d}`,
@@ -1167,15 +1328,37 @@ export function AttendanceReportSection() {
                 // Keep both the screen card and the printed page bounded.
                 const shown = rows.slice(0, 10);
                 const hidden = rows.length - shown.length;
+                // Pre-joining days are informational only — they never count as issues.
                 const openCount = missingDates.length + openIssues.length;
+                // One compact line for the whole pre-joining span (not one line per day).
+                const preJoinLine =
+                  preJoinDates.length > 0
+                    ? `Joined ${joiningDateLabel} — ${preJoinDates.length} earlier day${
+                        preJoinDates.length !== 1 ? 's' : ''
+                      } (${formatDateShort(preJoinDates[0])} – ${formatDateShort(
+                        preJoinDates[preJoinDates.length - 1]
+                      )}) not counted`
+                    : '';
 
                 return (
-                  <div className="missing-banner px-5 py-2 bg-yellow-50 border-b border-yellow-100">
+                  <div
+                    className={`missing-banner px-5 py-2 border-b ${
+                      openCount > 0 || explainedIssues.length > 0
+                        ? 'bg-yellow-50 border-yellow-100'
+                        : 'bg-slate-50 border-slate-100'
+                    }`}
+                  >
                     <div className="flex flex-wrap items-baseline gap-2">
-                      <span className="text-xs font-semibold text-yellow-700 uppercase tracking-wide shrink-0">
-                        {openCount} issue{openCount !== 1 ? 's' : ''}
-                        {explainedIssues.length > 0 ? ` · ${explainedIssues.length} explained` : ''}
-                      </span>
+                      {openCount > 0 || explainedIssues.length > 0 ? (
+                        <span className="text-xs font-semibold text-yellow-700 uppercase tracking-wide shrink-0">
+                          {openCount} issue{openCount !== 1 ? 's' : ''}
+                          {explainedIssues.length > 0 ? ` · ${explainedIssues.length} explained` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide shrink-0">
+                          Before joining date
+                        </span>
+                      )}
                       {openCount === 0 && explainedIssues.length > 0 && (
                         <span className="text-xs text-slate-500">
                           All gaps have a supervisor reason. Nothing to fix.
@@ -1192,6 +1375,9 @@ export function AttendanceReportSection() {
                         <li className="text-xs text-gray-500 italic">
                           +{hidden} more day{hidden !== 1 ? 's' : ''}
                         </li>
+                      )}
+                      {preJoinLine && (
+                        <li className="text-xs text-slate-500 italic">{preJoinLine}</li>
                       )}
                     </ul>
                   </div>
@@ -1518,13 +1704,21 @@ export function AttendanceReportSection() {
               className="summary-legend px-5 py-2 bg-gray-50 border-b flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500"
               style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' } as React.CSSProperties}
             >
-              {[
-                ['P', 'Present'], ['H', 'Holiday-Work'], ['W', 'Weekend'], ['V', 'Vacation'],
-                ['AWO', 'Absent – no excuse'], ['SL', 'Sick Leave (period)'], ['A', 'Absent – excused'],
-                ['SL YTD', 'Sick days since Jan 1'],
-                ['SL Full', '8h paid (days 1–15)'], ['SL Half', '4h paid (days 16–45)'], ['SL Unpaid', '0h (day 46+)'],
-                ['OT', '×1.25 normal'], ['W.OT', '×1.5 weekend'], ['H.OT', '×2.5 public holiday'],
-              ].map(([code, desc]) => (
+              {(attendanceOnly
+                ? [
+                    ['P', 'Present'], ['HD AM', 'Half Day (morning)'], ['HD PM', 'Half Day (afternoon)'],
+                    ['H', 'Holiday-Work'], ['W', 'Weekend'], ['V', 'Vacation'],
+                    ['AWO', 'Absent – no excuse'], ['SL', 'Sick Leave'], ['A', 'Absent – excused'],
+                    ['Attended', 'Days on site (incl. half days)'], ['Not recorded', 'No attendance record'],
+                  ]
+                : [
+                    ['P', 'Present'], ['H', 'Holiday-Work'], ['W', 'Weekend'], ['V', 'Vacation'],
+                    ['AWO', 'Absent – no excuse'], ['SL', 'Sick Leave (period)'], ['A', 'Absent – excused'],
+                    ['SL YTD', 'Sick days since Jan 1'],
+                    ['SL Full', '8h paid (days 1–15)'], ['SL Half', '4h paid (days 16–45)'], ['SL Unpaid', '0h (day 46+)'],
+                    ['OT', '×1.25 normal'], ['W.OT', '×1.5 weekend'], ['H.OT', '×2.5 public holiday'],
+                  ]
+              ).map(([code, desc]) => (
                 <span key={code}>
                   <span className="font-semibold text-gray-700">{code}</span>
                   <span className="text-gray-400 ml-1">= {desc}</span>
@@ -1533,7 +1727,8 @@ export function AttendanceReportSection() {
             </div>
             </div>
 
-            {/* Per-employee summary table */}
+            {/* Per-employee summary table — standard template (hours + salary) */}
+            {!attendanceOnly && (
             <div className="overall-summary-table-wrap overflow-x-auto">
               <table className="att-table w-full text-sm border-collapse">
                 <thead>
@@ -1660,6 +1855,89 @@ export function AttendanceReportSection() {
                 </tbody>
               </table>
             </div>
+            )}
+
+            {/* Per-employee summary table — attendance-only template (no hours / salary) */}
+            {attendanceOnly && (
+            <div className="overall-summary-table-wrap overflow-x-auto attendance-only-table">
+              <table className="att-table w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="px-4 py-2.5 text-left font-semibold">Employee</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-red-600" title="Days missing an absence reason">Issues</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-emerald-700">Attended</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-emerald-600">P</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-teal-600">HD AM</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-teal-600">HD PM</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-amber-600">H</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-slate-500">W</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-blue-600">V</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-red-600">AWO</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-orange-600">SL</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-purple-600">A</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-slate-500">Recorded</th>
+                    <th className="px-3 py-2.5 text-center font-semibold text-amber-700">Not&nbsp;recorded</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {employeeSummaries.map((s) => (
+                    <tr key={s.employee.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <div className="font-medium text-gray-800">{s.employee.name}</div>
+                        <div className="text-xs text-gray-400 font-mono">{s.employee.id} · {s.employee.department}</div>
+                      </td>
+                      <td className="px-3 py-2 text-center tabular-nums">
+                        {(() => {
+                          const n = issuesByEmployee.get(s.employee.id)?.length ?? 0;
+                          return n > 0
+                            ? <span className="font-bold text-red-600">{n}</span>
+                            : <span className="text-gray-300">—</span>;
+                        })()}
+                      </td>
+                      <td className="px-3 py-2 text-center font-bold text-emerald-700">{s.attendedDays}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-emerald-600">{s.present || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-teal-600">{s.halfDayAm || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-teal-600">{s.halfDayPm || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-amber-600">{s.holidayWork || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-slate-500">{s.weekend || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-blue-600">{s.vacation || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-red-600">{s.awo || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-orange-600">{s.sl || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-purple-600">{s.a || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-gray-600">{s.recordedDays}</td>
+                      <td className="px-3 py-2 text-center tabular-nums text-amber-700">
+                        {s.missingDays > 0
+                          ? <span className="font-semibold">{s.missingDays}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="summary-total-row footer-bar bg-slate-50 border-t-2 border-slate-200 font-semibold text-slate-700 text-sm">
+                    <td className="px-4 py-2.5">TOTAL — {localReport.length} employee{localReport.length !== 1 ? 's' : ''}</td>
+                    <td className="px-3 py-2.5 text-center text-red-600">
+                      {totalIssueDays > 0 ? totalIssueDays : '—'}
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{grandTotals.attendedDays}</td>
+                    <td className="px-3 py-2.5 text-center text-emerald-600">{grandTotals.present || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-teal-600">{grandTotals.halfDayAm || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-teal-600">{grandTotals.halfDayPm || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-amber-600">{grandTotals.holidayWork || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-slate-500">{grandTotals.weekend || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-blue-600">{grandTotals.vacation || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-red-600">{grandTotals.awo || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-orange-600">{grandTotals.sl || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-purple-600">{grandTotals.a || '—'}</td>
+                    <td className="px-3 py-2.5 text-center text-gray-600">
+                      {employeeSummaries.reduce((n, s) => n + s.recordedDays, 0)}
+                    </td>
+                    <td className="px-3 py-2.5 text-center text-amber-700">
+                      {grandTotals.missingDays > 0 ? grandTotals.missingDays : '—'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            )}
           </div>
         )}
 

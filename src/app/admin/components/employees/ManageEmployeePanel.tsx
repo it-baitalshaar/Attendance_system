@@ -37,6 +37,9 @@ export function ManageEmployeePanel({
   const [overtimeEnabled, setOvertimeEnabled] = useState(
     employee.overtime_enabled !== false
   );
+  const [joiningDate, setJoiningDate] = useState(
+    employee.joining_date ? String(employee.joining_date).slice(0, 10) : ''
+  );
 
   useEffect(() => {
     setName(employee.name);
@@ -45,6 +48,9 @@ export function ManageEmployeePanel({
     setStatus(employee.status || 'active');
     setSalary(employee.salary != null ? String(employee.salary) : '');
     setOvertimeEnabled(employee.overtime_enabled !== false);
+    setJoiningDate(
+      employee.joining_date ? String(employee.joining_date).slice(0, 10) : ''
+    );
   }, [employee]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -56,6 +62,7 @@ export function ManageEmployeePanel({
       department: deptTrim,
       status,
       salary: salary.trim() === '' ? null : Number(salary),
+      joining_date: joiningDate.trim() === '' ? null : joiningDate.trim(),
     };
     if (OVERTIME_MANAGED_DEPARTMENTS.has(deptTrim)) {
       payload.overtime_enabled = overtimeEnabled;
@@ -160,6 +167,18 @@ export function ManageEmployeePanel({
                   className="w-full p-2 border rounded"
                   placeholder="Optional"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Joining date</label>
+                <input
+                  type="date"
+                  value={joiningDate}
+                  onChange={(e) => setJoiningDate(e.target.value)}
+                  className="w-full p-2 border rounded"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  The Attendance Report hides days before this date.
+                </p>
               </div>
               {showOvertimeToggle && (
                 <div className="md:col-span-2 flex items-center gap-2">

@@ -8,6 +8,8 @@ export interface Employee {
   salary?: number | null;
   /** When false, overtime is disabled for this employee (Construction / Maintenance). */
   overtime_enabled?: boolean | null;
+  /** YYYY-MM-DD. Attendance Report hides expected days before this date. */
+  joining_date?: string | null;
 }
 
 export interface EmployeeUpdatePayload {
@@ -17,6 +19,7 @@ export interface EmployeeUpdatePayload {
   status?: string;
   salary?: number | null;
   overtime_enabled?: boolean | null;
+  joining_date?: string | null;
 }
 
 export interface EmployeeHistoryRecord {

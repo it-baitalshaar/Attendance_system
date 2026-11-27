@@ -8,6 +8,8 @@ export interface AttendanceReportEmployee {
   name: string;
   department: string;
   salary?: number | null;
+  /** YYYY-MM-DD. Expected attendance starts on this date; earlier days are not gaps. */
+  joining_date?: string | null;
 }
 
 /**

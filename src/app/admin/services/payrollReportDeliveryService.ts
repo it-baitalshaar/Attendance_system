@@ -62,6 +62,8 @@ export async function sendPayrollReportEmail(body: {
   employeeId?: string | null;
   viewMode?: 'employee' | 'project';
   filterLabel?: string;
+  /** Attendance Report layout — `attendance-only` omits hours/salary from the email body. */
+  template?: 'standard' | 'attendance-only';
   /** PDF from Print area (same layout as Print / Save as PDF) */
   pdfBase64?: string;
   pdfFilename?: string;

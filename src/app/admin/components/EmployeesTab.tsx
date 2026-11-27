@@ -12,6 +12,8 @@ interface NewEmployeeState {
   department: string;
   employee_id: string;
   salary: string;
+  /** YYYY-MM-DD, empty when unknown. */
+  joining_date: string;
 }
 
 interface EmployeesTabProps {
@@ -205,6 +207,23 @@ export function EmployeesTab({
                 placeholder="Optional"
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Joining date (optional)
+              </label>
+              <input
+                type="date"
+                name="joining_date"
+                value={newEmployee.joining_date}
+                onChange={onInputChange}
+                className="w-full p-2 border rounded"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Days before this date are hidden from the Attendance Report, so a
+                mid-month hire does not show as “no attendance record”.
+              </p>
+            </div>
           </div>
 
           <button
@@ -313,6 +332,11 @@ export function EmployeesTab({
                       >
                         {employee.status}
                       </span>
+                      {employee.joining_date && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Joined {employee.joining_date.slice(0, 10)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <button

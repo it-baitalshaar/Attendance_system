@@ -25,6 +25,8 @@ export async function POST(request: Request) {
     const employeeId = body?.employeeId?.trim() || null;
     const viewMode = body?.viewMode === 'project' ? 'project' : 'employee';
     const filterLabel = String(body?.filterLabel ?? 'All Departments').trim();
+    const attendanceTemplate =
+      body?.template === 'attendance-only' ? 'attendance-only' as const : 'standard' as const;
 
     const supabase = createSupabaseServerComponentClient();
 
@@ -69,7 +71,7 @@ export async function POST(request: Request) {
         );
       }
       attendanceReport = report;
-      html = buildAttendanceReportEmailHtml({ from, to, filterLabel, report });
+      html = buildAttendanceReportEmailHtml({ from, to, filterLabel, report, template: attendanceTemplate });
       subject = `Attendance Report — ${periodLabel}${department ? ` — ${department}` : ''}`;
     } else {
       const { report, error: reportErr } = await fetchSalaryReportForApi(supabase, {

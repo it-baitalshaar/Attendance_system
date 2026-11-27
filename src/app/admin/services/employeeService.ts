@@ -1,4 +1,5 @@
 import { createSupabbaseFrontendClient } from '@/lib/supabase';
+import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
 import { Employee, EmployeeUpdatePayload } from '../types/admin';
 
 export interface FetchEmployeesResult {
@@ -40,6 +41,8 @@ export interface AddEmployeePayload {
   department: string;
   employee_id: string;
   salary?: number | null;
+  /** YYYY-MM-DD; null when unknown. */
+  joining_date?: string | null;
 }
 
 export async function addEmployeeService(
@@ -57,7 +60,16 @@ export async function addEmployeeService(
   if (payload.salary !== null && payload.salary !== undefined && !Number.isNaN(payload.salary)) {
     row.salary = payload.salary;
   }
-  const { error } = await supabase.from('Employee').insert([row]);
+  if (payload.joining_date) {
+    row.joining_date = payload.joining_date;
+  }
+  let { error } = await supabase.from('Employee').insert([row]);
+
+  // Before the joining_date migration is applied, insert without it.
+  if (error && 'joining_date' in row && isUndefinedColumnError(error)) {
+    const { joining_date: _omitted, ...withoutJoiningDate } = row;
+    ({ error } = await supabase.from('Employee').insert([withoutJoiningDate]));
+  }
 
   if (error) {
     throw error;
@@ -77,12 +89,24 @@ export async function updateEmployeeService(
   } else {
     updates.salary = Number(updates.salary);
   }
-  // Your Employee table only has employee_id as identifier (no "id" or "uuid" column).
-  // Match the row by employee_id only so we never reference non-existent columns.
-  const { error } = await supabase
+  // Joining date is a date column: an empty string is invalid, so clear it with null.
+  if (updates.joining_date === '' || updates.joining_date === undefined) {
+    if ('joining_date' in updates) updates.joining_date = null;
+  }
+  // The joining_date migration may not be applied yet — retry without it so
+  // employee edits keep working before the SQL is run.
+  let { error } = await supabase
     .from('Employee')
     .update(updates)
     .eq('employee_id', id);
+
+  if (error && 'joining_date' in updates && isUndefinedColumnError(error)) {
+    const { joining_date: _omitted, ...withoutJoiningDate } = updates;
+    ({ error } = await supabase
+      .from('Employee')
+      .update(withoutJoiningDate)
+      .eq('employee_id', id));
+  }
 
   if (error) {
     throw error;

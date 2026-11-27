@@ -222,10 +222,24 @@ export async function GET(request: Request) {
       from,
       employeeIds: collectSickLeaveEmployeeIds(rows),
     });
-    const { data: empRows, error: empErr } = await supabase
-      .from('Employee')
-      .select('employee_id, name, department, salary, overtime_enabled')
-      .in('employee_id', employeeIds);
+    const empSelect = (cols: string) =>
+      supabase
+        .from('Employee')
+        .select(cols)
+        .in('employee_id', employeeIds) as unknown as Promise<{
+        data: Record<string, unknown>[] | null;
+        error: { message: string; code?: string } | null;
+      }>;
+
+    let { data: empRows, error: empErr } = await empSelect(
+      'employee_id, name, department, salary, overtime_enabled, joining_date'
+    );
+    // Joining-date migration not applied yet — fall back to the columns that always exist.
+    if (empErr && isUndefinedColumnError(empErr)) {
+      ({ data: empRows, error: empErr } = await empSelect(
+        'employee_id, name, department, salary, overtime_enabled'
+      ));
+    }
 
     if (empErr) {
       console.error('Employee fetch error:', empErr);
@@ -256,6 +270,7 @@ export async function GET(request: Request) {
       department: resolveDept(e.employee_id as string, from) || ((e.department as string) ?? null),
       salary: e.salary as number | null | undefined,
       overtime_enabled: e.overtime_enabled as boolean | null | undefined,
+      joining_date: (e.joining_date as string | null | undefined) ?? null,
     })) as RawEmployeeRow[];
 
     const report = buildAttendanceReport({

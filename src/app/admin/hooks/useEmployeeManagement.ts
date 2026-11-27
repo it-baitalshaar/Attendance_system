@@ -23,6 +23,8 @@ interface NewEmployeeState {
   department: string;
   employee_id: string;
   salary: string;
+  /** YYYY-MM-DD, empty when unknown. */
+  joining_date: string;
 }
 
 export function useEmployeeManagement() {
@@ -33,6 +35,7 @@ export function useEmployeeManagement() {
     department: '',
     employee_id: '',
     salary: '',
+    joining_date: '',
   });
   const [departments, setDepartments] = useState<string[]>([]);
   const [nextEmployeeIds, setNextEmployeeIds] = useState<
@@ -146,6 +149,14 @@ export function useEmployeeManagement() {
             );
           }
           if (
+            payload.joining_date !== undefined &&
+            (payload.joining_date ?? null) !== (previous.joining_date ?? null)
+          ) {
+            details.push(
+              `Joining date: ${previous.joining_date ?? 'empty'} -> ${payload.joining_date || 'empty'}`
+            );
+          }
+          if (
             payload.overtime_enabled != null &&
             payload.overtime_enabled !== (previous.overtime_enabled !== false)
           ) {
@@ -256,6 +267,7 @@ export function useEmployeeManagement() {
         ...newEmployee,
         employee_id: employeeId,
         salary: newEmployee.salary.trim() === '' ? undefined : Number(newEmployee.salary),
+        joining_date: newEmployee.joining_date.trim() === '' ? null : newEmployee.joining_date.trim(),
       };
       await addEmployeeService(payload);
       setMessage('Employee added successfully!');
@@ -268,6 +280,7 @@ export function useEmployeeManagement() {
         department: '',
         employee_id: '',
         salary: '',
+        joining_date: '',
       });
       await loadEmployees();
     } catch (error) {

@@ -15,6 +15,8 @@
 | Weekend / holiday OT defaults | `OvertimeCalendarContext` + `overtimeCalendar.ts` + `HomeCalendarDayBanner` + Admin → Departments tab |
 | Admin dashboard tab | `src/app/admin/page.tsx` → tab via `?tab=` |
 | Payroll / attendance reports | `payrollCalculation.ts` + `attendanceReportService.ts` + `inheritSickLeaveProjects.ts` + `fetchAttendanceRowsForReport.ts` + `employeeDepartmentAtDate.ts` |
+| Attendance Report templates | `attendanceReportTemplate.ts` — `standard` (hours + salary, original) vs `attendance-only` (status counts, no hours/salary). Picked in `AttendanceReportSection`, default by department (Saqiya → attendance-only), remembered per department |
+| Employee joining date / pre-join gaps | `Employee.joining_date` (add + manage employee) → `attendanceReportPreJoin.ts` — days before joining are hidden from the report's `no attendance record` banner and `Not recorded` / `Missing` counts. Toggle remembered per department, default ON |
 | Office BioTime sync | `src/app/api/office/biotime/sync/route.ts` + `scripts/office-biotime-sync.js` |
 | Office employee emails | `src/lib/officeEmployeeReport.ts` + `/api/office/send-employee-report` |
 | Office overall summary (no salary) | `OfficeEmployeesTab` monthly report → Overall Summary (from `/api/office/report`) |
@@ -93,12 +95,12 @@ pnpm build && pnpm start
 | Method | Route | Auth | Purpose |
 |--------|-------|------|---------|
 | POST | `/api/submitAttendance` | session | Legacy/server attendance submit. Runs the completeness guard first — returns `409 { code: 'ATTENDANCE_VALIDATION', issues }` unless `validation_override_reason` (≥5 chars) is supplied |
-| GET | `/api/attendance-report` | admin | Attendance report JSON; `employee_id` accepts one ID or comma-separated IDs. Also returns `submissions[]` (submit-guard override reasons from `Track_Attendance`) |
+| GET | `/api/attendance-report` | admin | Attendance report JSON; `employee_id` accepts one ID or comma-separated IDs. Also returns `submissions[]` (submit-guard override reasons from `Track_Attendance`) and each employee's `joining_date` (pre-joining days are not `no attendance record`) |
 | PATCH | `/api/attendance-report-edit` | admin + service role | Edit attendance rows in reports |
 | GET | `/api/salary-report` | admin | Salary + project cost report JSON |
 | GET/PATCH | `/api/payroll-report/delivery` | admin | WhatsApp number settings |
 | POST/DELETE | `/api/payroll-report/emails` | admin | Saved report recipient emails |
-| POST | `/api/payroll-report/send-email` | admin | Server Gmail send (optional) |
+| POST | `/api/payroll-report/send-email` | admin | Server Gmail send (optional). Attendance body honours `template` (`standard` / `attendance-only`); PDF uses the client-captured print area when supplied |
 | POST | `/api/payroll-report/pdf` | admin | Server PDF gen (optional) |
 | GET/POST/PATCH/DELETE | `/api/admin-users` | super user | User CRUD |
 | GET/POST/PATCH/DELETE | `/api/admin-projects` | admin | Project CRUD; PATCH renames `project_id` only when the name changes (type/status edits must not touch the key — `Attendance_projects` FK), then cascades attendance rows |
@@ -122,7 +124,7 @@ pnpm build && pnpm start
 | Table | PK | Notes |
 |-------|-----|-------|
 | `profiles` | `id` (auth uid) | `role`, `department`, linked to Supabase Auth |
-| `Employee` | `employee_id` | `name`, `position`, `department`, `status`, `salary`, `overtime_enabled` |
+| `Employee` | `employee_id` | `name`, `position`, `department`, `status`, `salary`, `overtime_enabled`, `joining_date` (date; Attendance Report hides days before it) |
 | `Employee_history` | `id` | Audit log for employee edits |
 | `departments` | `id` | `name`, `theme_id`, `allow_future_attendance`, `weekend_days[]`, OT toggles |
 | `department_holidays` | `id` | Named dates → default holiday OT (×2.5); `department_id` NULL = all depts |
@@ -205,6 +207,8 @@ src/
 │   ├── fetchAttendanceReportForApi.ts / fetchSalaryReportForApi.ts
 │   ├── fetchAttendanceRowsForReport.ts  # report attendance query (paginated, 1000/page) + historical dept filter
 │   ├── attendanceSubmissionValidation.ts  # attendance completeness rules — submit guard + report warnings (single source)
+│   ├── attendanceReportTemplate.ts        # Attendance Report templates (standard vs attendance-only) + per-department memory
+│   ├── attendanceReportPreJoin.ts         # Expected window per employee (joining date) — pre-join days are not "missing"
 │   ├── fetchPriorWorkProjectsForSickLeave.ts  # 45-day lookback so SL at period start inherits a project
 │   ├── employeeDepartmentAtDate.ts      # resolve dept at date from history
 │   ├── officeEmployeeReport.ts   # Office email report builder
@@ -329,6 +333,7 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | `20260402120000_office_reconcile_attendance_from_logs.sql` | Reconcile from logs RPC |
 | `add_employee_salary.sql` | Employee salary column |
 | `add_employee_salary_and_history.sql` | Salary + `Employee_history` |
+| `add_employee_joining_date.sql` | `Employee.joining_date` (date) — Attendance Report expects attendance only from this date |
 | `add_employee_overtime_enabled.sql` | Per-employee OT toggle |
 | `add_department_theme_id.sql` | Dept UI themes |
 | `add_department_allow_future_attendance.sql` | Future date submit flag |
@@ -359,7 +364,9 @@ Run in Supabase SQL Editor unless using CLI `db push`. See `docs/OFFICE_SCHEMA_R
 | AWO | Flat deduction `8 × hourly_rate` per AWO day (shown as negative PAY) |
 | Sick Leave (SL) | **Calendar-year law** (`sickLeaveLaw.ts`): days 1–15 → **8h** full pay, 16–45 → **4h** half pay, 46+ → **0h** unpaid (Jan 1–Dec 31). Prior-year SL days fetched so ordinals continue across payroll periods. **Project:** inherit from the most recent prior day with logged project hours (skips weekend/vacation/other SL). Attendance PROJECT cell shows `Sick leave · {name} {hours}hrs`. Salary/project reports include those hours and amount. Lookback: `fetchPriorWorkProjectsForSickLeave` (45 days before period start). Overall Summary shows SL (period), SL YTD, Full / Half / Unpaid. |
 | Report inline edit | `/api/attendance-report-edit` syncs notes `Attendance type:` with status so rebuild does not revert |
-| Attendance completeness guard | Single source: `attendanceSubmissionValidation.ts`. Construction + Maintenance only (`collectsAttendanceHours`). Rules: `zero_hours` (Present 0h), `hours_not_standard` (**Present under 8h**; Half Day must match 4.5h AM / 3.5h PM exactly — over-long stays are allowed when OT is logged), `over_8_no_ot` (>8h regular with no OT), `weekend_no_hours` (submit only — report treats a 0h weekend as a rest day; weekend/holiday hours may otherwise vary freely), `ot_without_hours` (OT with 0 regular), `no_absence_reason` (all departments). Submit blocks with `409 ATTENDANCE_VALIDATION` unless an override reason (≥5 chars) is typed; the reason is stored on `Track_Attendance`. The Attendance Report shows the same issues per employee + in the Overall Summary and labels overridden days as explained |
+| Attendance completeness guard | Single source: `attendanceSubmissionValidation.ts`. Construction + Maintenance only (`collectsAttendanceHours`). Rules: `zero_hours` (Present 0h), `hours_not_standard` (**Present under 8h**; Half Day must match 4.5h AM / 3.5h PM exactly — over-long stays are allowed when OT is logged), `over_8_no_ot` (>8h regular with no OT), `weekend_no_hours` (submit only — report treats a 0h weekend as a rest day; weekend/holiday hours may otherwise vary freely), `ot_without_hours` (OT with 0 regular), `no_absence_reason` (all departments). Submit blocks with `409 ATTENDANCE_VALIDATION` unless an override reason (≥5 chars) is typed; the reason is stored on `Track_Attendance`. The Attendance Report shows the same issues per employee + in the Overall Summary and labels overridden days as explained. Under the `attendance-only` template hour rules are suppressed (only `no_absence_reason` remains), because hours are not collected/shown |
+| Attendance Report templates | `attendanceReportTemplate.ts`: **`standard`** = hours + OT + salary (the original report, default for Construction/Maintenance/All) and **`attendance-only`** = status counts only, no hours/OT/salary (default for `SAQIYA`). The template drives the employee cards, Overall Summary, CSV, print/PDF and email body. Attendance-only hides Hrs/OT/Pay, swaps the card strip to Attended / Half Day AM / Half Day PM / Not recorded, and adds an attendance table in the Overall Summary. The pick is remembered per department in localStorage (`attendanceReportTemplate:<dept>`, `__all__` for all departments); "Reset to default" clears it. Al Saqiya salaries are **not** calculated in reports |
+| Joining date / pre-join days | `Employee.joining_date` → `attendanceReportPreJoin.ts` (`resolveExpectedWindow`, `missingDatesInWindow`). The expected window starts at the later of the report `from` and the joining date (the joining day itself still counts), so earlier days are NOT listed as `no attendance record` and do NOT count in the card `Not recorded` stat or the Overall Summary `Missing` column/TOTAL. The card header shows the clamped period + `Joined {date}`; hidden days appear as grey `Before joining date` lines inside the data-quality banner (never counted as issues). Report checkbox "Hide days before the joining date" is remembered per department (`attendanceReportHidePreJoin:<dept>`), default **ON**. Employees with no joining date keep the full range. Hiding pre-join days never changes pay: base pay is already `working_hours × hourly_rate` |
 
 **Report delivery:** UI opens mailto/WhatsApp; user attaches PDF from Print. Saved emails in `payroll_report_emails`.
 
@@ -406,6 +413,8 @@ Spec: `docs/BIOTIME_TO_SUPABASE_OFFICE_SYNC_SPEC.md`
 
 | Date (approx) | Commit theme | Area |
 |---------------|--------------|------|
+| 2026-11-26 | **Employee joining date → no pre-joining gaps in the Attendance Report**: `Employee.joining_date` is captured in the existing Add Employee form and the Manage Employee panel. The report clamps each employee's expected window to start at the joining date, so days before it are no longer listed as `no attendance record` and no longer inflate the card `Not recorded` stat or the Overall Summary `Missing` column/TOTAL. Card header shows the clamped period + `Joined {date}`; hidden days appear as grey `Before joining date` lines that never count as issues. Report checkbox "Hide days before the joining date" is remembered per department (default ON). Employees without a joining date are unchanged, and both employee writes and report reads fall back gracefully if the migration has not been run yet. No pay change (base pay is `working_hours × hourly_rate`) | `add_employee_joining_date.sql` (new), `attendanceReportPreJoin.ts` (new), `EmployeesTab`, `ManageEmployeePanel`, `useEmployeeManagement`, `employeeService`, `types/admin`, `types/attendanceReport`, `attendanceReportService`, `/api/attendance-report`, `fetchAttendanceReportForApi`, `AttendanceReportSection`, index §0 §6.1 §8 §11 §12 |
+| 2026-11-26 | **Attendance Report templates** (keeping the old report intact): a `Template` picker adds `standard` (hours + OT + salary — unchanged, still default for Construction/Maintenance/All) and `attendance-only` (status counts only: Attended, P, HD AM, HD PM, H, W, V, AWO, SL, A, Recorded, Not recorded; no hours/OT/salary). Default is department-driven (`SAQIYA` → attendance-only) and the pick is remembered per department in localStorage with a "Reset to default" link. Both templates follow through: employee cards (strip + hidden Pay/OT columns), Overall Summary table, CSV export, print/PDF, WhatsApp text and the email body (`/api/payroll-report/send-email` accepts `template`). Hour-completeness issues are suppressed while attendance-only | `attendanceReportTemplate.ts` (new), `AttendanceReportSection`, `attendanceReportEmailHtml`, `payrollReportDeliveryService`, `/api/payroll-report/send-email`, index §0 §5 §8 §12 |
 | 2026-11-26 | **Guard verified end-to-end** (50/50 rule cases + live 409s). Rule refinement: over-8h regular is only flagged when no OT is logged (a 10h + 2h OT day is legitimate), Half Day must still match exactly, and weekend/holiday hours are unconstrained except for the 0h submit rule | `attendanceSubmissionValidation`, index §12 §16 |
 | 2026-11-26 | Attendance completeness guard: shared `attendanceSubmissionValidation.ts` blocks submit when hours are missing/non-standard/OT-mismatched or an absence reason is missing, with a "Submit anyway" typed reason saved on `Track_Attendance`. Attendance Report + Overall Summary now show the same issues per employee (merged with missing-days banner), an issues pill, a "Show only employees with issues" filter, an Issues column, and grey "Override: …" lines for explained days. WhatsApp summary carries the issue count | `attendanceSubmissionValidation`, `useHomeSubmit`, `HomeModals`, `/api/submitAttendance`, `/api/attendance-report`, `AttendanceReportSection`, `useAttendanceReport`, `attendanceReportEmailHtml`, migration `add_attendance_validation_override.sql`, index §0 §5 §6.1 §8 §11 §12 |
 | 2026-11-24 | Employee List sorting: "Sort:" dropdown (Name / ID / Department / Position / Status, ascending or descending) + clickable column headers with ▲▼ indicator and `aria-sort`. Numeric-aware ID sort (`SA0002` before `SA0013`), blanks last, `Reset` restores Name A–Z | `useEmployeeFilters`, `EmployeeFilters`, `EmployeesTab` |

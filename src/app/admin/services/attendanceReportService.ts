@@ -51,6 +51,8 @@ export interface RawEmployeeRow {
   salary?: number | null;
   /** When false, regular hours capped at 8 (or half-day) and OT excluded from report. */
   overtime_enabled?: boolean | null;
+  /** YYYY-MM-DD; days before this date are not expected attendance. */
+  joining_date?: string | null;
 }
 
 export interface BuildReportInput {
@@ -339,6 +341,7 @@ export function buildAttendanceReport(
         name: emp?.name ?? 'Unknown',
         department: emp?.department ?? '—',
         salary: emp?.salary ?? null,
+        joining_date: emp?.joining_date ?? null,
       },
       days,
       sickLeave:
