@@ -48,6 +48,12 @@ export interface AttendanceReportDay {
    * Salary/project reports charge these hours so totals match.
    */
   sick_leave_projects?: { name: string; hours: number }[] | null;
+  /**
+   * Raw `Attendance_projects.overtime_hours` found on a leave day (SL / A / AWO / V).
+   * Leave days are full-day absences, so this OT is NOT paid (`overtime` is zeroed) —
+   * it is kept only so the report can flag the bad data.
+   */
+  ignored_overtime?: number | null;
 }
 
 /** Per-employee SL law rollup for the Overall Summary. */
@@ -83,6 +89,15 @@ export interface AttendanceReportSubmissionOverride {
  */
 export function dateOnly(date: string | null | undefined): string {
   return String(date ?? '').trim().slice(0, 10);
+}
+
+/**
+ * Full-day leave / absence codes. Overtime is never earned or paid on these days —
+ * the day is paid (or not) by the leave rules, not by project OT.
+ */
+export function isLeaveStatusCode(code: string | null | undefined): boolean {
+  const c = String(code ?? '').trim().toUpperCase();
+  return c === 'SL' || c === 'A' || c === 'AWO' || c === 'V';
 }
 
 export function statusToCode(

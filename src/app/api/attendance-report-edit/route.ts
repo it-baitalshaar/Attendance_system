@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { isLeaveStatusCode, statusToCode } from '@/app/admin/types/attendanceReport';
 
 // Permissive type for the service-role client when used with dynamic table names
 type AnyDb = { from: (table: string) => any };
@@ -177,10 +178,11 @@ export async function POST(request: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Find the Attendance row (include notes so status edits can sync Attendance type line)
+  // Find the Attendance row (include notes + status so status edits can sync the
+  // Attendance type line and leave days can drop overtime)
   const { data: attData, error: attErr } = await db
     .from('Attendance')
-    .select('id, notes')
+    .select('id, notes, status, status_attendance')
     .eq('employee_id', employee_id)
     .eq('date', date)
     .limit(1);
@@ -194,6 +196,19 @@ export async function POST(request: Request) {
   }
   const attendanceId = (attData[0] as { id: string; notes?: string | null }).id;
   const existingNotes = (attData[0] as { notes?: string | null }).notes ?? null;
+
+  // Leave days (SL / A / AWO / V) never carry overtime. Resolve the day's code from
+  // the incoming status (or the stored row when only hours/OT are edited) and force
+  // OT to zero so the report editor cannot re-introduce it.
+  const existingRow = attData[0] as {
+    status?: string | null;
+    status_attendance?: string | null;
+  };
+  const effectiveCode =
+    status_code !== undefined
+      ? String(status_code)
+      : statusToCode(existingRow.status, existingRow.status_attendance);
+  const leaveDay = isLeaveStatusCode(effectiveCode);
 
   // Update Attendance (status + notes)
   const attUpdate: Record<string, unknown> = {};
@@ -246,9 +261,9 @@ export async function POST(request: Request) {
     hoursSkipped = await distributeHours(
       db, projTable, attendanceId, projRows,
       working_hours as number | undefined,
-      overtime_normal as number | undefined,
-      overtime_holiday as number | undefined,
-      overtime_public_holiday as number | undefined,
+      leaveDay ? 0 : (overtime_normal as number | undefined),
+      leaveDay ? 0 : (overtime_holiday as number | undefined),
+      leaveDay ? 0 : (overtime_public_holiday as number | undefined),
     );
   }
 

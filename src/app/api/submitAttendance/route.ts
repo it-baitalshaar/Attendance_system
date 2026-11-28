@@ -237,6 +237,8 @@ import {
   sumPositiveHours,
 } from '@/app/lib/employeeRegularHours';
 import {
+  isLeaveAttendanceType,
+  keepsProjectHours,
   validateAttendanceSubmission,
   type AttendanceSubmissionRow,
   type AttendanceValidationIssue,
@@ -774,14 +776,22 @@ export async function POST(request: Request) {
       }, i: number) => {
         const empStat = employees_statis[i]?.employee_status?.[0] ?? {};
         const projectRows = emp?.projects?.projectId ?? [];
+        // Absent / vacation days drop their project rows at save time, so lingering
+        // Redux hours must not be validated (only present + Sick Leave keep them).
+        const keeps = keepsProjectHours({
+          status: empStat.status_attendance,
+          attendanceType: empStat.status_employee,
+        });
         return {
           employee_id: emp.employee_id,
           employee_name: emp.name ?? emp.employee_id,
           status: empStat.status_attendance ?? 'present',
           attendance_type: empStat.status_employee ?? null,
           notes: empStat.note ?? projectRows[0]?.note ?? null,
-          hours: sumPositiveHours(projectRows.map((p) => Number(p?.hours) || 0)),
-          overtime_hours: sumPositiveHours(projectRows.map((p) => Number(p?.overtime) || 0)),
+          hours: keeps ? sumPositiveHours(projectRows.map((p) => Number(p?.hours) || 0)) : 0,
+          overtime_hours: keeps
+            ? sumPositiveHours(projectRows.map((p) => Number(p?.overtime) || 0))
+            : 0,
         };
       }
     );
@@ -896,7 +906,10 @@ export async function POST(request: Request) {
                 targetDate,
                 statusEmployee
               );
-              const otHours = allow ? projRow.overtime || 0 : 0;
+              // Leave days are full-day absences — never persist overtime on them.
+              // (Sick Leave keeps its project rows so the paid SL hours can be charged.)
+              const isLeaveReason = isLeaveAttendanceType(statusEmployee);
+              const otHours = allow && !isLeaveReason ? projRow.overtime || 0 : 0;
               await supabase.from('Attendance_projects').insert({
                 attendance_id: attendanceId,
                 project_id: projData.project_id,

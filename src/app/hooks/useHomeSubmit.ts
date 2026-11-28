@@ -6,6 +6,7 @@ import type { AttendanceStatus } from '@/redux/slice';
 import { HomeEmployee } from '../types/home';
 import { ReportData } from '../types/home';
 import {
+  keepsProjectHours,
   validateAttendanceSubmission,
   type AttendanceSubmissionRow,
   type AttendanceValidationIssue,
@@ -52,14 +53,19 @@ export function useHomeSubmit(state: HomeSubmitState) {
       const rows = state.employeeList.map((e) => {
         const reduxEmp = state.employees.find((r: any) => r.employee_id === e.employee_id);
         const projectRows = reduxEmp?.projects?.projectId ?? [];
+        const status = (reduxEmp?.employee_status?.[0]?.status_attendance ?? 'present') as string;
+        const attendanceType = reduxEmp?.employee_status?.[0]?.status_employee ?? null;
+        // Absent / vacation days drop project rows at save time — validate only what
+        // will actually be persisted (present days and Sick Leave keep their rows).
+        const keeps = keepsProjectHours({ status, attendanceType });
         return {
           employee_id: e.employee_id,
           employee_name: e.name,
-          status: (reduxEmp?.employee_status?.[0]?.status_attendance ?? 'present') as string,
-          attendance_type: reduxEmp?.employee_status?.[0]?.status_employee ?? null,
+          status,
+          attendance_type: attendanceType,
           notes: reduxEmp?.employee_status?.[0]?.note ?? null,
-          hours: sumPositive(projectRows.map((p: any) => p?.hours)),
-          overtime_hours: sumPositive(projectRows.map((p: any) => p?.overtime)),
+          hours: keeps ? sumPositive(projectRows.map((p: any) => p?.hours)) : 0,
+          overtime_hours: keeps ? sumPositive(projectRows.map((p: any) => p?.overtime)) : 0,
         };
       });
       return { rows, checkHours: true };

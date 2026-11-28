@@ -41,6 +41,7 @@ export type AttendanceIssueCode =
   | 'over_8_no_ot'
   | 'weekend_no_hours'
   | 'ot_without_hours'
+  | 'overtime_on_leave'
   | 'no_absence_reason';
 
 export type AttendanceIssueSeverity = 'error' | 'warning';
@@ -109,11 +110,55 @@ export function resolveSubmissionKind(input: {
     return 'absent-no-reason';
   }
 
+  // A lingering absence reason (e.g. the card was toggled back to present but the
+  // Sick Leave reason was never cleared) still produces a leave day in the report.
+  // Treat it as a leave day here so OT on it is caught before it is saved.
+  if (attendanceType === 'Sick Leave') return 'sick-leave';
+  if (attendanceType === 'Absence with excuse') return 'absent-excused';
+  if (attendanceType === 'Absence without excuse') return 'absent-no-excuse';
+
   if (attendanceType === 'Weekend') return 'weekend';
   if (attendanceType === 'Holiday-Work' || attendanceType === 'Holiday') return 'holiday-work';
   if (attendanceType === 'Half Day AM') return 'half-day-am';
   if (attendanceType === 'Half Day PM') return 'half-day-pm';
   return 'present';
+}
+
+/** Leave kinds are full-day absences — they never earn overtime. */
+export function isLeaveKind(kind: AttendanceKind): boolean {
+  return (
+    kind === 'sick-leave' ||
+    kind === 'absent-excused' ||
+    kind === 'absent-no-excuse' ||
+    kind === 'vacation'
+  );
+}
+
+/**
+ * True when a home card's `status_employee` / attendance-type value is a full-day
+ * leave (Sick Leave, Absence with/without excuse, vacation).
+ */
+export function isLeaveAttendanceType(attendanceType: string | null | undefined): boolean {
+  const t = (attendanceType ?? '').trim();
+  return (
+    t === 'Sick Leave' ||
+    t === 'Absence with excuse' ||
+    t === 'Absence without excuse' ||
+    t === 'vacation'
+  );
+}
+
+/**
+ * Field submit only stores project rows (hours + OT) for present days and Sick Leave
+ * (SL hours are charged to a project). Absent / vacation days drop their rows, so
+ * lingering Redux project hours must not be validated as if they will be saved.
+ */
+export function keepsProjectHours(input: {
+  status: string | null | undefined;
+  attendanceType?: string | null;
+}): boolean {
+  const status = (input.status ?? '').trim().toLowerCase();
+  return status === 'present' || (input.attendanceType ?? '').trim() === 'Sick Leave';
 }
 
 /** Maps an Attendance Report day code (P / W / H / HDAM / …) to a shared kind. */
@@ -187,8 +232,21 @@ export function evaluateEntry(params: {
     ];
   }
 
-  // No hours are expected for these kinds.
-  if (kind === 'vacation' || kind === 'sick-leave' || kind === 'absent-excused' || kind === 'absent-no-excuse') {
+  // No regular hours are expected for these kinds.
+  if (isLeaveKind(kind)) {
+    // A leave day is a full-day absence: OT can never be earned on it. This is the
+    // combination that used to slip through (SL day paid 8h + project OT ×1.25).
+    if (overtimeHours > HOURS_EPSILON) {
+      return [
+        {
+          code: 'overtime_on_leave',
+          severity: 'error',
+          message: `${attendanceKindLabel(kind)} day with ${formatHours(
+            overtimeHours
+          )} overtime logged — overtime is not allowed on a leave day. Clear the OT or change the status.`,
+        },
+      ];
+    }
     return [];
   }
 
@@ -346,6 +404,8 @@ export interface ReportIssueDay {
   status_code: string;
   working_hours: number;
   overtime: { normal: number; holiday: number; public_holiday: number };
+  /** Raw OT found on a leave day but not paid (see AttendanceReportDay.ignored_overtime). */
+  ignored_overtime?: number | null;
 }
 
 /** Report day codes we understand (see statusToCode). */
@@ -395,6 +455,29 @@ export function findEmployeeReportIssues(
         date: day.date,
         hours: day.working_hours ?? 0,
         overtime_hours: overtimeHours,
+      });
+    }
+
+    // Stored OT on a leave day is not paid (see bucketOvertimeHours) but is still
+    // bad data — surface it so an admin can clean the day.
+    const ignoredOvertime = Number(day.ignored_overtime ?? 0);
+    if (
+      isLeaveKind(kind) &&
+      checkHours &&
+      ignoredOvertime > HOURS_EPSILON &&
+      overtimeHours <= HOURS_EPSILON
+    ) {
+      issues.push({
+        employee_id: '',
+        employee_name: '',
+        code: 'overtime_on_leave',
+        severity: 'error',
+        message: `${attendanceKindLabel(kind)} · ${formatHours(
+          ignoredOvertime
+        )} overtime is stored on this leave day but not paid — remove the OT.`,
+        date: day.date,
+        hours: day.working_hours ?? 0,
+        overtime_hours: ignoredOvertime,
       });
     }
   }

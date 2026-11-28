@@ -7,6 +7,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/redux/store';
 import { addProjectToEmployee, addHours, setRemainingHours, setLeftHours, sum_hours, overtime_hours } from '@/redux/slice';
 import { OvertimeHoursFields } from '@/app/component/OvertimeHoursFields';
+import { isLeaveAttendanceType } from '@/app/lib/attendanceSubmissionValidation';
 import { useOptionalOvertimeCalendarContext } from '@/app/context/OvertimeCalendarContext';
 import { DEFAULT_OVERTIME_TYPE } from '@/app/constants/overtime';
 import { useProjectOvertimeCalendarSync } from '@/app/hooks/useProjectOvertimeCalendarSync';
@@ -359,7 +360,7 @@ const handleHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
           Boolean(
             overtime_input &&
               overtimeAllowed &&
-              employee1?.employee_status![0].status_employee !== 'Sick Leave'
+              !isLeaveAttendanceType(employee1?.employee_status?.[0]?.status_employee)
           )
         }
         hoursPlaceholder="الساعات الاضافية"

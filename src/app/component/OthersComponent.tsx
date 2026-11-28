@@ -7,6 +7,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState, AppDispatch } from '@/redux/store';
 import { addProjectToEmployee, addHours, setRemainingHours, setLeftHours, sum_hours, overtime_hours } from '@/redux/slice';
 import { OvertimeHoursFields } from '@/app/component/OvertimeHoursFields';
+import { isLeaveAttendanceType } from '@/app/lib/attendanceSubmissionValidation';
 import { useOptionalOvertimeCalendarContext } from '@/app/context/OvertimeCalendarContext';
 import { DEFAULT_OVERTIME_TYPE } from '@/app/constants/overtime';
 import { useProjectOvertimeCalendarSync } from '@/app/hooks/useProjectOvertimeCalendarSync';
@@ -96,6 +97,9 @@ const employees_statis = useSelector((state: RootState) => state.project.employe
 
   const statusEmployee = employee1?.employee_status?.[0]?.status_employee ?? '';
   const baseHours = statusEmployee === 'Half Day AM' ? 4.5 : statusEmployee === 'Half Day PM' ? 3.5 : 8;
+
+  // Leave days are full-day absences — overtime can never be earned on them.
+  const isLeaveDay = isLeaveAttendanceType(statusEmployee);
 
 console.log("this is the employee _id" , employee_id)
 // useEffect(() => {
@@ -356,7 +360,7 @@ const handleHoursChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       <OvertimeHoursFields
         employee_id={employee_id}
         project_index={input_index}
-        show={Boolean(overtime_input && overtimeAllowed)}
+        show={Boolean(overtime_input && overtimeAllowed && !isLeaveDay)}
         hoursPlaceholder="الساعات الاضافية"
         hoursSelectChildren={renderOvertime()}
       />

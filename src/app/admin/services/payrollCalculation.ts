@@ -14,6 +14,20 @@ import type { RawAttendanceProjectRow } from './attendanceReportService';
 
 const ABSENT_CODES = new Set(['AWO', 'SL', 'A']);
 
+/**
+ * Leave days are full-day absences — no project OT can be earned or paid on them.
+ * Mirrors `resolveReportKind` / `isLeaveStatusCode`; keep in sync.
+ */
+function isLeaveAttendanceStatus(statusAttendance: string | null | undefined): boolean {
+  const s = (statusAttendance ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  return (
+    s === 'sick leave' ||
+    s === 'absence with excuse' ||
+    s === 'absence without excuse' ||
+    s === 'vacation'
+  );
+}
+
 export function getCalendarMonthDays(fromDate: string): number {
   const [sy, sm] = fromDate.split('-').map(Number);
   return new Date(sy, sm, 0).getDate();
@@ -29,6 +43,12 @@ export function bucketOvertimeHours(
   projRows: Pick<RawAttendanceProjectRow, 'overtime_hours' | 'overtime_type'>[],
   statusAttendance: string
 ): { normal: number; holiday: number; public_holiday: number } {
+  // A Sick Leave / Absence / Vacation day is a full-day absence: any OT stored on
+  // that day is invalid (cannot be worked) and must never be paid.
+  if (isLeaveAttendanceStatus(statusAttendance)) {
+    return { normal: 0, holiday: 0, public_holiday: 0 };
+  }
+
   let normal = 0;
   let holiday = 0;
   let public_holiday = 0;

@@ -5,6 +5,7 @@ import { useAttendanceReport } from '../../hooks/useAttendanceReport';
 import { fetchDepartmentsService } from '../../services/departmentService';
 import { fetchEmployeesService } from '../../services/employeeService';
 import type { AttendanceReportEmployeeReport, AttendanceReportDay } from '../../types/attendanceReport';
+import { isLeaveStatusCode } from '../../types/attendanceReport';
 import {
   collectsAttendanceHours,
   countIssues,
@@ -1475,6 +1476,11 @@ export function AttendanceReportSection() {
                                     ...day,
                                     status_code: val,
                                     notes: nextNotes,
+                                    // Leave days never carry overtime (see payrollCalculation.
+                                    // bucketOvertimeHours) — zero it when the day becomes leave.
+                                    ...(isLeaveStatusCode(val)
+                                      ? { overtime: { normal: 0, holiday: 0, public_holiday: 0 } }
+                                      : {}),
                                     ...(val === 'SL'
                                       ? { working_hours: day.working_hours > 0 ? day.working_hours : 8, projects: '—' }
                                       : {}),
@@ -1510,6 +1516,34 @@ export function AttendanceReportSection() {
                                 )}
                               </span>
                             )}
+                            {/* Stored OT on a leave day is not paid — flag it and let admins clear it. */}
+                            {day.ignored_overtime ? (
+                              editMode ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const patched: AttendanceReportDay = {
+                                      ...day,
+                                      overtime: { normal: 0, holiday: 0, public_holiday: 0 },
+                                      ignored_overtime: null,
+                                    };
+                                    updateDay(eid, day.date, () => patched);
+                                    void saveDay(eid, day.date, patched);
+                                  }}
+                                  className="block mx-auto text-[9px] font-semibold leading-none text-red-600 underline"
+                                  title={`${day.ignored_overtime}h overtime is stored on this leave day but is not paid. Click to remove it.`}
+                                >
+                                  OT {day.ignored_overtime}h — clear
+                                </button>
+                              ) : (
+                                <span
+                                  className="block mx-auto text-[9px] font-semibold leading-none text-red-600"
+                                  title={`${day.ignored_overtime}h overtime is stored on this leave day but is not paid.`}
+                                >
+                                  OT {day.ignored_overtime}h ignored
+                                </span>
+                              )
+                            ) : null}
                           </td>
                           {showWorkHours && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-600">
@@ -1532,7 +1566,7 @@ export function AttendanceReportSection() {
                           )}
                           {showOtNormal && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                              {editMode ? (
+                              {editMode && !isLeaveStatusCode(day.status_code) ? (
                                 <input
                                   type="number" min="0" step="0.5"
                                   value={day.overtime.normal}
@@ -1547,7 +1581,7 @@ export function AttendanceReportSection() {
                           )}
                           {showOtHoliday && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                              {editMode ? (
+                              {editMode && !isLeaveStatusCode(day.status_code) ? (
                                 <input
                                   type="number" min="0" step="0.5"
                                   value={day.overtime.holiday}
@@ -1562,7 +1596,7 @@ export function AttendanceReportSection() {
                           )}
                           {showOtPublicHoliday && (
                             <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                              {editMode ? (
+                              {editMode && !isLeaveStatusCode(day.status_code) ? (
                                 <input
                                   type="number" min="0" step="0.5"
                                   value={day.overtime.public_holiday}
