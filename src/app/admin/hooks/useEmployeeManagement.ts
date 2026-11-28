@@ -10,12 +10,22 @@ import {
 } from '../services/employeeHistoryService';
 import { fetchDepartmentsService } from '../services/departmentService';
 import {
+  addEmployeeVacationService,
+  deleteEmployeeVacationService,
+  fetchEmployeeVacationsService,
+} from '../services/employeeVacationService';
+import {
   EmployeeIdPrefix,
   fetchEmployeeIdPools,
   invalidateEmployeeIdPools,
   prefixForDepartment,
 } from '../services/employeeIdService';
-import { Employee, EmployeeHistoryRecord, EmployeeUpdatePayload } from '../types/admin';
+import {
+  Employee,
+  EmployeeHistoryRecord,
+  EmployeeUpdatePayload,
+  EmployeeVacation,
+} from '../types/admin';
 
 interface NewEmployeeState {
   name: string;
@@ -51,6 +61,11 @@ export function useEmployeeManagement() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('');
   const [updateLoading, setUpdateLoading] = useState(false);
+  /** Approved vacation periods for the employee open in the Manage panel. */
+  const [employeeVacations, setEmployeeVacations] = useState<EmployeeVacation[]>([]);
+  const [vacationLoading, setVacationLoading] = useState(false);
+  const [vacationMessage, setVacationMessage] = useState('');
+  const [vacationSaving, setVacationSaving] = useState(false);
 
   const loadEmployees = useCallback(async () => {
     const startedAt = Date.now();
@@ -110,6 +125,81 @@ export function useEmployeeManagement() {
       setEmployeeHistory([]);
     }
   }, [manageEmployeeId, loadEmployeeHistory]);
+
+  const loadEmployeeVacations = useCallback(async (employeeId: string) => {
+    setVacationLoading(true);
+    try {
+      setEmployeeVacations(await fetchEmployeeVacationsService(employeeId));
+    } catch (error) {
+      console.error('Error loading vacations:', error);
+      setEmployeeVacations([]);
+    } finally {
+      setVacationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (manageEmployeeId) {
+      setVacationMessage('');
+      loadEmployeeVacations(manageEmployeeId);
+    } else {
+      setEmployeeVacations([]);
+      setVacationMessage('');
+    }
+  }, [manageEmployeeId, loadEmployeeVacations]);
+
+  const handleAddVacation = useCallback(
+    async (payload: { from_date: string; to_date: string; note?: string }) => {
+      if (!manageEmployeeId) return;
+      setVacationSaving(true);
+      setVacationMessage('');
+      try {
+        await addEmployeeVacationService({
+          employee_id: manageEmployeeId,
+          from_date: payload.from_date,
+          to_date: payload.to_date,
+          note: payload.note ?? null,
+        });
+        setVacationMessage('Vacation period added.');
+        await loadEmployeeVacations(manageEmployeeId);
+        try {
+          await addEmployeeHistoryService(
+            manageEmployeeId,
+            'vacation_added',
+            `${payload.from_date} -> ${payload.to_date}${payload.note ? ` (${payload.note})` : ''}`
+          );
+        } catch {
+          // History is best-effort; the vacation itself is saved.
+        }
+      } catch (error) {
+        console.error('Error adding vacation:', error);
+        setVacationMessage(
+          error instanceof Error ? error.message : 'Failed to add vacation period.'
+        );
+      } finally {
+        setVacationSaving(false);
+      }
+    },
+    [manageEmployeeId, loadEmployeeVacations]
+  );
+
+  const handleDeleteVacation = useCallback(
+    async (id: string) => {
+      setVacationSaving(true);
+      setVacationMessage('');
+      try {
+        await deleteEmployeeVacationService(id);
+        setVacationMessage('Vacation period removed.');
+        if (manageEmployeeId) await loadEmployeeVacations(manageEmployeeId);
+      } catch (error) {
+        console.error('Error removing vacation:', error);
+        setVacationMessage('Failed to remove vacation period.');
+      } finally {
+        setVacationSaving(false);
+      }
+    },
+    [manageEmployeeId, loadEmployeeVacations]
+  );
 
   const selectedEmployee = manageEmployeeId
     ? employees.find(
@@ -314,6 +404,12 @@ export function useEmployeeManagement() {
     handleUpdateEmployee,
     loadEmployees,
     loadEmployeeHistory,
+    employeeVacations,
+    vacationLoading,
+    vacationMessage,
+    vacationSaving,
+    handleAddVacation,
+    handleDeleteVacation,
   };
 }
 

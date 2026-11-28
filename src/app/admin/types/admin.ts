@@ -30,6 +30,21 @@ export interface EmployeeHistoryRecord {
   created_at: string;
 }
 
+/**
+ * Approved vacation period for one employee (`employee_vacations`).
+ * The Attendance Report treats days inside the range as Vacation, not missing.
+ */
+export interface EmployeeVacation {
+  id: string;
+  employee_id: string;
+  /** YYYY-MM-DD */
+  from_date: string;
+  /** YYYY-MM-DD, inclusive */
+  to_date: string;
+  note?: string | null;
+  created_at?: string;
+}
+
 export interface AttendanceRecord {
   id: string;
   employee_id: string;

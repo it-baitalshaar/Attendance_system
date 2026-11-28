@@ -11,6 +11,7 @@ import {
   buildAttendanceReport,
   type RawAttendanceRow,
   type RawEmployeeRow,
+  type VacationRangeInput,
 } from './attendanceReportService';
 import {
   bucketOvertimeHours,
@@ -55,6 +56,8 @@ export function buildSalaryReport(input: {
   priorSickLeaveDaysByEmployee?: Map<string, string[]>;
   /** Optional prior-period work projects so SL at period start can inherit a project. */
   lookbackWorkDaysByEmployee?: Map<string, LookbackWorkDay[]>;
+  /** Approved vacation periods — keeps V day counts identical to the attendance report. */
+  vacationsByEmployee?: Map<string, VacationRangeInput[]>;
 }): SalaryReportEmployee[] {
   const {
     attRows,
@@ -65,6 +68,7 @@ export function buildSalaryReport(input: {
     toDate,
     priorSickLeaveDaysByEmployee,
     lookbackWorkDaysByEmployee,
+    vacationsByEmployee,
   } = input;
 
   const periodDays = countInclusiveDays(fromDate, toDate);
@@ -76,6 +80,9 @@ export function buildSalaryReport(input: {
     employees,
     priorSickLeaveDaysByEmployee,
     lookbackWorkDaysByEmployee,
+    vacationsByEmployee,
+    periodFrom: fromDate,
+    periodTo: toDate,
   });
 
   const projByAttId = new Map<string, RawSalaryProjectRow[]>();

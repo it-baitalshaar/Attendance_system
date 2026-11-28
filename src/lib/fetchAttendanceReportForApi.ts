@@ -9,6 +9,7 @@ import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
 import { fetchAttendanceRowsForReport } from '@/lib/fetchAttendanceRowsForReport';
 import { fetchPriorSickLeaveDays } from '@/lib/fetchPriorSickLeaveDays';
 import { fetchPriorWorkProjectsForSickLeave } from '@/lib/fetchPriorWorkProjectsForSickLeave';
+import { fetchEmployeeVacationsForReport } from '@/lib/fetchEmployeeVacations';
 import { collectSickLeaveEmployeeIds } from '@/app/admin/services/inheritSickLeaveProjects';
 import {
   buildEmployeeDepartmentResolver,
@@ -80,6 +81,11 @@ export async function fetchAttendanceReportForApi(
   }
 
   const employeeIds = Array.from(new Set(attRows.map((r) => r.employee_id)));
+  const vacationsByEmployee = await fetchEmployeeVacationsForReport(supabase, {
+    from,
+    to,
+    employeeIds,
+  });
   const priorSickLeaveDaysByEmployee = await fetchPriorSickLeaveDays(supabase, {
     from,
     employeeIds,
@@ -139,6 +145,9 @@ export async function fetchAttendanceReportForApi(
     employees,
     priorSickLeaveDaysByEmployee,
     lookbackWorkDaysByEmployee,
+    vacationsByEmployee,
+    periodFrom: from,
+    periodTo: to,
   });
   return { report, from, to, error: null };
 }

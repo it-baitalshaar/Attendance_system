@@ -4,7 +4,7 @@ import {
   useEmployeeFilters,
 } from '../hooks/useEmployeeFilters';
 import { EmployeeFilters, ManageEmployeePanel } from './employees';
-import { Employee, EmployeeHistoryRecord } from '../types/admin';
+import { Employee, EmployeeHistoryRecord, EmployeeVacation } from '../types/admin';
 
 interface NewEmployeeState {
   name: string;
@@ -38,6 +38,12 @@ interface EmployeesTabProps {
   setUpdateMessage: (msg: string) => void;
   updateLoading: boolean;
   onUpdateEmployee: (id: string, payload: import('../types/admin').EmployeeUpdatePayload) => Promise<void>;
+  employeeVacations: EmployeeVacation[];
+  vacationLoading: boolean;
+  vacationMessage: string;
+  vacationSaving: boolean;
+  onAddVacation: (payload: { from_date: string; to_date: string; note?: string }) => Promise<void>;
+  onDeleteVacation: (id: string) => Promise<void>;
 }
 
 export function EmployeesTab({
@@ -60,6 +66,12 @@ export function EmployeesTab({
   setUpdateMessage,
   updateLoading,
   onUpdateEmployee,
+  employeeVacations,
+  vacationLoading,
+  vacationMessage,
+  vacationSaving,
+  onAddVacation,
+  onDeleteVacation,
 }: EmployeesTabProps) {
   const {
     filteredEmployees,
@@ -376,6 +388,12 @@ export function EmployeesTab({
           updateMessage={updateMessage}
           history={employeeHistory}
           historyLoading={historyLoading}
+          vacations={employeeVacations}
+          vacationLoading={vacationLoading}
+          vacationMessage={vacationMessage}
+          vacationSaving={vacationSaving}
+          onAddVacation={onAddVacation}
+          onDeleteVacation={onDeleteVacation}
         />
       )}
     </>

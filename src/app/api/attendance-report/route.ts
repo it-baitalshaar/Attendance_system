@@ -13,6 +13,7 @@ import { isUndefinedColumnError } from '@/lib/supabasePostgrestErrors';
 import { fetchAttendanceRowsForReport } from '@/lib/fetchAttendanceRowsForReport';
 import { fetchPriorSickLeaveDays } from '@/lib/fetchPriorSickLeaveDays';
 import { fetchPriorWorkProjectsForSickLeave } from '@/lib/fetchPriorWorkProjectsForSickLeave';
+import { fetchEmployeeVacationsForReport } from '@/lib/fetchEmployeeVacations';
 import { collectSickLeaveEmployeeIds } from '@/app/admin/services/inheritSickLeaveProjects';
 import {
   buildEmployeeDepartmentResolver,
@@ -213,11 +214,16 @@ export async function GET(request: Request) {
       );
     }
 
-    const employeeIds = Array.from(new Set(rows.map((r) => r.employee_id)));
-    const priorSickLeaveDaysByEmployee = await fetchPriorSickLeaveDays(supabase, {
-      from,
-      employeeIds,
-    });
+  const employeeIds = Array.from(new Set(rows.map((r) => r.employee_id)));
+  const vacationsByEmployee = await fetchEmployeeVacationsForReport(supabase, {
+    from,
+    to,
+    employeeIds,
+  });
+  const priorSickLeaveDaysByEmployee = await fetchPriorSickLeaveDays(supabase, {
+    from,
+    employeeIds,
+  });
     const lookbackWorkDaysByEmployee = await fetchPriorWorkProjectsForSickLeave(supabase, {
       from,
       employeeIds: collectSickLeaveEmployeeIds(rows),
@@ -280,6 +286,9 @@ export async function GET(request: Request) {
       employees,
       priorSickLeaveDaysByEmployee,
       lookbackWorkDaysByEmployee,
+      vacationsByEmployee,
+      periodFrom: from,
+      periodTo: to,
     });
 
     const submissions = await fetchSubmissionOverrides(supabase, from, to, department);

@@ -7,7 +7,7 @@ import type {
   AttendanceReportEmployeeReport,
   AttendanceReportDay,
 } from '../types/attendanceReport';
-import { dateOnly, statusToCode } from '../types/attendanceReport';
+import { dateOnly, isLeaveStatusCode, statusToCode } from '../types/attendanceReport';
 import { resolveProjectDisplayName } from '@/lib/projectDisplayName';
 import { bucketOvertimeHours } from './payrollCalculation';
 import { maxRegularHoursForStatus } from '@/app/lib/employeeRegularHours';
@@ -44,6 +44,29 @@ export interface RawAttendanceProjectRow {
   overtime_type?: string | null;
 }
 
+/** Approved vacation period (`employee_vacations`), dates inclusive. */
+export interface VacationRangeInput {
+  from_date: string;
+  to_date: string;
+  note?: string | null;
+}
+
+/** YYYY-MM-DD for every calendar day in [from, to]. Empty when a date is invalid. */
+function eachIsoDayInclusive(from: string, to: string): string[] {
+  const out: string[] = [];
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+  if (!fy || !fm || !fd || !ty || !tm || !td) return out;
+
+  const cur = new Date(Date.UTC(fy, fm - 1, fd));
+  const end = new Date(Date.UTC(ty, tm - 1, td));
+  while (cur.getTime() <= end.getTime()) {
+    out.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
 export interface RawEmployeeRow {
   employee_id: string;
   name: string;
@@ -60,6 +83,17 @@ export interface BuildReportInput {
   attProjRows: RawAttendanceProjectRow[];
   projectNameById: Map<string, string>;
   employees: RawEmployeeRow[];
+  /**
+   * Approved vacation periods per employee (`employee_vacations`). Any day inside
+   * a period with no Attendance row is added as a V (Vacation) day, so it is
+   * counted as vacation instead of being reported as "no attendance record".
+   * Requires `periodFrom` / `periodTo` to know the report bounds.
+   */
+  vacationsByEmployee?: Map<string, VacationRangeInput[]>;
+  /** Report period start (YYYY-MM-DD) — bounds vacation day synthesis. */
+  periodFrom?: string;
+  /** Report period end (YYYY-MM-DD), inclusive. */
+  periodTo?: string;
   /**
    * Sick leave dates before the report `from` date (same calendar year),
    * keyed by employee_id. Used so SL law ordinals continue across periods.
@@ -94,6 +128,9 @@ export function buildAttendanceReport(
     employees,
     priorSickLeaveDaysByEmployee = new Map(),
     lookbackWorkDaysByEmployee = new Map(),
+    vacationsByEmployee = new Map(),
+    periodFrom,
+    periodTo,
   } = input;
 
   const attendanceById = new Map<string, RawAttendanceRow>();
@@ -123,6 +160,8 @@ export function buildAttendanceReport(
       overtime_normal: number;
       overtime_holiday: number;
       overtime_public_holiday: number;
+      /** Raw OT rows (incl. leave days, where it is not paid). */
+      raw_overtime: number;
       projectParts: { name: string; hours: number }[];
     }
   >();
@@ -143,11 +182,13 @@ export function buildAttendanceReport(
     const k = key(att.employee_id, att.date);
     const projRows = projectsByAttendanceId.get(String(att.id ?? '')) ?? [];
     let working_hours = 0;
+    let raw_overtime = 0;
     const projectParts: { name: string; hours: number }[] = [];
 
     for (const p of projRows) {
       const hrs = Number(p.working_hours ?? 0);
       working_hours += hrs;
+      raw_overtime += Number(p.overtime_hours ?? 0);
       const name = resolveProjectDisplayName(p.project_id, projectNameById);
       projectParts.push({ name, hours: hrs });
     }
@@ -166,6 +207,7 @@ export function buildAttendanceReport(
     const existing = dayDataByKey.get(k);
     if (existing) {
       existing.working_hours += working_hours;
+      existing.raw_overtime += raw_overtime;
       existing.overtime_normal += overtime_normal;
       existing.overtime_holiday += overtime_holiday;
       existing.overtime_public_holiday += overtime_public_holiday;
@@ -177,6 +219,7 @@ export function buildAttendanceReport(
         status_attendance: sa || att.status_attendance,
         notes: att.notes,
         working_hours,
+        raw_overtime,
         overtime_normal,
         overtime_holiday,
         overtime_public_holiday,
@@ -325,7 +368,44 @@ export function buildAttendanceReport(
           statusCode === 'SL' && inheritedParts && inheritedParts.length > 0
             ? inheritedParts
             : null,
+        // OT is not paid on leave days (bucketOvertimeHours zeros it) but the raw
+        // value is kept so the report can flag the bad row.
+        ignored_overtime:
+          isLeaveStatusCode(statusCode) && d.raw_overtime > 0
+            ? d.raw_overtime
+            : undefined,
       });
+    }
+
+    // Approved vacation periods: a day inside a period with no Attendance row is
+    // still a vacation day, not a gap. Added as a V day so it counts in VACATION
+    // and is never listed as "no attendance record".
+    const vacationRanges = vacationsByEmployee.get(empId) ?? [];
+    if (vacationRanges.length > 0 && periodFrom && periodTo) {
+      const recordedDates = new Set(days.map((d) => d.date));
+      for (const range of vacationRanges) {
+        // Clamp the period to the report window.
+        const start = range.from_date > periodFrom ? range.from_date : periodFrom;
+        const end = range.to_date < periodTo ? range.to_date : periodTo;
+        if (!start || !end || start > end) continue;
+
+        for (const date of eachIsoDayInclusive(start, end)) {
+          if (recordedDates.has(date)) continue;
+          recordedDates.add(date);
+          const rangeNote = (range.note ?? '').trim();
+          days.push({
+            date,
+            status_code: 'V',
+            working_hours: 0,
+            overtime: { normal: 0, holiday: 0, public_holiday: 0 },
+            projects: '—',
+            notes: rangeNote ? `Vacation: ${rangeNote}` : null,
+            sick_leave: null,
+            sick_leave_projects: null,
+          });
+        }
+      }
+      days.sort((a, b) => a.date.localeCompare(b.date));
     }
 
     const sickLeave = summarizeEmployeeSickLeave({

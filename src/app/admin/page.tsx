@@ -72,6 +72,12 @@ function AdminPageContent() {
     setUpdateMessage,
     updateLoading,
     handleUpdateEmployee,
+    employeeVacations,
+    vacationLoading,
+    vacationMessage,
+    vacationSaving,
+    handleAddVacation,
+    handleDeleteVacation,
   } = useEmployeeManagement();
 
   const {
@@ -187,6 +193,12 @@ function AdminPageContent() {
           setUpdateMessage={setUpdateMessage}
           updateLoading={updateLoading}
           onUpdateEmployee={handleUpdateEmployee}
+          employeeVacations={employeeVacations}
+          vacationLoading={vacationLoading}
+          vacationMessage={vacationMessage}
+          vacationSaving={vacationSaving}
+          onAddVacation={handleAddVacation}
+          onDeleteVacation={handleDeleteVacation}
         />
       )}
 

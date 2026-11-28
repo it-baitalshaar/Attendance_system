@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Employee, EmployeeHistoryRecord, EmployeeUpdatePayload } from '../../types/admin';
+import {
+  Employee,
+  EmployeeHistoryRecord,
+  EmployeeUpdatePayload,
+  EmployeeVacation,
+} from '../../types/admin';
 
 /** Departments that use project + overtime entry on the attendance home page. */
 const OVERTIME_MANAGED_DEPARTMENTS = new Set(['Construction', 'Maintenance']);
@@ -15,6 +20,13 @@ export interface ManageEmployeePanelProps {
   updateMessage: string;
   history: EmployeeHistoryRecord[];
   historyLoading: boolean;
+  /** Approved vacation periods (`employee_vacations`). */
+  vacations: EmployeeVacation[];
+  vacationLoading: boolean;
+  vacationMessage: string;
+  vacationSaving: boolean;
+  onAddVacation: (payload: { from_date: string; to_date: string; note?: string }) => Promise<void>;
+  onDeleteVacation: (id: string) => Promise<void>;
 }
 
 export function ManageEmployeePanel({
@@ -26,6 +38,12 @@ export function ManageEmployeePanel({
   updateMessage,
   history,
   historyLoading,
+  vacations,
+  vacationLoading,
+  vacationMessage,
+  vacationSaving,
+  onAddVacation,
+  onDeleteVacation,
 }: ManageEmployeePanelProps) {
   const [name, setName] = useState(employee.name);
   const [position, setPosition] = useState(employee.position);
@@ -40,6 +58,11 @@ export function ManageEmployeePanel({
   const [joiningDate, setJoiningDate] = useState(
     employee.joining_date ? String(employee.joining_date).slice(0, 10) : ''
   );
+  /** New vacation period being added. */
+  const [vacationFrom, setVacationFrom] = useState('');
+  const [vacationTo, setVacationTo] = useState('');
+  const [vacationNote, setVacationNote] = useState('');
+  const [vacationError, setVacationError] = useState('');
 
   useEffect(() => {
     setName(employee.name);
@@ -80,6 +103,40 @@ export function ManageEmployeePanel({
     } catch {
       return iso;
     }
+  };
+
+  /** YYYY-MM-DD -> "Nov 16, 2026" (date-only columns have no time/zone). */
+  const formatDay = (iso: string) => {
+    const text = String(iso ?? '').slice(0, 10);
+    try {
+      return new Date(text + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return text;
+    }
+  };
+
+  const handleAddVacationClick = () => {
+    setVacationError('');
+    if (!vacationFrom || !vacationTo) {
+      setVacationError('Select both a start and an end date.');
+      return;
+    }
+    if (vacationTo < vacationFrom) {
+      setVacationError('End date must be on or after the start date.');
+      return;
+    }
+    onAddVacation({
+      from_date: vacationFrom,
+      to_date: vacationTo,
+      note: vacationNote.trim() || undefined,
+    });
+    setVacationFrom('');
+    setVacationTo('');
+    setVacationNote('');
   };
 
   return (
@@ -223,6 +280,101 @@ export function ManageEmployeePanel({
               </button>
             </div>
           </form>
+
+          <div className="mb-6">
+            <h3 className="text-lg font-medium mb-1">Vacation periods</h3>
+            <p className="text-xs text-gray-500 mb-2">
+              Days inside a vacation period are counted as Vacation (V) in the Attendance Report —
+              they are never listed as &ldquo;no attendance record&rdquo;. Use this when someone
+              stops being submitted mid-month because they are on leave.
+            </p>
+
+            {vacationLoading ? (
+              <p className="text-gray-500 text-sm">Loading vacation periods...</p>
+            ) : vacations.length === 0 ? (
+              <p className="text-gray-500 text-sm">No vacation periods recorded.</p>
+            ) : (
+              <ul className="border rounded divide-y max-h-40 overflow-y-auto mb-3">
+                {vacations.map((vacation) => (
+                  <li
+                    key={vacation.id}
+                    className="p-2 text-sm flex items-center justify-between gap-2"
+                  >
+                    <span>
+                      <span className="font-medium">
+                        {formatDay(vacation.from_date)} → {formatDay(vacation.to_date)}
+                      </span>
+                      {vacation.note && (
+                        <span className="text-gray-600"> — {vacation.note}</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteVacation(vacation.id)}
+                      disabled={vacationSaving}
+                      className="text-red-600 hover:text-red-800 text-xs font-medium disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-xs font-medium mb-1 text-gray-600">From</label>
+                <input
+                  type="date"
+                  value={vacationFrom}
+                  onChange={(e) => setVacationFrom(e.target.value)}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-gray-600">To</label>
+                <input
+                  type="date"
+                  value={vacationTo}
+                  onChange={(e) => setVacationTo(e.target.value)}
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-gray-600">
+                  Note (optional)
+                </label>
+                <input
+                  type="text"
+                  value={vacationNote}
+                  onChange={(e) => setVacationNote(e.target.value)}
+                  placeholder="e.g. Annual leave"
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+            </div>
+
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleAddVacationClick}
+                disabled={vacationSaving}
+                className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {vacationSaving ? 'Saving...' : 'Add vacation period'}
+              </button>
+              {vacationError && <span className="text-xs text-red-600">{vacationError}</span>}
+              {!vacationError && vacationMessage && (
+                <span
+                  className={`text-xs ${
+                    vacationMessage.includes('Failed') ? 'text-red-600' : 'text-green-600'
+                  }`}
+                >
+                  {vacationMessage}
+                </span>
+              )}
+            </div>
+          </div>
 
           <div>
             <h3 className="text-lg font-medium mb-2">History</h3>
